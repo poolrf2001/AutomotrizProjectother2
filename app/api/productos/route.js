@@ -6,8 +6,12 @@ import { db } from "@/lib/db";
 export async function GET() {
 
   const [rows] = await db.query(`
-    SELECT * FROM productos
-    ORDER BY created_at DESC
+    SELECT 
+      p.*,
+      ti.nombre AS tipo_nombre
+    FROM productos p
+    LEFT JOIN tipo_inventario ti ON p.tipo_inventario_id = ti.id
+    ORDER BY p.created_at DESC
   `);
 
   return NextResponse.json(rows);
@@ -24,6 +28,7 @@ export async function POST(req) {
     const {
       numero_parte,
       descripcion,
+      tipo_inventario_id,
       fecha_ingreso,
       precio_compra,
       precio_venta
@@ -33,6 +38,7 @@ export async function POST(req) {
       INSERT INTO productos (
         numero_parte,
         descripcion,
+        tipo_inventario_id,
         fecha_ingreso,
         stock_total,
         stock_usado,
@@ -40,10 +46,11 @@ export async function POST(req) {
         precio_compra,
         precio_venta
       )
-      VALUES (?, ?, ?, 0, 0, 0, ?, ?)
+      VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?)
     `, [
       numero_parte,
       descripcion,
+      tipo_inventario_id,
       fecha_ingreso,
       precio_compra,
       precio_venta

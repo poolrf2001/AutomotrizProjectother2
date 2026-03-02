@@ -41,6 +41,42 @@ export default function StockLocationDialog({
   const [tallerId, setTallerId] = useState("");
   const [mostradorId, setMostradorId] = useState("");
   const [stock, setStock] = useState("");
+  
+  const [stockAsignado, setStockAsignado] = useState(0);
+  const [stockDisponible, setStockDisponible] = useState(0);
+
+  // Calcular stock disponible
+  useEffect(() => {
+    if (!open || !product?.id) return;
+
+    async function calcularDisponible() {
+      try {
+        // Obtener todas las ubicaciones de este producto
+        const r = await fetch(`/api/stock_parcial/producto/${product.id}`);
+        const ubicaciones = await r.json();
+        
+        // Total asignado a TODAS las ubicaciones (incluyendo la actual)
+        const totalAsignado = ubicaciones.reduce((sum, u) => {
+          return sum + Number(u.stock || 0);
+        }, 0);
+
+        setStockAsignado(totalAsignado);
+        // Disponible = lo que NO está asignado a ninguna ubicación
+        const disponible = (product.stock_total || 0) - totalAsignado;
+        
+        // Si estamos editando, podemos usar el stock actual de esta ubicación + el disponible
+        if (isEdit && row) {
+          setStockDisponible(disponible + Number(row.stock || 0));
+        } else {
+          setStockDisponible(disponible);
+        }
+      } catch (error) {
+        console.error("Error calculando stock disponible:", error);
+      }
+    }
+
+    calcularDisponible();
+  }, [open, product?.id, isEdit, row?.id, row?.stock]);
 
   // cargar centros
   useEffect(() => {
@@ -83,11 +119,41 @@ export default function StockLocationDialog({
 
   }, [row, open]);
 
+
+
   async function save() {
 
     try {
 
-      if (!stock) return toast.warning("Stock requerido");
+      // Validaciones
+      if (!centroId) {
+        return toast.warning("Centro es obligatorio");
+      }
+
+      if (!stock) {
+        return toast.warning("Stock requerido");
+      }
+
+      const stockNumero = Number(stock);
+      
+      // Validar que el stock asignado no exceda el disponible
+      if (stockNumero > stockDisponible) {
+        return toast.error(`Solo hay ${stockDisponible} unidades disponibles para asignar`);
+      }
+
+      if (stockNumero <= 0) {
+        return toast.warning("El stock debe ser mayor a 0");
+      }
+
+      // Validación: Solo taller O mostrador, no ambos
+      if (tallerId && mostradorId) {
+        return toast.warning("Solo puede seleccionar Taller O Mostrador, no ambos");
+      }
+
+      // Validación: Debe tener al menos uno (taller o mostrador)
+      if (!tallerId && !mostradorId) {
+        return toast.warning("Debe seleccionar un Taller o un Mostrador");
+      }
 
       if (isEdit) {
 
@@ -141,7 +207,9 @@ export default function StockLocationDialog({
 
           {/* CENTRO */}
           <div>
-            <Label>Centro</Label>
+            <Label>
+              Centro <span className="text-red-500">*</span>
+            </Label>
             <Select value={centroId} onValueChange={setCentroId}>
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione centro" />
@@ -159,7 +227,10 @@ export default function StockLocationDialog({
           {/* TALLER */}
           <div>
             <Label>Taller</Label>
-            <Select value={tallerId} onValueChange={setTallerId}>
+            <Select 
+              value={tallerId} 
+              onValueChange={setTallerId}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione taller" />
               </SelectTrigger>
@@ -176,7 +247,10 @@ export default function StockLocationDialog({
           {/* MOSTRADOR */}
           <div>
             <Label>Mostrador</Label>
-            <Select value={mostradorId} onValueChange={setMostradorId}>
+            <Select 
+              value={mostradorId} 
+              onValueChange={setMostradorId}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccione mostrador" />
               </SelectTrigger>
@@ -197,7 +271,26 @@ export default function StockLocationDialog({
               type="number"
               value={stock}
               onChange={e => setStock(e.target.value)}
+              max={stockDisponible}
             />
+            <div className="mt-2 p-2 bg-muted rounded-md text-xs">
+              <p><b>Stock total del producto:</b> {product?.stock_total || 0}</p>
+              <p><b>Total asignado a ubicaciones:</b> {stockAsignado}</p>
+              <p><b>Sin asignar:</b> {(product?.stock_total || 0) - stockAsignado}</p>
+              {isEdit && (
+                <p className="mt-1 text-blue-600">
+                  <b>Máximo para esta ubicación:</b> {stockDisponible}
+                  <span className="text-muted-foreground ml-1">
+                    (incluye {row?.stock || 0} actual)
+                  </span>
+                </p>
+              )}
+              {!isEdit && (
+                <p className="mt-1 text-green-600">
+                  <b>Disponible para asignar:</b> {stockDisponible}
+                </p>
+              )}
+            </div>
           </div>
 
         </div>

@@ -11,6 +11,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function ProductDialog({
   open,
@@ -27,12 +34,30 @@ export default function ProductDialog({
   const [form, setForm] = useState({
     numero_parte: "",
     descripcion: "",
+    tipo_inventario_id: "",
     fecha_ingreso: "",
     precio_compra: "",
     precio_venta: "",
   });
 
   const [stockTotal, setStockTotal] = useState("");
+  const [tiposInventario, setTiposInventario] = useState([]);
+
+  // Cargar tipos de inventario
+  useEffect(() => {
+    async function loadTipos() {
+      try {
+        const res = await fetch("/api/tipo-inventario");
+        if (res.ok) {
+          const data = await res.json();
+          setTiposInventario(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error("Error cargando tipos:", error);
+      }
+    }
+    loadTipos();
+  }, []);
 
   useEffect(() => {
 
@@ -42,6 +67,7 @@ export default function ProductDialog({
       setForm({
         numero_parte: product.numero_parte ?? "",
         descripcion: product.descripcion ?? "",
+        tipo_inventario_id: product.tipo_inventario_id ? String(product.tipo_inventario_id) : "",
         fecha_ingreso: product.fecha_ingreso?.slice?.(0, 10) ?? "",
         precio_compra: product.precio_compra ?? "",
         precio_venta: product.precio_venta ?? "",
@@ -51,6 +77,7 @@ export default function ProductDialog({
       setForm({
         numero_parte: "",
         descripcion: "",
+        tipo_inventario_id: "",
         fecha_ingreso: "",
         precio_compra: "",
         precio_venta: "",
@@ -104,6 +131,7 @@ export default function ProductDialog({
     onSave?.({
       numero_parte: form.numero_parte?.trim(),
       descripcion: form.descripcion?.trim(),
+      tipo_inventario_id: form.tipo_inventario_id ? Number(form.tipo_inventario_id) : null,
       fecha_ingreso: form.fecha_ingreso || null,
       precio_compra: form.precio_compra === "" ? null : Number(form.precio_compra),
       precio_venta: form.precio_venta === "" ? null : Number(form.precio_venta),
@@ -151,6 +179,36 @@ export default function ProductDialog({
               disabled={isView}
               value={form.descripcion}
               onChange={(e) => updateField("descripcion", e.target.value)}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <Label>Tipo de inventario</Label>
+            <Select
+              disabled={isView}
+              value={form.tipo_inventario_id}
+              onValueChange={(val) => updateField("tipo_inventario_id", val)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Seleccionar tipo" />
+              </SelectTrigger>
+              <SelectContent>
+                {tiposInventario.map((tipo) => (
+                  <SelectItem key={tipo.id} value={String(tipo.id)}>
+                    {tipo.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1">
+            <Label>Fecha ingreso</Label>
+            <Input
+              disabled={isView}
+              type="date"
+              value={form.fecha_ingreso}
+              onChange={(e) => updateField("fecha_ingreso", e.target.value)}
             />
           </div>
 

@@ -27,6 +27,7 @@ export async function PUT(req, { params }) {
     const {
       numero_parte,
       descripcion,
+      tipo_inventario_id,
       fecha_ingreso,
       precio_compra,
       precio_venta
@@ -36,6 +37,7 @@ export async function PUT(req, { params }) {
       UPDATE productos SET
         numero_parte=?,
         descripcion=?,
+        tipo_inventario_id=?,
         fecha_ingreso=?,
         precio_compra=?,
         precio_venta=?
@@ -43,6 +45,7 @@ export async function PUT(req, { params }) {
     `, [
       numero_parte,
       descripcion,
+      tipo_inventario_id,
       fecha_ingreso,
       precio_compra,
       precio_venta,

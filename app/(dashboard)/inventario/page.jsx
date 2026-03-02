@@ -185,6 +185,18 @@ export default function InventarioPage() {
         ),
       },
       {
+        accessorKey: "tipo_nombre",
+        header: "Tipo",
+        cell: ({ row }) => {
+          const tipo = row.original.tipo_nombre;
+          return tipo ? (
+            <Badge variant="outline">{tipo}</Badge>
+          ) : (
+            <span className="text-xs text-muted-foreground">Sin tipo</span>
+          );
+        },
+      },
+      {
         accessorKey: "stock_disponible",
         header: "Disponible",
         cell: ({ row }) => {
