@@ -12,6 +12,7 @@ import HorariosCentroTab from "@/app/components/configuracion/HorariosCentroTab"
 import TipoInventarioTab from "@/app/components/tipoInventario/TipoInventarioTab";
 import FrecuenciaTab from "@/app/components/configuracion/FrecuenciaTab";
 import TarifasTab from "@/app/components/configuracion/TarifasTab";
+import MonedasTab from "@/app/components/configuracion/MonedasTab";
 
 export default function ConfiguracionPage() {
 
@@ -24,7 +25,7 @@ export default function ConfiguracionPage() {
 
       <Tabs defaultValue="centros">
 
-        <TabsList className="grid grid-cols-2 md:grid-cols-9 w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-10 w-full">
 
           <TabsTrigger value="centros">Centros</TabsTrigger>
           <TabsTrigger value="talleres">Talleres / Mostradores</TabsTrigger>
@@ -35,6 +36,7 @@ export default function ConfiguracionPage() {
           <TabsTrigger value="manoobra">Mano de Obra</TabsTrigger>
           <TabsTrigger value="panos">Paños</TabsTrigger>
           <TabsTrigger value="recordatorio">Recordatorio</TabsTrigger>
+          <TabsTrigger value="moneda">Moneda</TabsTrigger>
 
 
         </TabsList>
@@ -103,6 +105,13 @@ export default function ConfiguracionPage() {
           <Card>
             <CardContent className="pt-6">
               <FrecuenciaTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="moneda">
+          <Card>
+            <CardContent className="pt-6">
+              <MonedasTab />
             </CardContent>
           </Card>
         </TabsContent>
