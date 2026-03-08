@@ -58,3 +58,115 @@ export async function GET(request) {
     return NextResponse.json([]);
   }
 }
+
+
+export async function POST(req) {
+  try {
+    const body = await req.json();
+
+    const {
+      centro_id,
+      taller_id,
+      cliente_id,
+      vehiculo_id,
+      asesor_id,
+      origen_id,
+      start_at,
+      end_at,
+      created_by,
+      tipo_servicio,
+      servicio_valet,
+      fecha_promesa,
+      hora_promesa,
+      nota_cliente,
+      nota_interna,
+    } = body;
+
+    const missing = [];
+
+    if (!centro_id) missing.push("centro_id");
+    if (!cliente_id) missing.push("cliente_id");
+    if (!start_at) missing.push("start_at");
+    if (!end_at) missing.push("end_at");
+    if (!created_by) missing.push("created_by");
+    if (!tipo_servicio) missing.push("tipo_servicio");
+
+    if (missing.length > 0) {
+      return NextResponse.json(
+        {
+          message: "Datos incompletos",
+          missing,
+          received: {
+            centro_id,
+            taller_id,
+            cliente_id,
+            vehiculo_id,
+            asesor_id,
+            origen_id,
+            start_at,
+            end_at,
+            created_by,
+            tipo_servicio,
+            servicio_valet,
+            fecha_promesa,
+            hora_promesa,
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    const [result] = await db.query(
+      `
+      INSERT INTO citas (
+        centro_id,
+        taller_id,
+        cliente_id,
+        vehiculo_id,
+        asesor_id,
+        origen_id,
+        start_at,
+        end_at,
+        created_by,
+        tipo_servicio,
+        servicio_valet,
+        fecha_promesa,
+        hora_promesa,
+        nota_cliente,
+        nota_interna
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        centro_id,
+        taller_id || null,
+        cliente_id,
+        vehiculo_id || null,
+        asesor_id || null,
+        origen_id || null,
+        start_at,
+        end_at,
+        created_by,
+        tipo_servicio,
+        servicio_valet ? 1 : 0,
+        fecha_promesa || null,
+        hora_promesa || null,
+        nota_cliente || null,
+        nota_interna || null,
+      ]
+    );
+
+    return NextResponse.json({
+      message: "Cita creada correctamente",
+      id: result.insertId,
+    });
+  } catch (error) {
+    console.error("ERROR API /api/citas:", error);
+    return NextResponse.json(
+      {
+        message: "Error creando cita",
+        error: error.message,
+      },
+      { status: 500 }
+    );
+  }
+}

@@ -20,18 +20,11 @@ import { Check, ChevronsUpDown } from "lucide-react";
 import ClienteDialog from "@/app/components/clientes/ClienteDialog";
 import VehiculoDialog from "@/app/components/clientes/VehiculoDialog";
 
-function toArray(x) {
-  if (Array.isArray(x)) return x;
-  if (Array.isArray(x?.data)) return x.data;
-  if (Array.isArray(x?.rows)) return x.rows;
-  return [];
-}
-
 function cn(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehiculo }) {
+export default function ClienteSelectCard({ onSelect }) {
   const [clientes, setClientes] = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
 
@@ -41,23 +34,32 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
   const [selectedCliente, setSelectedCliente] = useState(null);
   const [selectedVehiculo, setSelectedVehiculo] = useState(null);
 
-  const [clienteDialog, setClienteDialog] = useState({ open: false, mode: "create", data: null });
-  const [vehiculoDialog, setVehiculoDialog] = useState({ open: false, mode: "create", data: null });
+  const [clienteDialog, setClienteDialog] = useState({
+    open: false,
+    mode: "create",
+    data: null,
+  });
+
+  const [vehiculoDialog, setVehiculoDialog] = useState({
+    open: false,
+    mode: "create",
+    data: null,
+  });
 
   useEffect(() => {
     (async () => {
       try {
         const cRes = await fetch("/api/clientes", { cache: "no-store" });
         const cJson = await cRes.json();
-        setClientes(Array.isArray(cJson) ? cJson : []); // Asegurarse de que sea un array
+        setClientes(Array.isArray(cJson) ? cJson : []);
 
         const vRes = await fetch("/api/vehiculos", { cache: "no-store" });
         const vJson = await vRes.json();
-        setVehiculos(Array.isArray(vJson) ? vJson : []); // Asegurarse de que sea un array
+        setVehiculos(Array.isArray(vJson) ? vJson : []);
       } catch (e) {
         console.error(e);
         toast.error("Error cargando clientes/vehículos");
-        setClientes([]); // Asegurarse de que se establezca como un array vacío en caso de error
+        setClientes([]);
         setVehiculos([]);
       }
     })();
@@ -65,11 +67,16 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
 
   const vehiculosVisibles = useMemo(() => {
     if (!selectedCliente?.id) return vehiculos;
-    return vehiculos.filter(v => Number(v.cliente_id) === Number(selectedCliente.id));
+    return vehiculos.filter(
+      (v) => Number(v.cliente_id) === Number(selectedCliente.id)
+    );
   }, [vehiculos, selectedCliente]);
 
   function emitir(cliente, vehiculo) {
-    onSelect?.(cliente, vehiculo);
+    onSelect?.({
+      cliente: cliente || null,
+      vehiculo: vehiculo || null,
+    });
   }
 
   function pickCliente(c) {
@@ -80,11 +87,14 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
   }
 
   function pickVehiculo(v) {
-    const cliente = clientes.find(c => Number(c.id) === Number(v.cliente_id));
+    const cliente = clientes.find(
+      (c) => Number(c.id) === Number(v.cliente_id)
+    );
+
     setSelectedVehiculo(v);
-    setSelectedCliente(cliente);
+    setSelectedCliente(cliente || null);
     setVehiculoOpen(false);
-    emitir(cliente, v);
+    emitir(cliente || null, v);
   }
 
   const clienteLabel = selectedCliente
@@ -92,15 +102,17 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
     : "Seleccionar cliente...";
 
   const vehiculoLabel = selectedVehiculo
-    ? `${selectedVehiculo.placas ?? "-"}` + (selectedVehiculo.vin ? ` · VIN: ${selectedVehiculo.vin}` : "")
+    ? `${selectedVehiculo.placas ?? selectedVehiculo.placa ?? "-"}${
+        selectedVehiculo.vin ? ` · VIN: ${selectedVehiculo.vin}` : ""
+      }`
     : "Seleccionar vehículo...";
 
-  // ---------------- SAVE CLIENTE ----------------
-  async function onAddCliente(data) {
+  async function handleSaveCliente(data) {
     const method = clienteDialog.mode === "edit" ? "PUT" : "POST";
-    const url = clienteDialog.mode === "edit"
-      ? `/api/clientes/${clienteDialog.data.id}`
-      : `/api/clientes`;
+    const url =
+      clienteDialog.mode === "edit"
+        ? `/api/clientes/${clienteDialog.data.id}`
+        : `/api/clientes`;
 
     try {
       const res = await fetch(url, {
@@ -108,29 +120,37 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
-      
-      if (res.ok) {
-        toast.success("Cliente guardado");
-        setClienteDialog({ open: false });
-        const updatedClientes = await res.json();
-        setClientes(updatedClientes);
-      } else {
-        toast.error("Error al guardar cliente");
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast.error(json?.message || "Error al guardar cliente");
+        return;
       }
+
+      toast.success("Cliente guardado");
+      setClienteDialog({ open: false, mode: "create", data: null });
+
+      const cRes = await fetch("/api/clientes", { cache: "no-store" });
+      const cJson = await cRes.json();
+      setClientes(Array.isArray(cJson) ? cJson : []);
     } catch (err) {
       console.error(err);
       toast.error("Error al guardar cliente");
     }
   }
 
-  // ---------------- SAVE VEHICULO ----------------
-  async function onAddVehiculo(data) {
-    if (!selectedCliente) return;
+  async function handleSaveVehiculo(data) {
+    if (!selectedCliente) {
+      toast.warning("Primero seleccione un cliente");
+      return;
+    }
 
     const method = vehiculoDialog.mode === "edit" ? "PUT" : "POST";
-    const url = vehiculoDialog.mode === "edit"
-      ? `/api/vehiculos/${vehiculoDialog.data.id}`
-      : `/api/vehiculos`;
+    const url =
+      vehiculoDialog.mode === "edit"
+        ? `/api/vehiculos/${vehiculoDialog.data.id}`
+        : `/api/vehiculos`;
 
     try {
       const res = await fetch(url, {
@@ -142,14 +162,19 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
         }),
       });
 
-      if (res.ok) {
-        toast.success("Vehículo guardado");
-        setVehiculoDialog({ open: false });
-        const updatedVehiculos = await res.json();
-        setVehiculos(updatedVehiculos);
-      } else {
-        toast.error("Error al guardar vehículo");
+      const json = await res.json();
+
+      if (!res.ok) {
+        toast.error(json?.message || "Error al guardar vehículo");
+        return;
       }
+
+      toast.success("Vehículo guardado");
+      setVehiculoDialog({ open: false, mode: "create", data: null });
+
+      const vRes = await fetch("/api/vehiculos", { cache: "no-store" });
+      const vJson = await vRes.json();
+      setVehiculos(Array.isArray(vJson) ? vJson : []);
     } catch (err) {
       console.error(err);
       toast.error("Error al guardar vehículo");
@@ -161,7 +186,6 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
       <CardHeader className="font-semibold">Cliente y Vehículo</CardHeader>
 
       <CardContent className="space-y-4">
-
         <div className="space-y-1">
           <div className="text-sm font-medium">Cliente</div>
 
@@ -185,10 +209,11 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                   <CommandEmpty>Sin resultados</CommandEmpty>
 
                   <CommandGroup heading="Clientes">
-                    {Array.isArray(clientes) && clientes.length > 0 ? (
+                    {clientes.length > 0 ? (
                       clientes.map((c) => {
                         const label = `${c.nombre ?? ""} ${c.apellido ?? ""}`.trim();
-                        const selected = Number(selectedCliente?.id) === Number(c.id);
+                        const selected =
+                          Number(selectedCliente?.id) === Number(c.id);
 
                         return (
                           <CommandItem
@@ -196,7 +221,12 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                             value={`${label} ${c.celular ?? ""}`.toLowerCase()}
                             onSelect={() => pickCliente(c)}
                           >
-                            <Check className={cn("mr-2 h-4 w-4", selected ? "opacity-100" : "opacity-0")} />
+                            <Check
+                              className={cn(
+                                "mr-2 h-4 w-4",
+                                selected ? "opacity-100" : "opacity-0"
+                              )}
+                            />
                             <div className="flex flex-col">
                               <span className="font-medium">{label || "—"}</span>
                               <span className="text-xs text-muted-foreground">
@@ -209,7 +239,12 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                     ) : (
                       <CommandEmpty>No hay clientes disponibles</CommandEmpty>
                     )}
-                    <CommandItem onSelect={() => setClienteDialog({ open: true, mode: "create", data: null })}>
+
+                    <CommandItem
+                      onSelect={() =>
+                        setClienteDialog({ open: true, mode: "create", data: null })
+                      }
+                    >
                       <Button variant="outline" size="sm" className="w-full">
                         Agregar Cliente
                       </Button>
@@ -243,13 +278,20 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                 <CommandList>
                   <CommandEmpty>Sin resultados</CommandEmpty>
 
-                  <CommandGroup heading={selectedCliente ? "Vehículos del cliente" : "Vehículos"}>
+                  <CommandGroup
+                    heading={selectedCliente ? "Vehículos del cliente" : "Vehículos"}
+                  >
                     {vehiculosVisibles.map((v) => {
-                      const label =
-                        `${v.placas ?? "-"}` + (v.vin ? ` · VIN: ${v.vin}` : "");
-                      const selected = Number(selectedVehiculo?.id) === Number(v.id);
+                      const label = `${v.placas ?? v.placa ?? "-"}${
+                        v.vin ? ` · VIN: ${v.vin}` : ""
+                      }`;
 
-                      const filterValue = `${v.placas ?? ""} ${v.vin ?? ""} ${v.cliente_nombre ?? ""}`.toLowerCase();
+                      const selected =
+                        Number(selectedVehiculo?.id) === Number(v.id);
+
+                      const filterValue = `${v.placas ?? ""} ${v.placa ?? ""} ${
+                        v.vin ?? ""
+                      } ${v.cliente_nombre ?? ""}`.toLowerCase();
 
                       return (
                         <CommandItem
@@ -257,7 +299,12 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                           value={filterValue}
                           onSelect={() => pickVehiculo(v)}
                         >
-                          <Check className={cn("mr-2 h-4 w-4", selected ? "opacity-100" : "opacity-0")} />
+                          <Check
+                            className={cn(
+                              "mr-2 h-4 w-4",
+                              selected ? "opacity-100" : "opacity-0"
+                            )}
+                          />
                           <div className="flex flex-col">
                             <span className="font-medium">{label}</span>
                             <span className="text-xs text-muted-foreground">
@@ -267,7 +314,12 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                         </CommandItem>
                       );
                     })}
-                    <CommandItem onSelect={() => setVehiculoDialog({ open: true, mode: "create", data: null })}>
+
+                    <CommandItem
+                      onSelect={() =>
+                        setVehiculoDialog({ open: true, mode: "create", data: null })
+                      }
+                    >
                       <Button variant="outline" size="sm" className="w-full">
                         Agregar Vehículo
                       </Button>
@@ -281,7 +333,6 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
 
         {(selectedCliente || selectedVehiculo) && (
           <div className="bg-muted p-4 rounded-lg text-sm space-y-4">
-
             {selectedCliente && (
               <div>
                 <div className="font-semibold mb-1 text-base">
@@ -311,25 +362,28 @@ export default function ClienteSelectCard({ onSelect, onAddCliente, onAddVehicul
                 <div><b>Kilometraje:</b> {selectedVehiculo.kilometraje || "-"}</div>
               </div>
             )}
-
           </div>
         )}
-
       </CardContent>
+
       <ClienteDialog
         open={clienteDialog.open}
         mode={clienteDialog.mode}
         cliente={clienteDialog.data}
-        onSave={onAddCliente}
-        onOpenChange={v => setClienteDialog({ open: v })}
+        onSave={handleSaveCliente}
+        onOpenChange={(v) =>
+          setClienteDialog((prev) => ({ ...prev, open: v }))
+        }
       />
 
       <VehiculoDialog
         open={vehiculoDialog.open}
         mode={vehiculoDialog.mode}
         vehiculo={vehiculoDialog.data}
-        onSave={onAddVehiculo}
-        onOpenChange={v => setVehiculoDialog({ open: v })}
+        onSave={handleSaveVehiculo}
+        onOpenChange={(v) =>
+          setVehiculoDialog((prev) => ({ ...prev, open: v }))
+        }
       />
     </Card>
   );

@@ -15,35 +15,45 @@ import { Trash, Plus } from "lucide-react";
 export default function MotivosVisitaCard({ value = [], onChange }) {
   const [motivos, setMotivos] = useState([]);
 
-  // cargar motivos
   useEffect(() => {
     fetch("/api/motivos_citas?active=1")
       .then((r) => r.json())
-      .then(setMotivos);
+      .then((data) => setMotivos(Array.isArray(data) ? data : []))
+      .catch((e) => {
+        console.log(e);
+        setMotivos([]);
+      });
   }, []);
 
-  // actualizar fila
   function updateRow(i, data) {
     const copy = [...value];
     copy[i] = { ...copy[i], ...data };
     onChange(copy);
   }
 
-  // cargar submotivos
   async function cargarSubmotivos(motivoId, i) {
     if (!motivoId) return;
 
-    const subs = await fetch(
-      `/api/submotivos-citas?motivo_id=${motivoId}&active=1`
-    ).then((r) => r.json());
+    try {
+      const subs = await fetch(
+        `/api/submotivos-citas?motivo_id=${motivoId}&active=1`
+      ).then((r) => r.json());
 
-    updateRow(i, {
-      submotivos: subs,
-      submotivo_id: null,
-    });
+      updateRow(i, {
+        motivo_id: Number(motivoId),
+        submotivos: Array.isArray(subs) ? subs : [],
+        submotivo_id: null,
+      });
+    } catch (e) {
+      console.log(e);
+      updateRow(i, {
+        motivo_id: Number(motivoId),
+        submotivos: [],
+        submotivo_id: null,
+      });
+    }
   }
 
-  // agregar fila
   function addRow() {
     onChange([
       ...value,
@@ -51,7 +61,6 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
     ]);
   }
 
-  // eliminar fila
   function removeRow(i) {
     const copy = [...value];
     copy.splice(i, 1);
@@ -72,9 +81,14 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
           >
             {/* MOTIVO */}
             <Select
-              value={row.motivo_id ? String(row.motivo_id) : ""}
+              value={row.motivo_id ? String(row.motivo_id) : undefined}
               onValueChange={(v) => {
-                updateRow(i, { motivo_id: Number(v) });
+                updateRow(i, {
+                  motivo_id: Number(v),
+                  submotivo_id: null,
+                  submotivos: [],
+                });
+
                 cargarSubmotivos(v, i);
               }}
             >
@@ -93,7 +107,7 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
             {/* SUBMOTIVO */}
             {row.submotivos?.length > 0 && (
               <Select
-                value={row.submotivo_id ? String(row.submotivo_id) : ""}
+                value={row.submotivo_id ? String(row.submotivo_id) : undefined}
                 onValueChange={(v) =>
                   updateRow(i, { submotivo_id: Number(v) })
                 }
@@ -126,7 +140,8 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
 
         {/* AGREGAR */}
         <Button type="button" variant="link" onClick={addRow}>
-          <Plus className="mr-2 h-4 w-4" /> Agregar motivo
+          <Plus className="mr-2 h-4 w-4" />
+          Agregar motivo
         </Button>
       </CardContent>
     </Card>

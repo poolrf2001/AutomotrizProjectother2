@@ -25,7 +25,7 @@ export async function GET(req) {
     SELECT sm.id, sm.motivo_id, sm.nombre, sm.is_active, sm.created_at
     FROM submotivos_citas sm
     ${whereSql}
-    ORDER BY sm.motivo_id, sm.nombre
+    ORDER BY sm.motivo_id, sm.created_at asc
     `,
     params
   );
