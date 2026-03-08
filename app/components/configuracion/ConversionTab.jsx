@@ -33,12 +33,12 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 import {
-  GripVertical,
   Pencil,
   Trash2,
   Plus,
-  Loader2,
   AlertTriangle,
+  Loader2,
+  GripVertical,
 } from "lucide-react";
 
 function normalizeArray(x) {
@@ -85,7 +85,7 @@ function SortableRow({ item, onEdit, onDelete, onToggleActive }) {
       </button>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <div className="font-medium truncate">{item.nombre}</div>
 
           <span
@@ -153,7 +153,7 @@ function SortableRow({ item, onEdit, onDelete, onToggleActive }) {
   );
 }
 
-export default function EtapasConversionTab() {
+export default function ConversionTab() {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } })
   );
@@ -161,15 +161,25 @@ export default function EtapasConversionTab() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [dialog, setDialog] = useState({ open: false, mode: "create", data: null });
+  const [dialog, setDialog] = useState({
+    open: false,
+    mode: "create",
+    data: null,
+  });
+
   const [form, setForm] = useState({
     nombre: "",
     descripcion: "",
     color: "#3B82F6",
   });
+
   const [saving, setSaving] = useState(false);
 
-  const [deleteDialog, setDeleteDialog] = useState({ open: false, item: null });
+  const [deleteDialog, setDeleteDialog] = useState({
+    open: false,
+    item: null,
+  });
+
   const [deleting, setDeleting] = useState(false);
 
   const ids = useMemo(() => items.map((x) => Number(x.id)), [items]);
@@ -177,8 +187,10 @@ export default function EtapasConversionTab() {
   async function load() {
     try {
       setLoading(true);
+
       const r = await fetch("/api/etapasconversion", { cache: "no-store" });
       const data = await r.json().catch(() => []);
+
       if (!r.ok) {
         toast.error(data?.message || "Error cargando etapas");
         setItems([]);
@@ -188,7 +200,10 @@ export default function EtapasConversionTab() {
       const arr = normalizeArray(data).map((x) => ({
         ...x,
         id: Number(x.id),
-        sort_order: x.sort_order === null || x.sort_order === undefined ? null : Number(x.sort_order),
+        sort_order:
+          x.sort_order === null || x.sort_order === undefined
+            ? null
+            : Number(x.sort_order),
         is_active: Number(x.is_active) ? 1 : 0,
       }));
 
@@ -239,18 +254,19 @@ export default function EtapasConversionTab() {
     const descripcion = String(form.descripcion ?? "").trim();
     const color = String(form.color ?? "").trim();
 
-    if (!nombre) return toast.error("nombre es requerido");
-    if (!isHexColor(color)) return toast.error("color debe ser HEX (#RRGGBB)");
+    if (!nombre) return toast.error("Nombre es requerido");
+    if (!isHexColor(color)) return toast.error("Color debe ser HEX (#RRGGBB)");
 
     const isEdit = dialog.mode === "edit" && dialog.data?.id != null;
-    const url = isEdit ? `/api/etapasconversion/${dialog.data.id}` : "/api/etapasconversion";
+    const url = isEdit
+      ? `/api/etapasconversion/${dialog.data.id}`
+      : "/api/etapasconversion";
     const method = isEdit ? "PUT" : "POST";
 
     try {
       setSaving(true);
 
       if (!isEdit) {
-        // CREATE: no mandamos sort_order ni is_active (API pone activo y al final)
         const r = await fetch(url, {
           method,
           headers: { "Content-Type": "application/json" },
@@ -266,8 +282,9 @@ export default function EtapasConversionTab() {
 
         toast.success("Etapa creada");
       } else {
-        // EDIT: conservar sort_order e is_active
-        const original = items.find((x) => Number(x.id) === Number(dialog.data.id));
+        const original = items.find(
+          (x) => Number(x.id) === Number(dialog.data.id)
+        );
 
         const r = await fetch(url, {
           method,
@@ -318,7 +335,9 @@ export default function EtapasConversionTab() {
       if (!r.ok) return toast.error(data?.message || "No se pudo actualizar");
 
       setItems((prev) =>
-        prev.map((x) => (x.id === id ? { ...x, is_active: Number(x.is_active) ? 0 : 1 } : x))
+        prev.map((x) =>
+          x.id === id ? { ...x, is_active: Number(x.is_active) ? 0 : 1 } : x
+        )
       );
     } catch (e) {
       console.log(e);
@@ -332,7 +351,11 @@ export default function EtapasConversionTab() {
 
     try {
       setDeleting(true);
-      const r = await fetch(`/api/etapasconversion/${id}`, { method: "DELETE" });
+
+      const r = await fetch(`/api/etapasconversion/${id}`, {
+        method: "DELETE",
+      });
+
       const data = await r.json().catch(() => ({}));
       if (!r.ok) return toast.error(data?.message || "No se pudo eliminar");
 
@@ -369,6 +392,7 @@ export default function EtapasConversionTab() {
           })
         )
       );
+
       toast.success("Orden guardado");
     } catch (e) {
       console.log(e);
@@ -383,12 +407,20 @@ export default function EtapasConversionTab() {
     if (active.id === over.id) return;
 
     setItems((prev) => {
-      const oldIndex = prev.findIndex((x) => Number(x.id) === Number(active.id));
-      const newIndex = prev.findIndex((x) => Number(x.id) === Number(over.id));
+      const oldIndex = prev.findIndex(
+        (x) => Number(x.id) === Number(active.id)
+      );
+      const newIndex = prev.findIndex(
+        (x) => Number(x.id) === Number(over.id)
+      );
+
       if (oldIndex === -1 || newIndex === -1) return prev;
 
       const moved = arrayMove(prev, oldIndex, newIndex);
-      const payload = moved.map((it, idx) => ({ ...it, sort_order: idx + 1 }));
+      const payload = moved.map((it, idx) => ({
+        ...it,
+        sort_order: idx + 1,
+      }));
 
       persistSortOrder(payload);
       return payload;
@@ -413,9 +445,15 @@ export default function EtapasConversionTab() {
             Cargando...
           </div>
         ) : items.length === 0 ? (
-          <div className="text-sm text-muted-foreground py-8">No hay etapas.</div>
+          <div className="text-sm text-muted-foreground py-8">
+            No hay etapas.
+          </div>
         ) : (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={onDragEnd}
+          >
             <SortableContext items={ids} strategy={verticalListSortingStrategy}>
               <div className="space-y-2">
                 {items.map((item) => (
@@ -436,7 +474,9 @@ export default function EtapasConversionTab() {
       <Dialog open={dialog.open} onOpenChange={closeDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{dialog.mode === "edit" ? "Editar etapa" : "Nueva etapa"}</DialogTitle>
+            <DialogTitle>
+              {dialog.mode === "edit" ? "Editar etapa" : "Nueva etapa"}
+            </DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
@@ -444,7 +484,9 @@ export default function EtapasConversionTab() {
               <div className="text-sm font-medium">Nombre</div>
               <Input
                 value={form.nombre}
-                onChange={(e) => setForm((p) => ({ ...p, nombre: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, nombre: e.target.value }))
+                }
               />
             </div>
 
@@ -452,7 +494,9 @@ export default function EtapasConversionTab() {
               <div className="text-sm font-medium">Descripción</div>
               <Input
                 value={form.descripcion}
-                onChange={(e) => setForm((p) => ({ ...p, descripcion: e.target.value }))}
+                onChange={(e) =>
+                  setForm((p) => ({ ...p, descripcion: e.target.value }))
+                }
               />
             </div>
 
@@ -462,12 +506,16 @@ export default function EtapasConversionTab() {
                 <Input
                   type="color"
                   value={form.color || "#000000"}
-                  onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, color: e.target.value }))
+                  }
                   className="w-16 p-1"
                 />
                 <Input
                   value={form.color}
-                  onChange={(e) => setForm((p) => ({ ...p, color: e.target.value }))}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, color: e.target.value }))
+                  }
                   placeholder="#RRGGBB"
                 />
               </div>
@@ -475,9 +523,14 @@ export default function EtapasConversionTab() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => closeDialog(false)} disabled={saving}>
+            <Button
+              variant="outline"
+              onClick={() => closeDialog(false)}
+              disabled={saving}
+            >
               Cancelar
             </Button>
+
             <Button onClick={save} disabled={saving}>
               {saving ? (
                 <>
@@ -509,10 +562,19 @@ export default function EtapasConversionTab() {
           </div>
 
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => closeDeleteDialog(false)} disabled={deleting}>
+            <Button
+              variant="outline"
+              onClick={() => closeDeleteDialog(false)}
+              disabled={deleting}
+            >
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={confirmDelete} disabled={deleting}>
+
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              disabled={deleting}
+            >
               {deleting ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

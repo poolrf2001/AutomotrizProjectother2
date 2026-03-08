@@ -10,7 +10,6 @@ import MotivosTab from "@/app/components/configuracion/MotivosTab";
 import OrigenesTab from "@/app/components/configuracion/OrigenesTab";
 import HorariosCentroTab from "@/app/components/configuracion/HorariosCentroTab";
 import TipoInventarioTab from "@/app/components/tipoInventario/TipoInventarioTab";
-import FrecuenciaTab from "@/app/components/configuracion/FrecuenciaTab";
 import TarifasTab from "@/app/components/configuracion/TarifasTab";
 import MonedasTab from "@/app/components/configuracion/MonedasTab";
 
@@ -25,17 +24,16 @@ export default function ConfiguracionPage() {
 
       <Tabs defaultValue="centros">
 
-        <TabsList className="grid grid-cols-2 md:grid-cols-10 w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-9 w-full">
 
           <TabsTrigger value="centros">Centros</TabsTrigger>
           <TabsTrigger value="talleres">Talleres / Mostradores</TabsTrigger>
+          <TabsTrigger value="horarios">Horarios</TabsTrigger>
           <TabsTrigger value="motivos">Motivos</TabsTrigger>
           <TabsTrigger value="origenes">Orígenes</TabsTrigger>
-          <TabsTrigger value="horarios">Horarios</TabsTrigger>
           <TabsTrigger value="tipoinventario">Tipo de Inventario</TabsTrigger>
           <TabsTrigger value="manoobra">Mano de Obra</TabsTrigger>
           <TabsTrigger value="panos">Paños</TabsTrigger>
-          <TabsTrigger value="recordatorio">Recordatorio</TabsTrigger>
           <TabsTrigger value="moneda">Moneda</TabsTrigger>
 
 
@@ -56,7 +54,13 @@ export default function ConfiguracionPage() {
             </CardContent>
           </Card>
         </TabsContent>
-
+        <TabsContent value="horarios">
+          <Card>
+            <CardContent className="pt-6">
+              <HorariosCentroTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
         <TabsContent value="motivos">
           <Card>
             <CardContent className="pt-6">
@@ -72,15 +76,7 @@ export default function ConfiguracionPage() {
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="horarios">
-          <Card>
-            <CardContent className="pt-6">
-              <HorariosCentroTab />
-            </CardContent>
-          </Card>
-        </TabsContent>
-<TabsContent value="tipoinventario">
+        <TabsContent value="tipoinventario">
           <Card>
             <CardContent className="pt-6">
               <TipoInventarioTab />
@@ -98,13 +94,6 @@ export default function ConfiguracionPage() {
           <Card>
             <CardContent className="pt-6">
               <TarifasTab tipo="panos" />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="recordatorio">
-          <Card>
-            <CardContent className="pt-6">
-              <FrecuenciaTab />
             </CardContent>
           </Card>
         </TabsContent>

@@ -11,7 +11,6 @@ export const SECTIONS = [
   
   { key: "usuarios", label: "Usuarios", actions: ["view", "create", "edit", "delete"] },
   { key: "etapas", label: "Etapas", actions: ["view", "create", "edit", "delete"] },
-  { key: "etapasconversion", label: "Etapas de Conversion", actions: ["view", "create", "edit", "delete"] },
   { key: "tiposactividades", label: "Actividades", actions: ["view", "create", "edit", "delete"] },
   { key: "clientes", label: "Clientes", actions: ["view", "create", "edit", "delete"] },
   { key: "marcas", label: "Marcas", actions: ["view", "create", "edit", "delete"] },
@@ -34,7 +33,11 @@ export const SECTIONS = [
   { key: "picaje", label: "Picaje", actions: ["view", "create", "edit", "delete"] },
   { key: "ordenes", label: "Órdenes", actions: ["view", "create", "edit", "delete"] },
   { key: "cotizacion", label: "Cotización", actions: ["view", "create", "edit", "delete"] },
-  
-
+  { key: "prospeccion", label: "Configuracion de Prospecciones", actions: ["view", "create", "edit", "delete"] },
+  { key: "configagenda", label: "Configuración de Agenda", actions: ["view", "create", "edit", "delete"] },
+  { key: "leads", label: "Leads", actions: ["view", "create", "edit", "delete"] },
+  { key: "oportunidades", label: "Oportunidades", actions: ["view", "create", "edit", "delete"] },
+  { key: "configpicaje", label: "Configuración de Picaje", actions: ["view", "create", "edit", "delete"] },
+  { key: "configinventario", label: "Configuración de Inventario", actions: ["view", "create", "edit", "delete"] }
 
 ];

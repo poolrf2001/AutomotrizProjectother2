@@ -10,14 +10,11 @@ export const NAV_TREE = [
     items: [
       { to: "/usuarios", label: "Usuarios", icon: Users, perm: ["usuarios", "view"] },
       { to: "/etapas", label: "Etapas", icon: Milestone, perm: ["etapas", "view"] },
-      { to: "/etapasconversion", label: "Etapas de Conversion", icon: Milestone, perm: ["etapasconversion", "view"] },
       { to: "/tiposactividades", label: "Actividades", icon: ListChecks, perm: ["tiposactividades", "view"] },
       { to: "/clientes", label: "Clientes", icon: UserRound, perm: ["clientes", "view"] },
       { to: "/marcas", label: "Marcas", icon: Blinds, perm: ["marcas", "view"] },
-      { to: "/inventario", label: "Inventario", icon: Boxes, perm: ["inventario", "view"] },
       { to: "/combomantenimiento", label: "Mantenimiento", icon: Columns3, perm: ["combomantenimiento", "view"] },
       { to: "/precios", label: "Precios", icon: Coins, perm: ["precios", "view"] },
-      { to: "/configuracion", label: "Configuración del sistema", icon: Settings, perm: ["configuracion", "view"] },
 
     ],
   },
@@ -34,7 +31,14 @@ export const NAV_TREE = [
     label: "Agenda",
     items: [
       { to: "/agenda", label: "Agenda", icon: Calendar, perm: ["agenda", "view"] },
+      { to: "/oportunidades", label: "Oportunidades", icon: Calendar, perm: ["oportunidades", "view"] },
+      { to: "/leads", label: "Leads", icon: Calendar, perm: ["leads", "view"] },
     ],
+  },
+  {
+    key: "inventario",
+    label: "Inventario",
+    items: [{ to: "/inventario", label: "Inventario", icon: Boxes, perm: ["inventario", "view"] },],
   },
   {
     key: "cotizacion",
@@ -69,4 +73,16 @@ export const NAV_TREE = [
     label: "Reportes",
     items: [{ to: "/reportes", label: "Reportes", icon: FileText, perm: ["reportes", "view"] }],
   },
+  {
+    key: "configuracion",
+    label: "Configuración",
+    items: [
+      { to: "/configuracion", label: "Configuración del sistema", icon: Settings, perm: ["configuracion", "view"] },
+      { to: "/prospeccion", label: "Auto prospección", icon: Settings, perm: ["prospeccion", "view"] },
+      { to: "/configagenda", label: "Configuración de Agenda", icon: Settings, perm: ["configagenda", "view"] },
+      
+      { to: "/configinventario", label: "Configuración de Inventario", icon: Settings, perm: ["configinventario", "view"] },
+      { to: "/configpicaje", label: "Configuración de Picaje", icon: Settings, perm: ["configpicaje", "view"] },
+    ],
+  }
 ];
