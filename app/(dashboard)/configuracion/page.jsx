@@ -24,14 +24,13 @@ export default function ConfiguracionPage() {
 
       <Tabs defaultValue="centros">
 
-        <TabsList className="grid grid-cols-2 md:grid-cols-9 w-full">
+        <TabsList className="grid grid-cols-2 md:grid-cols-8 w-full">
 
           <TabsTrigger value="centros">Centros</TabsTrigger>
           <TabsTrigger value="talleres">Talleres / Mostradores</TabsTrigger>
           <TabsTrigger value="horarios">Horarios</TabsTrigger>
           <TabsTrigger value="motivos">Motivos</TabsTrigger>
           <TabsTrigger value="origenes">Orígenes</TabsTrigger>
-          <TabsTrigger value="tipoinventario">Tipo de Inventario</TabsTrigger>
           <TabsTrigger value="manoobra">Mano de Obra</TabsTrigger>
           <TabsTrigger value="panos">Paños</TabsTrigger>
           <TabsTrigger value="moneda">Moneda</TabsTrigger>
@@ -73,13 +72,6 @@ export default function ConfiguracionPage() {
           <Card>
             <CardContent className="pt-6">
               <OrigenesTab />
-            </CardContent>
-          </Card>
-        </TabsContent>
-        <TabsContent value="tipoinventario">
-          <Card>
-            <CardContent className="pt-6">
-              <TipoInventarioTab />
             </CardContent>
           </Card>
         </TabsContent>

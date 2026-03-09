@@ -2,111 +2,279 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import bcrypt from "bcryptjs";
 
+function normalizarIds(arr) {
+  if (!Array.isArray(arr)) return [];
+  return [...new Set(arr.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+}
+
+/* =========================
+   GET: obtener usuario por id
+========================= */
 export async function GET(req, { params }) {
-
   try {
-
-    const { id } = params;
+    const { id } = await params;
 
     const [rows] = await db.query(
-      "SELECT * FROM usuarios WHERE id=?",
+      `
+      SELECT
+        u.id,
+        u.fullname,
+        u.username,
+        u.email,
+        u.phone,
+        u.role,
+        u.is_active,
+        u.permissions,
+        u.work_schedule,
+        u.created_at,
+        u.color,
+
+        (
+          SELECT GROUP_CONCAT(DISTINCT um.mostrador_id ORDER BY um.mostrador_id ASC)
+          FROM usuario_mostradores um
+          WHERE um.usuario_id = u.id
+        ) AS mostradores,
+
+        (
+          SELECT GROUP_CONCAT(DISTINCT uc.centro_id ORDER BY uc.centro_id ASC)
+          FROM usuario_centros uc
+          WHERE uc.usuario_id = u.id
+        ) AS centros,
+
+        (
+          SELECT GROUP_CONCAT(DISTINCT ut.taller_id ORDER BY ut.taller_id ASC)
+          FROM usuario_talleres ut
+          WHERE ut.usuario_id = u.id
+        ) AS talleres
+
+      FROM usuarios u
+      WHERE u.id = ?
+      LIMIT 1
+      `,
       [id]
     );
 
-    if (!rows.length)
+    if (!rows.length) {
       return NextResponse.json({ message: "No existe" }, { status: 404 });
+    }
 
-    return NextResponse.json(rows[0]);
+    const row = rows[0];
 
-  } catch {
+    return NextResponse.json({
+      ...row,
+      mostradores: row.mostradores ? row.mostradores.split(",").map(Number) : [],
+      centros: row.centros ? row.centros.split(",").map(Number) : [],
+      talleres: row.talleres ? row.talleres.split(",").map(Number) : [],
+    });
+  } catch (error) {
+    console.error(error);
     return NextResponse.json({ message: "Error" }, { status: 500 });
   }
 }
 
-
+/* =========================
+   PUT: actualizar usuario + relaciones
+========================= */
 export async function PUT(req, { params }) {
-  try {
-    // ✅ Next 15: params es Promise
-    const { id } = await params;
+  let connection;
 
+  try {
+    const { id } = await params;
     const body = await req.json();
 
-    const {
-      fullname = "",
-      username = "",
-      email = "",
-      phone = "",
-      role = "",
-      permissions = {},
-      work_schedule = {},
-      color = null,
-      password = "",
-    } = body;
+    const fullname = (body.fullname || "").trim();
+    const username = (body.username || "").trim();
+    const email = (body.email || "").trim();
+    const phone = (body.phone || "").trim();
+    const role = body.role || "user";
+    const color = body.color ?? null;
+    const is_active = body.is_active ?? 1;
+    const password = body.password || "";
 
-    // ✅ Evitar doble stringify si ya viene string
-    const permsStr =
-      typeof permissions === "string" ? permissions : JSON.stringify(permissions);
+    const mostradores = normalizarIds(body.mostradores);
+    const centros = normalizarIds(body.centros);
+    const talleres = normalizarIds(body.talleres);
 
-    const scheduleStr =
-      typeof work_schedule === "string"
-        ? work_schedule
-        : JSON.stringify(work_schedule);
+    const permissions =
+      body.permissions == null
+        ? null
+        : typeof body.permissions === "string"
+        ? body.permissions
+        : JSON.stringify(body.permissions);
 
-    // ✅ Password opcional
+    const work_schedule =
+      body.work_schedule == null
+        ? null
+        : typeof body.work_schedule === "string"
+        ? body.work_schedule
+        : JSON.stringify(body.work_schedule);
+
+    if (!fullname || !username) {
+      return NextResponse.json(
+        { message: "Nombre y usuario son obligatorios" },
+        { status: 400 }
+      );
+    }
+
+    if (password && String(password).trim().length > 0 && String(password).trim().length < 6) {
+      return NextResponse.json(
+        { message: "La contraseña debe tener mínimo 6 caracteres" },
+        { status: 400 }
+      );
+    }
+
+    connection = await db.getConnection();
+    await connection.beginTransaction();
+
+    const [exists] = await connection.query(
+      `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
+      [id]
+    );
+
+    if (!exists.length) {
+      await connection.rollback();
+      return NextResponse.json({ message: "No existe" }, { status: 404 });
+    }
+
+    const [dup] = await connection.query(
+      `
+      SELECT id
+      FROM usuarios
+      WHERE (username = ? OR (email IS NOT NULL AND email = ?))
+        AND id <> ?
+      LIMIT 1
+      `,
+      [username, email || null, id]
+    );
+
+    if (dup.length > 0) {
+      await connection.rollback();
+      return NextResponse.json(
+        { message: "Usuario o email ya existen" },
+        { status: 409 }
+      );
+    }
+
     let password_hash = null;
     if (password && String(password).trim().length > 0) {
       password_hash = await bcrypt.hash(password, 10);
     }
 
-    await db.query(
+    await connection.query(
       `
       UPDATE usuarios SET
-        fullname=?,
-        username=?,
-        email=?,
-        phone=?,
-        role=?,
-        permissions=?,
-        work_schedule=?,
-        color=?,
+        fullname = ?,
+        username = ?,
+        email = ?,
+        phone = ?,
+        role = ?,
+        is_active = ?,
+        permissions = ?,
+        work_schedule = ?,
+        color = ?,
         password_hash = IFNULL(?, password_hash)
-      WHERE id=?
-    `,
+      WHERE id = ?
+      `,
       [
         fullname,
         username,
-        email,
-        phone,
+        email || null,
+        phone || null,
         role,
-        permsStr,
-        scheduleStr,
-        color, // puede ser null
+        is_active ? 1 : 0,
+        permissions,
+        work_schedule,
+        color,
         password_hash,
         id,
       ]
     );
 
+    /* =========================
+       REEMPLAZAR RELACIONES
+    ========================== */
+    await connection.query(`DELETE FROM usuario_mostradores WHERE usuario_id = ?`, [id]);
+    await connection.query(`DELETE FROM usuario_centros WHERE usuario_id = ?`, [id]);
+    await connection.query(`DELETE FROM usuario_talleres WHERE usuario_id = ?`, [id]);
+
+    for (const mostrador_id of mostradores) {
+      await connection.query(
+        `
+        INSERT INTO usuario_mostradores (usuario_id, mostrador_id)
+        VALUES (?, ?)
+        `,
+        [id, mostrador_id]
+      );
+    }
+
+    for (const centro_id of centros) {
+      await connection.query(
+        `
+        INSERT INTO usuario_centros (usuario_id, centro_id)
+        VALUES (?, ?)
+        `,
+        [id, centro_id]
+      );
+    }
+
+    for (const taller_id of talleres) {
+      await connection.query(
+        `
+        INSERT INTO usuario_talleres (usuario_id, taller_id)
+        VALUES (?, ?)
+        `,
+        [id, taller_id]
+      );
+    }
+
+    await connection.commit();
+
     return NextResponse.json({ message: "Actualizado" });
   } catch (error) {
-    console.log(error);
+    console.error(error);
+
+    if (connection) {
+      await connection.rollback();
+    }
+
+    if (error.code === "ER_NO_REFERENCED_ROW_2") {
+      return NextResponse.json(
+        { message: "Uno de los mostradores, centros o talleres no existe" },
+        { status: 400 }
+      );
+    }
+
     return NextResponse.json(
       { message: "Error al actualizar" },
       { status: 500 }
     );
+  } finally {
+    if (connection) connection.release();
   }
 }
 
+/* =========================
+   DELETE: eliminar usuario
+========================= */
 export async function DELETE(req, { params }) {
-
   try {
+    const { id } = await params;
 
-    const { id } = params;
+    const [exists] = await db.query(
+      `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
+      [id]
+    );
 
-    await db.query("DELETE FROM usuarios WHERE id=?", [id]);
+    if (!exists.length) {
+      return NextResponse.json({ message: "No existe" }, { status: 404 });
+    }
 
+    await db.query(`DELETE FROM usuarios WHERE id = ?`, [id]);
+
+    // Las relaciones se borran solas por ON DELETE CASCADE
     return NextResponse.json({ message: "Eliminado" });
-
-  } catch {
+  } catch (error) {
+    console.error(error);
     return NextResponse.json({ message: "Error" }, { status: 500 });
   }
 }
