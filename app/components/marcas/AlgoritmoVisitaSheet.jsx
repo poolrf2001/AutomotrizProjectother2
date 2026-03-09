@@ -2,7 +2,14 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
 import { Pencil, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import AlgoritmoVisitaDialog from "./AlgoritmoVisitaDialog";
@@ -19,34 +26,27 @@ export default function AlgoritmoVisitaSheet({
   const [loading, setLoading] = useState(false);
   const [records, setRecords] = useState([]);
   const [marcas, setMarcas] = useState([]);
-  const [modelos, setModelos] = useState([]);
 
-  // Dialogs para crear/editar y eliminar
   const [formDialogOpen, setFormDialogOpen] = useState(false);
-  const [formMode, setFormMode] = useState("create"); // "create", "edit"
-  const [selectedRecord, setSelectedRecord] = useState(null); // Registro seleccionado para editar
+  const [formMode, setFormMode] = useState("create");
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
-  // Confirmación de eliminación
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [recordToDelete, setRecordToDelete] = useState(null);
 
-  // Cargar los registros, marcas y modelos
   const loadData = async () => {
     setLoading(true);
     try {
-      const [recordsRes, marcasRes, modelosRes] = await Promise.all([
-        fetch("/api/algoritmo_visita"),
-        fetch("/api/marcas"),
-        fetch("/api/modelos"),
+      const [recordsRes, marcasRes] = await Promise.all([
+        fetch("/api/algoritmo_visita", { cache: "no-store" }),
+        fetch("/api/marcas", { cache: "no-store" }),
       ]);
 
       const recordsData = await recordsRes.json();
       const marcasData = await marcasRes.json();
-      const modelosData = await modelosRes.json();
 
       setRecords(Array.isArray(recordsData) ? recordsData : []);
-      setMarcas(marcasData);
-      setModelos(modelosData);
+      setMarcas(Array.isArray(marcasData) ? marcasData : []);
     } catch (e) {
       toast.error("Error cargando datos.");
     } finally {
@@ -58,62 +58,63 @@ export default function AlgoritmoVisitaSheet({
     if (open) loadData();
   }, [open]);
 
-  // Ordenar los registros por modelo_id
   const recordsSorted = useMemo(() => {
-    return [...records].sort((a, b) => {
-      const modelA = String(a.modelo_id || ""); // Convertimos a string
-      const modelB = String(b.modelo_id || ""); // Convertimos a string
-      return modelA.localeCompare(modelB); // Comparar como cadenas
-    });
+    return [...records].sort((a, b) =>
+      String(a.modelo_name || "").localeCompare(String(b.modelo_name || ""))
+    );
   }, [records]);
 
-  // Crear nuevo registro
   const onNewRecord = () => {
     setSelectedRecord(null);
     setFormMode("create");
     setFormDialogOpen(true);
   };
 
-  // Editar registro
   const onEditRecord = (record) => {
     setSelectedRecord(record);
     setFormMode("edit");
     setFormDialogOpen(true);
   };
 
-  // Confirmar eliminación
   const askDeleteRecord = (record) => {
     setRecordToDelete(record);
     setDeleteDialogOpen(true);
   };
 
-  // Guardar registro (crear o editar)
   const saveRecord = async (data) => {
     const isEdit = !!data.id;
-    const url = isEdit ? `/api/algoritmo_visita/${data.id}` : `/api/algoritmo_visita`;
+    const url = isEdit
+      ? `/api/algoritmo_visita/${data.id}`
+      : `/api/algoritmo_visita`;
     const method = isEdit ? "PUT" : "POST";
 
-    // Validar la estructura de 'años' antes de enviarlo
     if (!Array.isArray(data.años)) {
       toast.error("El campo 'años' debe ser un array.");
       return;
     }
 
-    // Verificar que cada elemento del array de 'años' tenga el formato correcto
-    for (let range of data.años) {
+    for (const range of data.años) {
       if (!/^\d{4}-\d{4}$/.test(range)) {
-        toast.error("Cada rango de 'años' debe tener el formato 'YYYY-YYYY'.");
+        toast.error("Cada rango de 'años' debe tener el formato YYYY-YYYY.");
         return;
       }
     }
 
     try {
+      const payload = {
+        ...data,
+        modelo_id: Number(data.modelo_id),
+        marca_id: Number(data.marca_id),
+        kilometraje: Number(data.kilometraje),
+        meses: Number(data.meses),
+      };
+
       const res = await fetch(url, {
         method,
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(data), // Asegúrate de enviar los datos como JSON
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
@@ -123,14 +124,15 @@ export default function AlgoritmoVisitaSheet({
 
       toast.success(isEdit ? "Registro actualizado" : "Registro creado");
       setFormDialogOpen(false);
-      loadData(); // Recargar los datos
-      onChanged?.(); // Si se pasa esta función, se ejecuta para refrescar el componente padre
+      setSelectedRecord(null);
+      await loadData();
+      onChanged?.();
     } catch (e) {
+      console.error(e);
       toast.error("No se pudo guardar el registro");
     }
   };
 
-  // Eliminar registro
   const confirmDelete = async () => {
     if (!recordToDelete) return;
 
@@ -146,9 +148,11 @@ export default function AlgoritmoVisitaSheet({
 
       toast.success("Registro eliminado");
       setDeleteDialogOpen(false);
-      loadData(); // Recargar los datos después de la eliminación
-      onChanged?.(); // Si se pasa esta función, se ejecuta para refrescar el componente padre
+      setRecordToDelete(null);
+      await loadData();
+      onChanged?.();
     } catch (e) {
+      console.error(e);
       toast.error("No se pudo eliminar el registro");
     }
   };
@@ -227,7 +231,10 @@ export default function AlgoritmoVisitaSheet({
 
                   {!loading && recordsSorted.length === 0 && (
                     <tr>
-                      <td className="p-4 text-sm text-muted-foreground" colSpan={5}>
+                      <td
+                        className="p-4 text-sm text-muted-foreground"
+                        colSpan={5}
+                      >
                         No hay registros aún.
                       </td>
                     </tr>
@@ -250,7 +257,6 @@ export default function AlgoritmoVisitaSheet({
           mode={formMode}
           record={selectedRecord}
           marcas={marcas}
-          modelos={modelos}
           onSave={saveRecord}
         />
 

@@ -1,170 +1,264 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
-const AlgoritmoVisitaDialog = ({ open, onOpenChange, mode, record, marcas, onSave }) => {
-  const [formData, setFormData] = useState({
-    modelo_id: "",
-    marca_id: "",
-    kilometraje: "",
-    meses: "",
-    años: [], // Cambié esto para que sea un array desde el principio
-  });
+const EMPTY_FORM = {
+  id: null,
+  modelo_id: "",
+  marca_id: "",
+  kilometraje: "",
+  meses: "",
+  años: [],
+};
 
-  const [modelos, setModelos] = useState([]);
-  const [isAll, setIsAll] = useState(false); // Para el switch "Aplica todos"
-  const [yearRanges, setYearRanges] = useState([["", "", "Tu fuente", "<="]]); // Para los rangos de años
+const EMPTY_RANGE = {
+  start: "",
+  end: "",
+  opStart: "<=",
+  opEnd: "<=",
+};
 
-  const [operatorsStart, setOperatorsStart] = useState([]); // Operadores para "Desde"
-  const [operatorsEnd, setOperatorsEnd] = useState([]);   // Operadores para "Hasta"
+function parseAnios(value) {
+  if (!value) return [];
 
-  // Función para cargar los modelos de acuerdo a la marca seleccionada
-  const fetchModelos = async (marcaId) => {
+  if (Array.isArray(value)) {
+    return value.map(String).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
     try {
-      const response = await fetch(`/api/modelos?marca_id=${marcaId}`);
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String).filter(Boolean);
+      }
+    } catch {
+      // sigue normal
+    }
+
+    return value
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function rangesFromAnios(anios) {
+  const arr = parseAnios(anios);
+
+  if (!arr.length) return [{ ...EMPTY_RANGE }];
+
+  return arr.map((item) => {
+    const [start = "", end = ""] = String(item).split("-");
+    return {
+      start,
+      end,
+      opStart: "<=",
+      opEnd: "<=",
+    };
+  });
+}
+
+const AlgoritmoVisitaDialog = ({
+  open,
+  onOpenChange,
+  mode,
+  record,
+  marcas = [],
+  onSave,
+}) => {
+  const [formData, setFormData] = useState(EMPTY_FORM);
+  const [modelos, setModelos] = useState([]);
+  const [isAll, setIsAll] = useState(false);
+  const [yearRanges, setYearRanges] = useState([{ ...EMPTY_RANGE }]);
+  const [loadingModelos, setLoadingModelos] = useState(false);
+
+  const fetchModelos = async (marcaId) => {
+    if (!marcaId) {
+      setModelos([]);
+      return;
+    }
+
+    try {
+      setLoadingModelos(true);
+      const response = await fetch(`/api/modelos?marca_id=${marcaId}`, {
+        cache: "no-store",
+      });
       const data = await response.json();
-      setModelos(data);
+      setModelos(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error("Error cargando modelos", error);
+      setModelos([]);
+    } finally {
+      setLoadingModelos(false);
     }
   };
 
   useEffect(() => {
+    if (!open) return;
+
     if (mode === "edit" && record) {
-      setFormData(record);
-      fetchModelos(record.marca_id); // Cargar los modelos si estamos en modo edición
+      const parsedAnios = parseAnios(record.años);
+      const appliesAll =
+        parsedAnios.length === 1 && String(parsedAnios[0]) === "0001-9999";
+
+      const normalized = {
+        id: record.id ?? null,
+        modelo_id: record.modelo_id ? String(record.modelo_id) : "",
+        marca_id: record.marca_id ? String(record.marca_id) : "",
+        kilometraje:
+          record.kilometraje !== null && record.kilometraje !== undefined
+            ? String(record.kilometraje)
+            : "",
+        meses:
+          record.meses !== null && record.meses !== undefined
+            ? String(record.meses)
+            : "",
+        años: parsedAnios,
+      };
+
+      setFormData(normalized);
+      setIsAll(appliesAll);
+      setYearRanges(
+        appliesAll ? [{ ...EMPTY_RANGE }] : rangesFromAnios(parsedAnios)
+      );
+
+      if (record.marca_id) {
+        fetchModelos(record.marca_id);
+      } else {
+        setModelos([]);
+      }
     } else {
-      setFormData({
-        modelo_id: "",
-        marca_id: "",
-        kilometraje: "",
-        meses: "",
-        años: [], // Resetea el campo años a un array vacío
-      });
-      setModelos([]); // Limpiar modelos si es un nuevo registro
+      setFormData(EMPTY_FORM);
+      setModelos([]);
+      setIsAll(false);
+      setYearRanges([{ ...EMPTY_RANGE }]);
     }
-  }, [mode, record]);
+  }, [open, mode, record]);
 
-  // Manejar cambios en los inputs
   const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    setFormData((prev) => ({
+      ...prev,
+      [e.target.name]: e.target.value,
+    }));
   };
 
-  // Manejar cambios en los select (marca y modelo)
   const handleSelectChange = (name, value) => {
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+      ...(name === "marca_id" ? { modelo_id: "" } : {}),
+    }));
+
     if (name === "marca_id") {
-      fetchModelos(value); // Si cambia la marca, cargar los modelos correspondientes
+      fetchModelos(value);
     }
   };
 
-  // Cambiar el valor del switch
-  const handleSwitchChange = () => {
-    setIsAll(!isAll);
-    if (isAll) {
-      setYearRanges([["", "", "Tu fuente", "<="]]); // Si el switch está activado, se usa un solo rango
+  const handleSwitchChange = (checked) => {
+    setIsAll(!!checked);
+
+    if (!checked && yearRanges.length === 0) {
+      setYearRanges([{ ...EMPTY_RANGE }]);
     }
   };
 
-  // Función para manejar el cambio en el rango de años
-  const handleYearRangeChange = (range) => {
-    setFormData({ ...formData, años: range });
-  };
-
-  // Agregar un nuevo rango de año
   const handleAddColumn = () => {
-    setYearRanges([...yearRanges, ["", "", "Tu fuente", "<="]]);
+    setYearRanges((prev) => [...prev, { ...EMPTY_RANGE }]);
   };
 
-  // Eliminar una fila de año
   const handleRemoveColumn = (index) => {
-    const newYearRanges = [...yearRanges];
-    newYearRanges.splice(index, 1);
-    setYearRanges(newYearRanges);
+    setYearRanges((prev) => {
+      if (prev.length === 1) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
   };
 
-  // Manejar el cambio en los inputs de año
-  const handleYearChange = (e, index, position) => {
-    const newYearRanges = [...yearRanges];
-    newYearRanges[index][position] = e.target.value;
-    setYearRanges(newYearRanges);
+  const handleYearChange = (index, field, value) => {
+    setYearRanges((prev) =>
+      prev.map((range, i) =>
+        i === index ? { ...range, [field]: value } : range
+      )
+    );
   };
 
-  // Manejar el cambio en los operadores de "Desde"
   const handleOperatorStartChange = (index, value) => {
-    const newOperatorsStart = [...operatorsStart];
-    newOperatorsStart[index] = value;
-    setOperatorsStart(newOperatorsStart);
-
-    const newYearRanges = [...yearRanges];
-    // Si el operador es "menor" (<), incrementamos el valor de "Desde"
-    if (value === "<") {
-      newYearRanges[index][0] = (parseInt(newYearRanges[index][0], 10) + 1).toString();
-    }
-    setYearRanges(newYearRanges);
+    setYearRanges((prev) =>
+      prev.map((range, i) =>
+        i === index ? { ...range, opStart: value } : range
+      )
+    );
   };
 
-  // Manejar el cambio en los operadores de "Hasta"
   const handleOperatorEndChange = (index, value) => {
-    const newOperatorsEnd = [...operatorsEnd];
-    newOperatorsEnd[index] = value;
-    setOperatorsEnd(newOperatorsEnd);
-
-    const newYearRanges = [...yearRanges];
-    // Si el operador es "mayor" (>), decrementamos el valor de "Hasta"
-    if (value === ">") {
-      newYearRanges[index][1] = (parseInt(newYearRanges[index][1], 10) - 1).toString();
-    }
-    setYearRanges(newYearRanges);
+    setYearRanges((prev) =>
+      prev.map((range, i) =>
+        i === index ? { ...range, opEnd: value } : range
+      )
+    );
   };
 
-  // Generar la cadena de rangos para enviar
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // Validar los rangos de años y asignar valores predeterminados
-    const ranges = yearRanges.map(([start, end]) => {
-      // Si "start" está vacío, asignamos "0001"
-      const validStart = start || "0001"; 
-      // Si "end" está vacío, asignamos "9999"
-      const validEnd = end || "9999"; 
-      return `${validStart}-${validEnd}`;  // No concatenamos en una cadena extra, solo un array
-    });
-    
-    // Pasa los valores de modelo_id, marca_id, kilometraje, meses, y años
+    let ranges = [];
+
+    if (isAll) {
+      ranges = ["0001-9999"];
+    } else {
+      ranges = yearRanges.map((range) => {
+        const validStart = range.start || "0001";
+        const validEnd = range.end || "9999";
+        return `${validStart}-${validEnd}`;
+      });
+    }
+
     onSave({
+      id: formData.id,
       modelo_id: formData.modelo_id,
       marca_id: formData.marca_id,
       kilometraje: formData.kilometraje,
       meses: formData.meses,
-      años: ranges, // Ahora enviamos el array de rangos directamente
+      años: ranges,
     });
-    
-    onOpenChange(false); // Cierra el diálogo después de guardar
+
+    onOpenChange(false);
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{mode === "edit" ? "Editar Registro" : "Nuevo Registro"}</DialogTitle>
+          <DialogTitle>
+            {mode === "edit" ? "Editar Registro" : "Nuevo Registro"}
+          </DialogTitle>
         </DialogHeader>
 
         <form onSubmit={handleSubmit}>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div>
               <label>Marca</label>
               <Select
-                name="marca_id"
                 value={formData.marca_id}
                 onValueChange={(value) => handleSelectChange("marca_id", value)}
-                className="w-full"
-                required
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar marca" />
@@ -182,14 +276,20 @@ const AlgoritmoVisitaDialog = ({ open, onOpenChange, mode, record, marcas, onSav
             <div>
               <label>Modelo</label>
               <Select
-                name="modelo_id"
                 value={formData.modelo_id}
-                onValueChange={(value) => handleSelectChange("modelo_id", value)}
-                className="w-full"
-                required
+                onValueChange={(value) =>
+                  handleSelectChange("modelo_id", value)
+                }
+                disabled={!formData.marca_id || loadingModelos}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar modelo" />
+                  <SelectValue
+                    placeholder={
+                      loadingModelos
+                        ? "Cargando modelos..."
+                        : "Seleccionar modelo"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {modelos.map((modelo) => (
@@ -208,7 +308,6 @@ const AlgoritmoVisitaDialog = ({ open, onOpenChange, mode, record, marcas, onSav
                 name="kilometraje"
                 value={formData.kilometraje}
                 onChange={handleChange}
-                className="w-full"
                 required
               />
             </div>
@@ -220,87 +319,90 @@ const AlgoritmoVisitaDialog = ({ open, onOpenChange, mode, record, marcas, onSav
                 name="meses"
                 value={formData.meses}
                 onChange={handleChange}
-                className="w-full"
                 required
               />
             </div>
 
             <div>
               <label>Años</label>
-              <div className="space-y-2">
+
+              <div className="space-y-2 mt-2">
                 <div className="flex items-center space-x-2">
                   <label>Aplica todos los rangos:</label>
-                  <Switch
-                    checked={isAll}
-                    onCheckedChange={handleSwitchChange}
-                    className="ml-2"
-                  />
+                  <Switch checked={isAll} onCheckedChange={handleSwitchChange} />
                 </div>
 
-                {isAll ? (
-                  <Input
-                    type="text"
-                    value="" // Dejar vacío cuando no hay valor
-                    disabled
-                    className="w-full"
-                  />
-                ) : (
+                {!isAll && (
                   <>
                     {yearRanges.map((range, index) => (
-                      <div key={index} className="flex space-x-2">
+                      <div key={index} className="flex gap-2 items-center">
                         <Input
                           type="number"
-                          value={range[0] || ""}
-                          onChange={(e) => handleYearChange(e, index, 0)}
+                          value={range.start}
+                          onChange={(e) =>
+                            handleYearChange(index, "start", e.target.value)
+                          }
                           placeholder="Desde"
-                          className="w-1/4"
                           min="0001"
                           max="9999"
                         />
+
                         <Select
-                          value={operatorsStart[index] || "<="}
-                          onValueChange={(value) => handleOperatorStartChange(index, value)}
-                          className="w-1/4"
+                          value={range.opStart}
+                          onValueChange={(value) =>
+                            handleOperatorStartChange(index, value)
+                          }
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Operador" />
+                          <SelectTrigger className="w-[110px]">
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="<=">≤</SelectItem>
-                            <SelectItem value="<" >menor</SelectItem>
+                            <SelectItem value="<">menor</SelectItem>
                           </SelectContent>
                         </Select>
-                        <Input
-                          value={range[2] || "Tu fuente"}
-                          disabled
-                          className="w-1/6"
-                        />
+
+                        <Input value="Tu fuente" disabled className="w-[110px]" />
+
                         <Select
-                          value={operatorsEnd[index] || "<="}
-                          onValueChange={(value) => handleOperatorEndChange(index, value)}
-                          className="w-1/4"
+                          value={range.opEnd}
+                          onValueChange={(value) =>
+                            handleOperatorEndChange(index, value)
+                          }
                         >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Operador" />
+                          <SelectTrigger className="w-[110px]">
+                            <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="<=">≤</SelectItem>
-                            <SelectItem value=">" >mayor</SelectItem>
+                            <SelectItem value=">">mayor</SelectItem>
                           </SelectContent>
                         </Select>
+
                         <Input
                           type="number"
-                          value={range[1] || ""}
-                          onChange={(e) => handleYearChange(e, index, 1)}
+                          value={range.end}
+                          onChange={(e) =>
+                            handleYearChange(index, "end", e.target.value)
+                          }
                           placeholder="Hasta"
-                          className="w-1/4"
                           min="0001"
                           max="9999"
                         />
-                        <Button type="button" onClick={() => handleRemoveColumn(index)}>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleRemoveColumn(index)}
+                        >
                           (-)
                         </Button>
-                        <Button type="button" onClick={handleAddColumn}>
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleAddColumn}
+                        >
                           (+)
                         </Button>
                       </div>
@@ -312,7 +414,11 @@ const AlgoritmoVisitaDialog = ({ open, onOpenChange, mode, record, marcas, onSav
 
             <DialogFooter>
               <Button type="submit">Guardar</Button>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
                 Cancelar
               </Button>
             </DialogFooter>
