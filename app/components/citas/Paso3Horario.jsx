@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import {
   Select,
@@ -14,7 +14,12 @@ import { DayPicker } from "react-day-picker";
 import { es } from "date-fns/locale";
 import "react-day-picker/dist/style.css";
 
-export default function Paso3Horario({ onChange }) {
+export default function Paso3Horario({
+  onChange,
+  allowedCentros = [],
+  allowedTalleres = [],
+  initialValue = null,
+}) {
   const [centros, setCentros] = useState([]);
   const [talleres, setTalleres] = useState([]);
   const [asesores, setAsesores] = useState([]);
@@ -29,6 +34,8 @@ export default function Paso3Horario({ onChange }) {
 
   const [horario, setHorario] = useState(null);
 
+  const initialAppliedRef = useRef(false);
+
   const parseTime = (t) => {
     if (!t) return 0;
     const [h, m] = t.split(":").map(Number);
@@ -41,18 +48,70 @@ export default function Paso3Horario({ onChange }) {
   const DAY_ES = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
   const DAY_EN = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
-  // cargar centros
+  function parseDateFromValue(value) {
+    if (!value) return null;
+    const normalized = String(value).replace(" ", "T");
+    const d = new Date(normalized);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  function parseHourMinute(value) {
+    if (!value) return null;
+    const d = parseDateFromValue(value);
+    if (!d) return null;
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mm = String(d.getMinutes()).padStart(2, "0");
+    return `${hh}:${mm}`;
+  }
+
+  const allowedCentrosSet = useMemo(
+    () => new Set((allowedCentros || []).map(Number)),
+    [allowedCentros]
+  );
+
+  const allowedTalleresSet = useMemo(
+    () => new Set((allowedTalleres || []).map(Number)),
+    [allowedTalleres]
+  );
+
+  // cargar centros y filtrar por scope
   useEffect(() => {
     fetch("/api/centros", { cache: "no-store" })
       .then((r) => r.json())
-      .then((data) => setCentros(Array.isArray(data) ? data : []))
+      .then((data) => {
+        const lista = Array.isArray(data) ? data : [];
+
+        const filtrados =
+          allowedCentrosSet.size > 0
+            ? lista.filter((c) => allowedCentrosSet.has(Number(c.id)))
+            : [];
+
+        setCentros(filtrados);
+
+        // si hay initialValue, priorizarlo
+        if (
+          initialValue?.centro_id &&
+          filtrados.some((c) => Number(c.id) === Number(initialValue.centro_id))
+        ) {
+          setCentroId(Number(initialValue.centro_id));
+          return;
+        }
+
+        setCentroId((prev) => {
+          if (prev && filtrados.some((c) => Number(c.id) === Number(prev))) {
+            return prev;
+          }
+          return filtrados.length > 0 ? Number(filtrados[0].id) : null;
+        });
+      })
       .catch((e) => {
         console.log(e);
         setCentros([]);
+        setCentroId(null);
       });
-  }, []);
+  }, [allowedCentrosSet, initialValue?.centro_id]);
 
-  // cargar talleres cuando cambia el centro
+  // cargar talleres cuando cambia centro y filtrar por scope
   useEffect(() => {
     if (!centroId) {
       setTalleres([]);
@@ -63,7 +122,6 @@ export default function Paso3Horario({ onChange }) {
       return;
     }
 
-    // reset visual / lógica
     setTalleres([]);
     setTallerId(null);
     setDate(null);
@@ -74,12 +132,26 @@ export default function Paso3Horario({ onChange }) {
       .then((r) => r.json())
       .then((data) => {
         const lista = Array.isArray(data) ? data : [];
-        setTalleres(lista);
 
-        if (lista.length > 0) {
-          setTallerId(Number(lista[0].id)); // seleccionar primer taller automáticamente
+        const filtrados =
+          allowedTalleresSet.size > 0
+            ? lista.filter((t) => allowedTalleresSet.has(Number(t.id)))
+            : [];
+
+        setTalleres(filtrados);
+
+        if (
+          initialValue?.taller_id &&
+          filtrados.some((t) => Number(t.id) === Number(initialValue.taller_id))
+        ) {
+          setTallerId(Number(initialValue.taller_id));
+          return;
+        }
+
+        if (filtrados.length > 0) {
+          setTallerId(Number(filtrados[0].id));
         } else {
-          setTallerId(null); // mostrar placeholder
+          setTallerId(null);
         }
       })
       .catch((e) => {
@@ -87,7 +159,7 @@ export default function Paso3Horario({ onChange }) {
         setTalleres([]);
         setTallerId(null);
       });
-  }, [centroId]);
+  }, [centroId, allowedTalleresSet, initialValue?.taller_id]);
 
   // cargar asesores
   useEffect(() => {
@@ -134,6 +206,36 @@ export default function Paso3Horario({ onChange }) {
 
     return day < todayMid;
   };
+
+  // aplicar initialValue una sola vez cuando ya exista data suficiente
+  useEffect(() => {
+    if (initialAppliedRef.current) return;
+    if (!initialValue) return;
+    if (!centroId || !tallerId) return;
+
+    const initialDate = parseDateFromValue(initialValue.start);
+    const initialStart = parseHourMinute(initialValue.start);
+    const initialEnd = parseHourMinute(initialValue.end);
+
+    if (initialValue.asesor_id) {
+      setAsesorId(String(initialValue.asesor_id));
+    } else {
+      setAsesorId("any");
+    }
+
+    if (initialDate) {
+      setDate(initialDate);
+    }
+
+    if (initialStart && initialEnd) {
+      setSlot({
+        start: initialStart,
+        end: initialEnd,
+      });
+    }
+
+    initialAppliedRef.current = true;
+  }, [initialValue, centroId, tallerId]);
 
   // generar slots
   useEffect(() => {
@@ -191,7 +293,12 @@ export default function Paso3Horario({ onChange }) {
       const slotDate = new Date(date);
       slotDate.setHours(Math.floor(m / 60), m % 60, 0, 0);
 
-      if (slotDate < now) continue;
+      const isInitialSlot =
+        initialValue &&
+        parseDateFromValue(initialValue.start)?.toDateString() === date.toDateString() &&
+        parseHourMinute(initialValue.start) === minutesToTime(m);
+
+      if (slotDate < now && !isInitialSlot) continue;
 
       arr.push({
         start: minutesToTime(m),
@@ -200,7 +307,23 @@ export default function Paso3Horario({ onChange }) {
     }
 
     setSlots(arr);
-  }, [date, asesorId, horario, tallerId, asesores]);
+  }, [date, asesorId, horario, tallerId, asesores, initialValue]);
+
+  // asegurar que el slot inicial exista en la lista si no entró por timing
+  useEffect(() => {
+    if (!initialValue || !date || !slot) return;
+
+    const initialStart = parseHourMinute(initialValue.start);
+    const alreadyExists = slots.some((s) => s.start === initialStart);
+
+    if (!alreadyExists && initialStart === slot.start) {
+      setSlots((prev) => {
+        const next = [...prev, slot];
+        next.sort((a, b) => a.start.localeCompare(b.start));
+        return next;
+      });
+    }
+  }, [slots, initialValue, date, slot]);
 
   // emitir selección final
   useEffect(() => {
@@ -224,66 +347,75 @@ export default function Paso3Horario({ onChange }) {
       </CardHeader>
 
       <CardContent className="space-y-6">
-        <div className="flex justify-between">
+        <div className="flex justify-between gap-3 flex-wrap">
           {/* CENTRO */}
           <Select
             value={centroId ? String(centroId) : undefined}
             onValueChange={(v) => {
+              initialAppliedRef.current = false;
               setCentroId(Number(v));
             }}
+            disabled={centros.length === 0}
           >
-            <SelectTrigger className="">
+            <SelectTrigger>
               <SelectValue placeholder="Seleccione un centro" />
             </SelectTrigger>
             <SelectContent>
-              {centros.map((c) => (
-                <SelectItem key={c.id} value={String(c.id)}>
-                  {c.nombre}
+              {centros.length > 0 ? (
+                centros.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.nombre || c.name}
+                  </SelectItem>
+                ))
+              ) : (
+                <SelectItem value="__sin_centros" disabled>
+                  No tienes centros asignados
                 </SelectItem>
-              ))}
+              )}
             </SelectContent>
           </Select>
 
           {/* TALLER */}
-          {centroId && (
-            <Select
-              key={`taller-${centroId}`}
-              value={tallerId ? String(tallerId) : undefined}
-              onValueChange={(v) => {
-                setTallerId(Number(v));
-                setDate(null);
-                setSlot(null);
-                setSlots([]);
-              }}
-            >
-              <SelectTrigger className="">
-                <SelectValue placeholder="Seleccione un taller" />
-              </SelectTrigger>
-              <SelectContent>
-                {talleres.length > 0 ? (
-                  talleres.map((t) => (
-                    <SelectItem key={t.id} value={String(t.id)}>
-                      {t.nombre}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="__sin_taller" disabled>
-                    Seleccione un taller
+          <Select
+            key={`taller-${centroId || "none"}`}
+            value={tallerId ? String(tallerId) : undefined}
+            onValueChange={(v) => {
+              initialAppliedRef.current = false;
+              setTallerId(Number(v));
+              setDate(null);
+              setSlot(null);
+              setSlots([]);
+            }}
+            disabled={!centroId || talleres.length === 0}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Seleccione un taller" />
+            </SelectTrigger>
+            <SelectContent>
+              {talleres.length > 0 ? (
+                talleres.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>
+                    {t.nombre || t.name}
                   </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          )}
+                ))
+              ) : (
+                <SelectItem value="__sin_taller" disabled>
+                  No tienes talleres asignados
+                </SelectItem>
+              )}
+            </SelectContent>
+          </Select>
 
           {/* ASESOR */}
           <Select
             value={asesorId}
             onValueChange={(v) => {
+              initialAppliedRef.current = false;
               setAsesorId(v);
               setSlot(null);
             }}
           >
-            <SelectTrigger className="">
+            <SelectTrigger>
               <SelectValue placeholder="Seleccione asesor" />
             </SelectTrigger>
             <SelectContent>
@@ -304,6 +436,7 @@ export default function Paso3Horario({ onChange }) {
               mode="single"
               selected={date}
               onSelect={(d) => {
+                initialAppliedRef.current = false;
                 setDate(d);
                 setSlot(null);
               }}

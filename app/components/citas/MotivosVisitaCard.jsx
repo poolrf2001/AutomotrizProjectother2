@@ -16,7 +16,7 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
   const [motivos, setMotivos] = useState([]);
 
   useEffect(() => {
-    fetch("/api/motivos_citas?active=1")
+    fetch("/api/motivos_citas?active=1", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => setMotivos(Array.isArray(data) ? data : []))
       .catch((e) => {
@@ -31,28 +31,52 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
     onChange(copy);
   }
 
-  async function cargarSubmotivos(motivoId, i) {
-    if (!motivoId) return;
+  async function fetchSubmotivos(motivoId) {
+    if (!motivoId) return [];
 
     try {
       const subs = await fetch(
-        `/api/submotivos-citas?motivo_id=${motivoId}&active=1`
+        `/api/submotivos-citas?motivo_id=${motivoId}&active=1`,
+        { cache: "no-store" }
       ).then((r) => r.json());
 
-      updateRow(i, {
-        motivo_id: Number(motivoId),
-        submotivos: Array.isArray(subs) ? subs : [],
-        submotivo_id: null,
-      });
+      return Array.isArray(subs) ? subs : [];
     } catch (e) {
       console.log(e);
-      updateRow(i, {
-        motivo_id: Number(motivoId),
-        submotivos: [],
-        submotivo_id: null,
-      });
+      return [];
     }
   }
+
+  async function cargarSubmotivos(motivoId, i) {
+    const subs = await fetchSubmotivos(motivoId);
+
+    updateRow(i, {
+      motivo_id: Number(motivoId),
+      submotivos: subs,
+      submotivo_id: null,
+    });
+  }
+
+  // 🔥 cargar submotivos iniciales cuando entras a editar
+  useEffect(() => {
+    if (!value.length) return;
+
+    value.forEach(async (row, i) => {
+      if (row?.motivo_id && (!Array.isArray(row.submotivos) || row.submotivos.length === 0)) {
+        const subs = await fetchSubmotivos(row.motivo_id);
+
+        const stillSameRow =
+          value[i] && Number(value[i].motivo_id) === Number(row.motivo_id);
+
+        if (!stillSameRow) return;
+
+        updateRow(i, {
+          submotivos: subs,
+          submotivo_id: row.submotivo_id ?? null,
+        });
+      }
+    });
+  }, [value.length]);
 
   function addRow() {
     onChange([
@@ -77,7 +101,7 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
         {value.map((row, i) => (
           <div
             key={`motivo-${i}-${row.motivo_id ?? "new"}`}
-            className="grid md:grid-cols-[1fr_1fr_auto] gap-3"
+            className="grid md:grid-cols-[1fr_1fr_auto] gap-3 items-start"
           >
             {/* MOTIVO */}
             <Select
@@ -105,36 +129,46 @@ export default function MotivosVisitaCard({ value = [], onChange }) {
             </Select>
 
             {/* SUBMOTIVO */}
-            {row.submotivos?.length > 0 && (
-              <Select
-                value={row.submotivo_id ? String(row.submotivo_id) : undefined}
-                onValueChange={(v) =>
-                  updateRow(i, { submotivo_id: Number(v) })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Detalle del motivo" />
-                </SelectTrigger>
-                <SelectContent>
-                  {row.submotivos.map((sm) => (
-                    <SelectItem key={sm.id} value={String(sm.id)}>
-                      {sm.nombre}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <Select
+              value={row.submotivo_id ? String(row.submotivo_id) : undefined}
+              onValueChange={(v) =>
+                updateRow(i, { submotivo_id: Number(v) })
+              }
+              disabled={!row.motivo_id || !row.submotivos?.length}
+            >
+              <SelectTrigger>
+                <SelectValue
+                  placeholder={
+                    row.motivo_id
+                      ? row.submotivos?.length
+                        ? "Detalle del motivo"
+                        : "Sin submotivos"
+                      : "Seleccione un motivo primero"
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {row.submotivos?.map((sm) => (
+                  <SelectItem key={sm.id} value={String(sm.id)}>
+                    {sm.nombre}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             {/* ELIMINAR */}
-            {value.length > 1 && (
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => removeRow(i)}
-              >
-                <Trash size={16} />
-              </Button>
-            )}
+            <div>
+              {value.length > 1 && (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  onClick={() => removeRow(i)}
+                  className="w-full md:w-auto"
+                >
+                  <Trash size={16} />
+                </Button>
+              )}
+            </div>
           </div>
         ))}
 

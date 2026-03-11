@@ -10,9 +10,18 @@ import CitaDatosCard from "@/app/components/citas/CitaDatosCard";
 import MotivosVisitaCard from "@/app/components/citas/MotivosVisitaCard";
 
 import { Button } from "@/components/ui/button";
+import { useUserScope } from "@/hooks/useUserScope";
+import { useAuth } from "@/context/AuthContext";
 
 export default function NuevaCitaPage() {
   const router = useRouter();
+  const { user } = useAuth();
+
+  const {
+    centros: allowedCentros,
+    talleres: allowedTalleres,
+    loading: scopeLoading,
+  } = useUserScope();
 
   const [clienteId, setClienteId] = useState(null);
   const [vehiculoId, setVehiculoId] = useState(null);
@@ -49,9 +58,15 @@ export default function NuevaCitaPage() {
     !!horario?.taller_id &&
     !!horario?.start &&
     !!horario?.end &&
-    !saving;
+    !saving &&
+    !scopeLoading;
 
   async function handleSave() {
+    if (!user?.id) {
+      toast.error("No se encontró el usuario logueado");
+      return;
+    }
+
     if (!clienteId) {
       toast.warning("Seleccione cliente");
       return;
@@ -59,6 +74,16 @@ export default function NuevaCitaPage() {
 
     if (!horario?.centro_id || !horario?.taller_id || !horario?.start || !horario?.end) {
       toast.warning("Seleccione horario");
+      return;
+    }
+
+    if (!allowedCentros.includes(Number(horario.centro_id))) {
+      toast.error("No tienes permiso para usar ese centro");
+      return;
+    }
+
+    if (!allowedTalleres.includes(Number(horario.taller_id))) {
+      toast.error("No tienes permiso para usar ese taller");
       return;
     }
 
@@ -85,12 +110,9 @@ export default function NuevaCitaPage() {
         hora_promesa: datos.servicio_valet ? datos.hora_promesa || null : null,
         nota_cliente: datos.nota_cliente || null,
         nota_interna: datos.nota_interna || null,
-        created_by: 1,
+        created_by: user.id,
       };
 
-      console.log("PAYLOAD CITA:", payload);
-
-      // 1. Crear cita
       const citaRes = await fetch("/api/citas", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -100,8 +122,6 @@ export default function NuevaCitaPage() {
       const citaJson = await citaRes.json();
 
       if (!citaRes.ok) {
-        console.log("ERROR API CITA:", citaJson);
-
         throw new Error(
           citaJson?.missing?.length
             ? `Faltan campos: ${citaJson.missing.join(", ")}`
@@ -115,7 +135,6 @@ export default function NuevaCitaPage() {
         throw new Error("La API no devolvió el id de la cita");
       }
 
-      // 2. Guardar motivos
       for (const m of motivosValidos) {
         const motivoRes = await fetch(`/api/citas/${citaId}/motivos`, {
           method: "POST",
@@ -129,17 +148,15 @@ export default function NuevaCitaPage() {
         const motivoJson = await motivoRes.json();
 
         if (!motivoRes.ok) {
-          console.log("ERROR API MOTIVO:", motivoJson);
           throw new Error(motivoJson?.message || "Error guardando motivos");
         }
       }
 
-      // 3. Subir archivos
       if (datos.files?.length) {
         for (const file of datos.files) {
           const formData = new FormData();
           formData.append("file", file);
-          formData.append("user_id", "1");
+          formData.append("user_id", String(user.id));
 
           const fileRes = await fetch(`/api/citas/${citaId}/archivos`, {
             method: "POST",
@@ -149,7 +166,6 @@ export default function NuevaCitaPage() {
           const fileJson = await fileRes.json();
 
           if (!fileRes.ok) {
-            console.log("ERROR API ARCHIVO:", fileJson);
             throw new Error(fileJson?.message || "Error subiendo archivos");
           }
         }
@@ -163,6 +179,26 @@ export default function NuevaCitaPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (scopeLoading) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold">Nueva cita</h1>
+        <p className="text-sm text-muted-foreground mt-2">Cargando permisos de centros y talleres...</p>
+      </div>
+    );
+  }
+
+  if (allowedCentros.length === 0) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold">Nueva cita</h1>
+        <p className="text-sm text-muted-foreground mt-2">
+          No tienes centros asignados para crear citas.
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -184,7 +220,11 @@ export default function NuevaCitaPage() {
               onChange={setMotivos}
             />
 
-            <Paso3Horario onChange={setHorario} />
+            <Paso3Horario
+              onChange={setHorario}
+              allowedCentros={allowedCentros}
+              allowedTalleres={allowedTalleres}
+            />
           </div>
 
           <aside className="border rounded-xl p-4 bg-gray-50 h-fit sticky top-4">
@@ -211,7 +251,7 @@ export default function NuevaCitaPage() {
       </div>
 
       <div className="mt-3 text-xs text-muted-foreground">
-        clienteId: {String(clienteId)} | vehiculoId: {String(vehiculoId)} | centro: {String(horario?.centro_id)} | taller: {String(horario?.taller_id)} | start: {String(horario?.start)} | end: {String(horario?.end)} | tipo_servicio: {String(datos?.tipo_servicio)}
+        userId: {String(user?.id)} | clienteId: {String(clienteId)} | vehiculoId: {String(vehiculoId)} | centro: {String(horario?.centro_id)} | taller: {String(horario?.taller_id)} | start: {String(horario?.start)} | end: {String(horario?.end)} | tipo_servicio: {String(datos?.tipo_servicio)}
       </div>
     </div>
   );

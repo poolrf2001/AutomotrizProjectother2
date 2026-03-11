@@ -27,7 +27,7 @@ export async function GET(request) {
         c.asesor_id,
         c.nota_cliente,
         c.nota_interna,
-
+        c.vehiculo_id,
         CONCAT(cl.nombre,' ',cl.apellido) AS cliente,
         IFNULL(cl.email,'--') AS correo,
         IFNULL(cl.celular,'--') AS celular,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import {
   format,
   addWeeks,
@@ -24,9 +24,16 @@ import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import UserAbsenceDialog from "@/app/components/user-absences/AbsenceDialog";
 import AbsencesSheet from "@/app/components/user-absences/AbsencesSheet";
 import CitaResumenDialog from "@/app/components/citas/CitaResumenDialog";
+import { useUserScope } from "@/hooks/useUserScope";
 
 export default function CitasPage() {
   const menuRef = useRef(null);
+
+  const {
+    centros: userCentros,
+    talleres: userTalleres,
+    loading: scopeLoading,
+  } = useUserScope();
 
   const [centros, setCentros] = useState([]);
   const [centroId, setCentroId] = useState(null);
@@ -69,17 +76,32 @@ export default function CitasPage() {
 
   // ===== LOAD CENTROS =====
   useEffect(() => {
+    if (scopeLoading) return;
+
     fetch("/api/centros")
       .then((r) => r.json())
       .then((data) => {
         const lista = Array.isArray(data) ? data : [];
-        setCentros(lista);
-        if (lista.length) setCentroId(lista[0].id);
+
+        const filtrados =
+          userCentros.length > 0
+            ? lista.filter((c) => userCentros.includes(Number(c.id)))
+            : [];
+
+        setCentros(filtrados);
+
+        setCentroId((prev) => {
+          if (prev && filtrados.some((c) => Number(c.id) === Number(prev))) {
+            return prev;
+          }
+          return filtrados.length ? Number(filtrados[0].id) : null;
+        });
       })
       .catch(() => {
         setCentros([]);
+        setCentroId(null);
       });
-  }, []);
+  }, [scopeLoading, userCentros]);
 
   // ===== LOAD ASESORES =====
   useEffect(() => {
@@ -91,13 +113,21 @@ export default function CitasPage() {
 
   // ===== LOAD HORARIO =====
   useEffect(() => {
-    if (!centroId) return;
+    if (!centroId) {
+      setHorario(null);
+      return;
+    }
+
+    if (userCentros.length > 0 && !userCentros.includes(Number(centroId))) {
+      setHorario(null);
+      return;
+    }
 
     fetch(`/api/horacitas_centro/by-centro/${centroId}`)
       .then((r) => r.json())
       .then(setHorario)
       .catch(() => setHorario(null));
-  }, [centroId]);
+  }, [centroId, userCentros]);
 
   // ===== GENERAR SLOTS =====
   useEffect(() => {
@@ -134,7 +164,15 @@ export default function CitasPage() {
 
   // ===== LOAD CITAS =====
   async function loadCitas() {
-    if (!centroId) return;
+    if (!centroId) {
+      setCitas([]);
+      return;
+    }
+
+    if (userCentros.length > 0 && !userCentros.includes(Number(centroId))) {
+      setCitas([]);
+      return;
+    }
 
     const start = format(days[0], "yyyy-MM-dd");
     const end = format(days[6], "yyyy-MM-dd");
@@ -146,21 +184,40 @@ export default function CitasPage() {
       );
       const data = await r.json();
 
-      if (Array.isArray(data)) setCitas(data);
-      else if (Array.isArray(data?.rows)) setCitas(data.rows);
-      else setCitas([]);
+      let lista = [];
+      if (Array.isArray(data)) lista = data;
+      else if (Array.isArray(data?.rows)) lista = data.rows;
+
+      // si el backend devuelve taller_id, se filtra por talleres permitidos
+      if (userTalleres.length > 0) {
+        lista = lista.filter((c) => {
+          if (c.taller_id == null) return true;
+          return userTalleres.includes(Number(c.taller_id));
+        });
+      }
+
+      setCitas(lista);
     } catch {
       setCitas([]);
     }
   }
 
   useEffect(() => {
+    if (scopeLoading) return;
     loadCitas();
-  }, [centroId, weekStart]);
+  }, [centroId, weekStart, scopeLoading, userCentros, userTalleres]);
 
   // ===== LOAD AUSENCIAS =====
   async function loadAusencias() {
-    if (!centroId) return;
+    if (!centroId) {
+      setAusencias([]);
+      return;
+    }
+
+    if (userCentros.length > 0 && !userCentros.includes(Number(centroId))) {
+      setAusencias([]);
+      return;
+    }
 
     const start = format(days[0], "yyyy-MM-dd");
     const end = format(days[6], "yyyy-MM-dd");
@@ -181,8 +238,9 @@ export default function CitasPage() {
   }
 
   useEffect(() => {
+    if (scopeLoading) return;
     loadAusencias();
-  }, [centroId, weekStart]);
+  }, [centroId, weekStart, scopeLoading, userCentros]);
 
   // ===== HELPERS =====
   const dayMap = [
@@ -273,6 +331,8 @@ export default function CitasPage() {
     }
   }
 
+  const canShowGrid = !scopeLoading && !!centroId;
+
   return (
     <div className="space-y-4">
       {/* HEADER */}
@@ -307,6 +367,7 @@ export default function CitasPage() {
         <Select
           value={centroId ? String(centroId) : ""}
           onValueChange={(v) => setCentroId(Number(v))}
+          disabled={scopeLoading || centros.length === 0}
         >
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Centro" />
@@ -348,106 +409,117 @@ export default function CitasPage() {
         </Select>
 
         <div className="flex gap-2">
-          <Button onClick={() => (window.location.href = "/citas/nueva")}>
+          <Button
+            onClick={() => (window.location.href = "/citas/nueva")}
+            disabled={!centroId}
+          >
             <Calendar className="w-4 h-4 mr-2" />
             Nueva cita
           </Button>
 
-          <Button variant="outline" onClick={() => setOpenAbsences(true)}>
+          <Button variant="outline" onClick={() => setOpenAbsences(true)} disabled={!centroId}>
             Ver ausencias
           </Button>
         </div>
       </div>
 
+      {!scopeLoading && centros.length === 0 && (
+        <div className="border rounded-md p-4 text-sm text-muted-foreground">
+          No tienes centros asignados.
+        </div>
+      )}
+
       {/* GRID */}
-      <div className="border rounded overflow-hidden">
-        {/* DIAS */}
-        <div className="grid grid-cols-[80px_repeat(7,1fr)]">
-          <div />
-          {days.map((d) => (
-            <div key={d.toISOString()} className="p-2 text-center font-medium border-l">
-              {format(d, "EEEE dd", { locale: es })}
+      {canShowGrid && (
+        <div className="border rounded overflow-hidden">
+          {/* DIAS */}
+          <div className="grid grid-cols-[80px_repeat(7,1fr)]">
+            <div />
+            {days.map((d) => (
+              <div key={d.toISOString()} className="p-2 text-center font-medium border-l">
+                {format(d, "EEEE dd", { locale: es })}
+              </div>
+            ))}
+          </div>
+
+          {/* HORAS */}
+          {slots.map((h) => (
+            <div key={h} className="grid grid-cols-[80px_repeat(7,1fr)]">
+              <div className="border-t p-2 text-sm text-gray-500">{h}</div>
+
+              {days.map((d) => {
+                const citasSlot = getCitas(d, h);
+                const blocked = !enabled(d, h) || past(d, h);
+                const dayString = format(d, "yyyy-MM-dd");
+
+                return (
+                  <div
+                    key={`${dayString}-${h}`}
+                    className={`border-t border-l h-16 relative ${
+                      blocked
+                        ? "bg-gray-100 cursor-not-allowed"
+                        : "hover:bg-[#5e17eb]/10 cursor-pointer"
+                    }`}
+                    onClick={(e) => {
+                      if (citasSlot.length) return openCita(citasSlot[0]);
+                      if (blocked) return;
+                      openMenu(d, h, e);
+                    }}
+                  >
+                    {/* CITAS */}
+                    {citasSlot.map((c, i) => (
+                      <div
+                        key={i}
+                        className="absolute inset-1 rounded shadow border text-[10px] p-1 overflow-hidden bg-white"
+                      >
+                        <div
+                          className="h-1 mb-1 rounded"
+                          style={{ background: c.color || "#5e17eb" }}
+                        />
+                        <div className="font-semibold">{c.placa}</div>
+                        <div className="truncate">{c.cliente}</div>
+                        <div className="truncate">{c.asesor}</div>
+                        <div className="text-[9px]">{c.estado}</div>
+                      </div>
+                    ))}
+
+                    {/* MENU */}
+                    {menuCell &&
+                      menuCell.day === dayString &&
+                      menuCell.hour === h && (
+                        <div
+                          ref={menuRef}
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute z-10 bg-white border rounded shadow p-2 top-2 left-2 w-40"
+                        >
+                          <button
+                            className="block w-full text-left hover:bg-gray-100 px-2 py-1"
+                            onClick={() => {
+                              window.location.href = "/citas/nueva";
+                            }}
+                          >
+                            Nueva cita
+                          </button>
+
+                          <button
+                            className="block w-full text-left hover:bg-gray-100 px-2 py-1"
+                            onClick={() => {
+                              setMenuCell(null);
+                              setSelectedAbsence(null);
+                              setOpenAbsence(true);
+                            }}
+                          >
+                            Agendar ausencia
+                          </button>
+                        </div>
+                      )}
+                  </div>
+                );
+              })}
             </div>
           ))}
         </div>
-
-        {/* HORAS */}
-        {slots.map((h) => (
-          <div key={h} className="grid grid-cols-[80px_repeat(7,1fr)]">
-            <div className="border-t p-2 text-sm text-gray-500">{h}</div>
-
-            {days.map((d) => {
-              const citasSlot = getCitas(d, h);
-              const blocked = !enabled(d, h) || past(d, h);
-              const dayString = format(d, "yyyy-MM-dd");
-
-              return (
-                <div
-                  key={`${dayString}-${h}`}
-                  className={`border-t border-l h-16 relative ${
-                    blocked
-                      ? "bg-gray-100 cursor-not-allowed"
-                      : "hover:bg-[#5e17eb]/10 cursor-pointer"
-                  }`}
-                  onClick={(e) => {
-                    if (citasSlot.length) return openCita(citasSlot[0]);
-                    if (blocked) return;
-                    openMenu(d, h, e);
-                  }}
-                >
-                  {/* CITAS */}
-                  {citasSlot.map((c, i) => (
-                    <div
-                      key={i}
-                      className="absolute inset-1 rounded shadow border text-[10px] p-1 overflow-hidden bg-white"
-                    >
-                      <div
-                        className="h-1 mb-1 rounded"
-                        style={{ background: c.color || "#5e17eb" }}
-                      />
-                      <div className="font-semibold">{c.placa}</div>
-                      <div className="truncate">{c.cliente}</div>
-                      <div className="truncate">{c.asesor}</div>
-                      <div className="text-[9px]">{c.estado}</div>
-                    </div>
-                  ))}
-
-                  {/* MENU */}
-                  {menuCell &&
-                    menuCell.day === dayString &&
-                    menuCell.hour === h && (
-                      <div
-                        ref={menuRef}
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute z-10 bg-white border rounded shadow p-2 top-2 left-2 w-40"
-                      >
-                        <button
-                          className="block w-full text-left hover:bg-gray-100 px-2 py-1"
-                          onClick={() => {
-                            window.location.href = "/citas/nueva";
-                          }}
-                        >
-                          Nueva cita
-                        </button>
-
-                        <button
-                          className="block w-full text-left hover:bg-gray-100 px-2 py-1"
-                          onClick={() => {
-                            setMenuCell(null);
-                            setSelectedAbsence(null);
-                            setOpenAbsence(true);
-                          }}
-                        >
-                          Agendar ausencia
-                        </button>
-                      </div>
-                    )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      )}
 
       <UserAbsenceDialog
         key={selectedAbsence?.id || "new"}

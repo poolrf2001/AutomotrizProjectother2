@@ -10,23 +10,38 @@ import CitaDatosCard from "@/app/components/citas/CitaDatosCard";
 import MotivosVisitaCard from "@/app/components/citas/MotivosVisitaCard";
 
 import { Button } from "@/components/ui/button";
+import { useUserScope } from "@/hooks/useUserScope";
+import { useAuth } from "@/context/AuthContext";
 
 export default function EditarCitaPage() {
   const router = useRouter();
   const params = useParams();
   const citaId = params?.id;
 
+  const { user } = useAuth();
+  const {
+    centros: allowedCentros,
+    talleres: allowedTalleres,
+    loading: scopeLoading,
+  } = useUserScope();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
+  // valores actuales editables
   const [clienteId, setClienteId] = useState(null);
   const [vehiculoId, setVehiculoId] = useState(null);
+
+  // valores iniciales solo para precarga
+  const [initialClienteId, setInitialClienteId] = useState(null);
+  const [initialVehiculoId, setInitialVehiculoId] = useState(null);
 
   const [motivos, setMotivos] = useState([
     { motivo_id: null, submotivo_id: null, submotivos: [] },
   ]);
 
   const [horario, setHorario] = useState(null);
+  const [initialHorario, setInitialHorario] = useState(null);
 
   const [datos, setDatos] = useState({
     origen_id: null,
@@ -45,7 +60,7 @@ export default function EditarCitaPage() {
   }
 
   useEffect(() => {
-    if (!citaId) return;
+    if (!citaId || scopeLoading) return;
 
     async function loadCita() {
       try {
@@ -59,20 +74,45 @@ export default function EditarCitaPage() {
         const citaJson = await citaRes.json();
         const motivosJson = await motivosRes.json();
 
+        console.log("CITA EDITAR JSON:", citaJson);
+
         if (!citaRes.ok) {
           throw new Error(citaJson?.message || "No se pudo cargar la cita");
         }
 
+        if (
+          allowedCentros.length > 0 &&
+          !allowedCentros.includes(Number(citaJson.centro_id))
+        ) {
+          throw new Error("No tienes permiso para editar una cita de ese centro");
+        }
+
+        if (
+          citaJson.taller_id &&
+          allowedTalleres.length > 0 &&
+          !allowedTalleres.includes(Number(citaJson.taller_id))
+        ) {
+          throw new Error("No tienes permiso para editar una cita de ese taller");
+        }
+
+        // iniciales
+        setInitialClienteId(citaJson.cliente_id || null);
+        setInitialVehiculoId(citaJson.vehiculo_id || null);
+
+        // actuales
         setClienteId(citaJson.cliente_id || null);
         setVehiculoId(citaJson.vehiculo_id || null);
 
-        setHorario({
+        const horarioInicial = {
           centro_id: citaJson.centro_id || null,
           taller_id: citaJson.taller_id || null,
           asesor_id: citaJson.asesor_id || null,
           start: citaJson.start_at || null,
           end: citaJson.end_at || null,
-        });
+        };
+
+        setInitialHorario(horarioInicial);
+        setHorario(horarioInicial);
 
         setDatos({
           origen_id: citaJson.origen_id || null,
@@ -108,7 +148,7 @@ export default function EditarCitaPage() {
     }
 
     loadCita();
-  }, [citaId, router]);
+  }, [citaId, router, scopeLoading, allowedCentros, allowedTalleres]);
 
   const motivosValidos = motivos.filter((m) => !!m.motivo_id);
 
@@ -119,16 +159,37 @@ export default function EditarCitaPage() {
     !!horario?.start &&
     !!horario?.end &&
     !saving &&
-    !loading;
+    !loading &&
+    !scopeLoading;
 
   async function handleSave() {
+    if (!user?.id) {
+      toast.error("No se encontró el usuario logueado");
+      return;
+    }
+
     if (!clienteId) {
       toast.warning("Seleccione cliente");
       return;
     }
 
-    if (!horario?.centro_id || !horario?.taller_id || !horario?.start || !horario?.end) {
+    if (
+      !horario?.centro_id ||
+      !horario?.taller_id ||
+      !horario?.start ||
+      !horario?.end
+    ) {
       toast.warning("Seleccione horario");
+      return;
+    }
+
+    if (!allowedCentros.includes(Number(horario.centro_id))) {
+      toast.error("No tienes permiso para usar ese centro");
+      return;
+    }
+
+    if (!allowedTalleres.includes(Number(horario.taller_id))) {
+      toast.error("No tienes permiso para usar ese taller");
       return;
     }
 
@@ -183,14 +244,16 @@ export default function EditarCitaPage() {
       const motivosJson = await motivosRes.json();
 
       if (!motivosRes.ok) {
-        throw new Error(motivosJson?.message || "No se pudieron actualizar los motivos");
+        throw new Error(
+          motivosJson?.message || "No se pudieron actualizar los motivos"
+        );
       }
 
       if (datos.files?.length) {
         for (const file of datos.files) {
           const formData = new FormData();
           formData.append("file", file);
-          formData.append("user_id", "1");
+          formData.append("user_id", String(user.id));
 
           const fileRes = await fetch(`/api/citas/${citaId}/archivos`, {
             method: "POST",
@@ -215,11 +278,22 @@ export default function EditarCitaPage() {
     }
   }
 
-  if (loading) {
+  if (scopeLoading || loading) {
     return (
       <div className="p-6">
         <h1 className="text-2xl font-semibold">Editar cita</h1>
         <p className="text-sm text-muted-foreground mt-2">Cargando...</p>
+      </div>
+    );
+  }
+
+  if (allowedCentros.length === 0) {
+    return (
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold">Editar cita</h1>
+        <p className="text-sm text-muted-foreground mt-2">
+          No tienes centros asignados para editar citas.
+        </p>
       </div>
     );
   }
@@ -237,9 +311,10 @@ export default function EditarCitaPage() {
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6">
           <div className="space-y-6">
             <ClienteSelectCard
+              key={`cliente-${citaId}-${initialClienteId}-${initialVehiculoId}`}
               onSelect={handleClienteSelect}
-              initialClienteId={clienteId}
-              initialVehiculoId={vehiculoId}
+              initialClienteId={initialClienteId}
+              initialVehiculoId={initialVehiculoId}
             />
 
             <MotivosVisitaCard
@@ -248,8 +323,11 @@ export default function EditarCitaPage() {
             />
 
             <Paso3Horario
+              key={`horario-${citaId}-${initialHorario?.centro_id}-${initialHorario?.taller_id}-${initialHorario?.start}`}
               onChange={setHorario}
-              initialValue={horario}
+              initialValue={initialHorario}
+              allowedCentros={allowedCentros}
+              allowedTalleres={allowedTalleres}
             />
           </div>
 
@@ -277,7 +355,7 @@ export default function EditarCitaPage() {
       </div>
 
       <div className="mt-3 text-xs text-muted-foreground">
-        citaId: {String(citaId)} | clienteId: {String(clienteId)} | vehiculoId: {String(vehiculoId)} | centro: {String(horario?.centro_id)} | taller: {String(horario?.taller_id)} | start: {String(horario?.start)} | end: {String(horario?.end)} | tipo_servicio: {String(datos?.tipo_servicio)}
+        userId: {String(user?.id)} | citaId: {String(citaId)} | initialClienteId: {String(initialClienteId)} | initialVehiculoId: {String(initialVehiculoId)} | clienteId: {String(clienteId)} | vehiculoId: {String(vehiculoId)} | centro: {String(horario?.centro_id)} | taller: {String(horario?.taller_id)} | start: {String(horario?.start)} | end: {String(horario?.end)} | tipo_servicio: {String(datos?.tipo_servicio)}
       </div>
     </div>
   );

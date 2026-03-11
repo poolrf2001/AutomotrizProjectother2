@@ -24,7 +24,11 @@ function cn(...classes) {
   return classes.filter(Boolean).join(" ");
 }
 
-export default function ClienteSelectCard({ onSelect }) {
+export default function ClienteSelectCard({
+  onSelect,
+  initialClienteId = null,
+  initialVehiculoId = null,
+}) {
   const [clientes, setClientes] = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
 
@@ -96,6 +100,53 @@ export default function ClienteSelectCard({ onSelect }) {
     setVehiculoOpen(false);
     emitir(cliente || null, v);
   }
+
+  // 🔥 sincronizar selección inicial correctamente
+  useEffect(() => {
+    if (!clientes.length && !vehiculos.length) return;
+    if (!initialClienteId && !initialVehiculoId) return;
+
+    let nextVehiculo = null;
+    let nextCliente = null;
+
+    if (initialVehiculoId) {
+      nextVehiculo =
+        vehiculos.find((v) => Number(v.id) === Number(initialVehiculoId)) || null;
+    }
+
+    if (nextVehiculo) {
+      nextCliente =
+        clientes.find((c) => Number(c.id) === Number(nextVehiculo.cliente_id)) || null;
+    } else if (initialClienteId) {
+      nextCliente =
+        clientes.find((c) => Number(c.id) === Number(initialClienteId)) || null;
+    }
+
+    const sameCliente =
+      Number(selectedCliente?.id || 0) === Number(nextCliente?.id || 0);
+
+    const sameVehiculo =
+      Number(selectedVehiculo?.id || 0) === Number(nextVehiculo?.id || 0);
+
+    if (!sameCliente) {
+      setSelectedCliente(nextCliente || null);
+    }
+
+    if (!sameVehiculo) {
+      setSelectedVehiculo(nextVehiculo || null);
+    }
+
+    if (!sameCliente || !sameVehiculo) {
+      emitir(nextCliente || null, nextVehiculo || null);
+    }
+  }, [
+    clientes,
+    vehiculos,
+    initialClienteId,
+    initialVehiculoId,
+    selectedCliente?.id,
+    selectedVehiculo?.id,
+  ]);
 
   const clienteLabel = selectedCliente
     ? `${selectedCliente.nombre ?? ""} ${selectedCliente.apellido ?? ""}`.trim()
@@ -341,7 +392,7 @@ export default function ClienteSelectCard({ onSelect }) {
 
                 <div><b>Nombre:</b> {selectedCliente.nombre} {selectedCliente.apellido}</div>
                 <div><b>Celular:</b> {selectedCliente.celular || "-"}</div>
-                <div><b>Email:</b> {selectedCliente.email || "-"}</div>
+                <div><b>Email:</b> {selectedCliente.email || selectedCliente.correo || "-"}</div>
                 <div><b>DNI:</b> {selectedCliente.dni || "-"}</div>
                 <div><b>Dirección:</b> {selectedCliente.direccion || "-"}</div>
               </div>
@@ -387,4 +438,4 @@ export default function ClienteSelectCard({ onSelect }) {
       />
     </Card>
   );
-}
+} 
