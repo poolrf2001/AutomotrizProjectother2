@@ -327,8 +327,8 @@ export default function UserDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange} className="bg-white">
       <DialogContent className="max-w-4xl">
-        <DialogHeader>
-          <DialogTitle>
+        <DialogHeader className="bg-white px-6 py-5 rounded-t-2xl border-b border-gray-200">
+          <DialogTitle className="text-xl font-bold text-[#1e293b]">
             {isView ? "Ver usuario" : isEdit ? "Editar usuario" : "Nuevo usuario"}
           </DialogTitle>
 
@@ -339,10 +339,26 @@ export default function UserDialog({
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="grid grid-cols-4 w-full">
-            <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="horario">Horario</TabsTrigger>
-            <TabsTrigger value="permisos">Permisos</TabsTrigger>
-            <TabsTrigger value="sitios">Sitios</TabsTrigger>
+            <TabsTrigger value="general"
+            className="flex-1 rounded-lg border-b-2 border-transparent 
+                        text-gray-600 font-medium
+                        data-[state=active]:border-[#13223F] 
+                        data-[state=active]:text-[#13223F]">General</TabsTrigger>
+            <TabsTrigger value="horario"
+            className="flex-1 rounded-lg border-b-2 border-transparent 
+                        text-gray-600 font-medium
+                        data-[state=active]:border-[#13223F] 
+                        data-[state=active]:text-[#13223F]">Horario</TabsTrigger>
+            <TabsTrigger value="permisos"
+            className="flex-1 rounded-lg border-b-2 border-transparent 
+                        text-gray-600 font-medium
+                        data-[state=active]:border-[#13223F] 
+                        data-[state=active]:text-[#13223F]">Permisos</TabsTrigger>
+            <TabsTrigger value="sitios"
+            className="flex-1 rounded-lg border-b-2 border-transparent 
+                        text-gray-600 font-medium
+                        data-[state=active]:border-[#13223F] 
+                        data-[state=active]:text-[#13223F]">Sitios</TabsTrigger>
           </TabsList>
 
           {/* GENERAL */}

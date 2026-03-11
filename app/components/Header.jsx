@@ -38,15 +38,16 @@ export default function Header({
     ?.toUpperCase();
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/80 backdrop-blur">
-
+    <header className="sticky top-0 z-40 border-b bg-[#13223F] text-white">
       <div className="w-full px-4 py-3 flex items-center gap-3">
 
         {/* ===== MOBILE SIDEBAR ===== */}
         <div className="md:hidden">
           <Sheet>
             <SheetTrigger asChild>
-              <Button variant="outline" size="icon">
+              <Button variant="ghost" size="icon"
+               className="text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors"
+              >
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
@@ -64,11 +65,12 @@ export default function Header({
         {/* ===== TOGGLE PC ===== */}
         <div className="hidden md:block">
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
+            className="text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors"
             onClick={() => setSidebarOpen(v => !v)}
           >
-            <Menu className="h-5 w-5" />
+            <Menu className="h-6 w-6" />
           </Button>
         </div>
 
@@ -89,7 +91,8 @@ export default function Header({
         {/* ===== USER MENU ===== */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2">
+            <Button variant="ghost" 
+                    className="gap-2 text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors">
 
               <Avatar className="h-8 w-8">
                 <AvatarFallback>

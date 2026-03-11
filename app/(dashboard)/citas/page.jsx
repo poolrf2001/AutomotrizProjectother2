@@ -22,8 +22,8 @@ import {
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 
 import UserAbsenceDialog from "@/app/components/user-absences/AbsenceDialog";
-import EditCitaDialog from "@/app/components/citas/CitaEditDialog";
 import AbsencesSheet from "@/app/components/user-absences/AbsencesSheet";
+import CitaResumenDialog from "@/app/components/citas/CitaResumenDialog";
 
 export default function CitasPage() {
   const menuRef = useRef(null);
@@ -43,7 +43,7 @@ export default function CitasPage() {
 
   const [openAbsences, setOpenAbsences] = useState(false);
   const [openAbsence, setOpenAbsence] = useState(false);
-  const [openEdit, setOpenEdit] = useState(false);
+  const [openResumen, setOpenResumen] = useState(false);
 
   const [selectedCita, setSelectedCita] = useState(null);
   const [selectedAbsence, setSelectedAbsence] = useState(null);
@@ -249,7 +249,7 @@ export default function CitasPage() {
 
   function openCita(c) {
     setSelectedCita(c);
-    setOpenEdit(true);
+    setOpenResumen(true);
   }
 
   // ===== AUSENCIAS =====
@@ -314,7 +314,7 @@ export default function CitasPage() {
           <SelectContent>
             {centros.map((c) => (
               <SelectItem key={c.id} value={String(c.id)}>
-                {c.nombre}
+                {c.nombre || c.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -343,6 +343,7 @@ export default function CitasPage() {
             <SelectItem value="confirmada">Confirmada</SelectItem>
             <SelectItem value="pendiente">Pendiente</SelectItem>
             <SelectItem value="cancelada">Cancelada</SelectItem>
+            <SelectItem value="reprogramada">Reprogramada</SelectItem>
           </SelectContent>
         </Select>
 
@@ -460,9 +461,12 @@ export default function CitasPage() {
         onSaved={loadAusencias}
       />
 
-      <EditCitaDialog
-        open={openEdit}
-        onOpenChange={setOpenEdit}
+      <CitaResumenDialog
+        open={openResumen}
+        onOpenChange={(v) => {
+          setOpenResumen(v);
+          if (!v) setSelectedCita(null);
+        }}
         cita={selectedCita}
       />
 

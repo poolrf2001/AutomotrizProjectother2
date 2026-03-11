@@ -16,7 +16,7 @@ export async function GET(request) {
 
     // 🔥 rango completo del día
     const startDateTime = `${start} 00:00:00`;
-    const endDateTime   = `${end} 23:59:59`;
+    const endDateTime = `${end} 23:59:59`;
 
     let query = `
       SELECT
@@ -25,16 +25,39 @@ export async function GET(request) {
         c.end_at,
         c.estado,
         c.asesor_id,
+        c.nota_cliente,
+        c.nota_interna,
 
         CONCAT(cl.nombre,' ',cl.apellido) AS cliente,
+        IFNULL(cl.email,'--') AS correo,
+        IFNULL(cl.celular,'--') AS celular,
+
         IFNULL(v.placas,'SIN PLACA') AS placa,
+        IFNULL(v.vin,'--') AS vin,
+
+        IFNULL(ma.name,'--') AS marca,
+        IFNULL(mo.name,'--') AS modelo,
+
         IFNULL(u.fullname,'Sin asesor') AS asesor,
-        IFNULL(u.color,'#5e17eb') AS color
+        IFNULL(u.color,'#5e17eb') AS color,
+
+        GROUP_CONCAT(
+          DISTINCT CONCAT(
+            IFNULL(mc.nombre,'--'),
+            IF(cm.submotivo_id IS NOT NULL, CONCAT(' - ', IFNULL(sm.nombre,'--')), '')
+          )
+          SEPARATOR ' | '
+        ) AS motivo
 
       FROM citas c
       LEFT JOIN clientes cl ON cl.id = c.cliente_id
       LEFT JOIN usuarios u ON u.id = c.asesor_id
       LEFT JOIN vehiculos v ON v.id = c.vehiculo_id
+      LEFT JOIN marcas ma ON ma.id = v.marca_id
+      LEFT JOIN modelos mo ON mo.id = v.modelo_id
+      LEFT JOIN cita_motivos cm ON cm.cita_id = c.id
+      LEFT JOIN motivos_citas mc ON mc.id = cm.motivo_id
+      LEFT JOIN submotivos_citas sm ON sm.id = cm.submotivo_id
 
       WHERE c.centro_id = ?
       AND c.start_at BETWEEN ? AND ?
@@ -47,18 +70,36 @@ export async function GET(request) {
       params.push(asesorId);
     }
 
-    query += " ORDER BY c.start_at";
+    query += `
+      GROUP BY
+        c.id,
+        c.start_at,
+        c.end_at,
+        c.estado,
+        c.asesor_id,
+        c.nota_cliente,
+        c.nota_interna,
+        cl.nombre,
+        cl.apellido,
+        cl.email,
+        cl.celular,
+        v.placas,
+        v.vin,
+        ma.name,
+        mo.name,
+        u.fullname,
+        u.color
+      ORDER BY c.start_at
+    `;
 
     const [rows] = await db.query(query, params);
 
     return NextResponse.json(rows || []);
-
   } catch (error) {
     console.error("❌ ERROR API CITAS:", error);
     return NextResponse.json([]);
   }
 }
-
 
 export async function POST(req) {
   try {
