@@ -1,26 +1,19 @@
 "use client";
 
-import { useEffect, useState, useRef, useMemo } from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ChevronDown, FileText, Send, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { FileText, Send } from "lucide-react";
-import { Textarea } from "@/components/ui/textarea";
 
-export default function TimelineSheet({
-  open,
-  onOpenChange,
+export default function ConversationWorkspace({
   session,
   onConversationUpdated,
+  onBack,
 }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -35,8 +28,11 @@ export default function TimelineSheet({
   const [slaDueAt, setSlaDueAt] = useState("");
   const [savingPriority, setSavingPriority] = useState(false);
   const [priorityError, setPriorityError] = useState("");
+  const [manageOpen, setManageOpen] = useState(false);
+  const [auditItems, setAuditItems] = useState([]);
   const scrollRef = useRef(null);
   const lastMarkedRef = useRef(0);
+  const stickToBottomRef = useRef(true);
 
   function toDatetimeLocalValue(dateLike) {
     if (!dateLike) return "";
@@ -86,10 +82,48 @@ export default function TimelineSheet({
       }
 
       if (onConversationUpdated) onConversationUpdated();
+      loadAudit();
     } catch (e) {
       setAssignmentError(e?.message || "Error actualizando asignación");
     } finally {
       setSavingAssignment(false);
+    }
+  }
+
+  async function savePriority(nextPriority, nextSlaDueAt) {
+    if (!session?.session_id || savingPriority) return;
+
+    setSavingPriority(true);
+    setPriorityError("");
+
+    try {
+      const payload = {
+        session_id: session.session_id,
+        priority_level: nextPriority,
+        sla_due_at: nextSlaDueAt
+          ? new Date(nextSlaDueAt).toISOString().slice(0, 19).replace("T", " ")
+          : null,
+      };
+
+      const res = await fetch("/api/conversations/priority", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "No se pudo actualizar prioridad/SLA");
+      }
+
+      if (onConversationUpdated) onConversationUpdated();
+      loadAudit();
+    } catch (e) {
+      setPriorityError(e?.message || "Error actualizando prioridad/SLA");
+    } finally {
+      setSavingPriority(false);
     }
   }
 
@@ -115,37 +149,19 @@ export default function TimelineSheet({
     }
   }
 
-  async function savePriority(nextPriority, nextSlaDueAt) {
-    if (!session?.session_id || savingPriority) return;
-
-    setSavingPriority(true);
-    setPriorityError("");
+  async function loadAudit() {
+    if (!session?.session_id) return;
 
     try {
-      const payload = {
-        session_id: session.session_id,
-        priority_level: nextPriority,
-        sla_due_at: nextSlaDueAt ? new Date(nextSlaDueAt).toISOString().slice(0, 19).replace("T", " ") : null,
-      };
-
-      const res = await fetch("/api/conversations/priority", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
+      const res = await fetch(
+        `/api/conversations/audit?session_id=${session.session_id}&limit=10`,
+        { cache: "no-store" }
+      );
       const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.message || "No se pudo actualizar prioridad/SLA");
-      }
-
-      if (onConversationUpdated) onConversationUpdated();
+      setAuditItems(Array.isArray(data) ? data : []);
     } catch (e) {
-      setPriorityError(e?.message || "Error actualizando prioridad/SLA");
-    } finally {
-      setSavingPriority(false);
+      console.error("Error cargando auditoría:", e);
+      setAuditItems([]);
     }
   }
 
@@ -175,29 +191,51 @@ export default function TimelineSheet({
   }
 
   useEffect(() => {
-    if (!open || !session?.session_id) return;
+    if (!session?.session_id) return;
     lastMarkedRef.current = 0;
+    setManageOpen(false);
     setAssignedAgentId(session?.assigned_agent_id ? String(session.assigned_agent_id) : "");
     setAssignmentStatus(session?.assignment_status || "unassigned");
     setPriorityLevel(session?.priority_level || "normal");
     setSlaDueAt(toDatetimeLocalValue(session?.sla_due_at));
     loadAgents();
+    loadAudit();
     loadTimeline();
-  }, [session, open]);
+  }, [session]);
 
   useEffect(() => {
-    if (!open || !session?.session_id) return;
+    if (!session?.session_id) return;
 
     const timer = setInterval(() => {
       loadTimeline();
     }, 5000);
 
     return () => clearInterval(timer);
-  }, [open, session]);
+  }, [session]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function handleScroll() {
+      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distanceToBottom < 80;
+    }
+
+    el.addEventListener("scroll", handleScroll);
+    handleScroll();
+
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
 
@@ -242,40 +280,64 @@ export default function TimelineSheet({
     return session?.resumen || messages?.[0]?.resumen || "Sin resumen disponible";
   }, [session, messages]);
 
+  if (!session?.session_id) {
+    return (
+      <div className="h-full border rounded-xl bg-white shadow flex items-center justify-center text-sm text-gray-500">
+        Selecciona una conversación para comenzar.
+      </div>
+    );
+  }
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-105 flex flex-col">
-        <SheetHeader>
-          <div className="flex items-center gap-2">
-            <SheetTitle>
-              {session?.cliente_nombre || "Conversación"}
-            </SheetTitle>
+    <div className="h-full border rounded-xl bg-white shadow flex flex-col">
+      <div className="border-b p-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            size="icon"
+            className="lg:hidden"
+            onClick={onBack}
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </Button>
 
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="icon" className="h-8 w-8">
-                  <FileText className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
+          <div className="font-semibold">{session?.cliente_nombre || "Conversación"}</div>
 
-              <PopoverContent align="start" className="w-[320px]">
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold">Resumen</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {resumen}
-                  </p>
-                </div>
-              </PopoverContent>
-            </Popover>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            onClick={() => setManageOpen((v) => !v)}
+          >
+            <SlidersHorizontal className="h-4 w-4 mr-2" />
+            Gestión
+            <ChevronDown className={`h-4 w-4 ml-2 transition-transform ${manageOpen ? "rotate-180" : ""}`} />
+          </Button>
 
-          <p className="text-sm text-gray-500">{session?.celular}</p>
-        </SheetHeader>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="icon" className="h-8 w-8">
+                <FileText className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
 
-        <div className="mt-4 border rounded-lg p-3 bg-gray-50 space-y-2">
+            <PopoverContent align="start" className="w-[320px]">
+              <div className="space-y-2">
+                <p className="text-sm font-semibold">Resumen</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resumen}</p>
+              </div>
+            </PopoverContent>
+          </Popover>
+        </div>
+
+        <p className="text-sm text-gray-500 mt-1">{session?.celular || session?.phone}</p>
+      </div>
+
+      {manageOpen && (
+        <div className="p-4 border-b bg-gray-50 space-y-2">
           <p className="text-xs font-semibold text-gray-600">Gestión de conversación</p>
 
-          <div className="grid grid-cols-1 gap-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
             <select
               className="h-9 rounded-md border bg-white px-3 text-sm"
               value={assignedAgentId}
@@ -341,67 +403,82 @@ export default function TimelineSheet({
             />
           </div>
 
-          {assignmentError && (
-            <p className="text-xs text-red-600">{assignmentError}</p>
-          )}
+          {assignmentError && <p className="text-xs text-red-600">{assignmentError}</p>}
+          {priorityError && <p className="text-xs text-red-600">{priorityError}</p>}
 
-          {priorityError && (
-            <p className="text-xs text-red-600">{priorityError}</p>
-          )}
-        </div>
-
-        <div
-          ref={scrollRef}
-          className="mt-3 space-y-3 overflow-y-auto flex-1 min-h-0 pr-2"
-        >
-          {messages.map((m) => (
-            <div key={m.id} className="space-y-1">
-              {m.pregunta && (
-                <div className="flex justify-start">
-                  <div className="bg-gray-200 px-3 py-2 rounded-xl max-w-[80%] text-sm">
-                    <p>{m.pregunta}</p>
-                    <p className="text-[11px] text-gray-500 mt-1">
-                      {m.source_channel || "canal"}
-                      {m.message_status ? ` · ${m.message_status}` : ""}
+          <div className="border rounded-md bg-white p-2 space-y-1">
+            <p className="text-xs font-semibold text-gray-600">Actividad reciente</p>
+            {auditItems.length === 0 ? (
+              <p className="text-xs text-gray-500">Sin actividad registrada.</p>
+            ) : (
+              <div className="max-h-28 overflow-y-auto space-y-1 pr-1">
+                {auditItems.map((item) => (
+                  <div key={item.id} className="text-xs text-gray-600 border-b last:border-b-0 pb-1">
+                    <p className="font-medium">
+                      {(item.actor_name || item.actor_role || "Sistema")} · {item.action_type}
                     </p>
+                    <p className="text-gray-500">{new Date(item.created_at).toLocaleString()}</p>
+                    {Array.isArray(item.changes) && item.changes.length > 0 && (
+                      <p className="text-gray-500 truncate">
+                        {item.changes.map((c) => `${c.field}: ${c.before ?? "--"} -> ${c.after ?? "--"}`).join(" | ")}
+                      </p>
+                    )}
                   </div>
-                </div>
-              )}
-
-              {m.respuesta && (
-                <div className="flex justify-end">
-                  <div className="bg-[#5e17eb] text-white px-3 py-2 rounded-xl max-w-[80%] text-sm">
-                    <p>{m.respuesta}</p>
-                    <p className="text-[11px] text-indigo-100 mt-1 text-right">
-                      {m.source_channel || "manual"}
-                      {m.message_status ? ` · ${m.message_status}` : ""}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-3 space-y-2 border-t pt-3">
-          <Textarea
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            placeholder="Escribe un mensaje para el cliente..."
-            className="min-h-22.5"
-            disabled={sending}
-          />
-
-          {error && <p className="text-sm text-red-600">{error}</p>}
-
-          <div className="flex justify-end">
-            <Button onClick={sendMessage} disabled={sending || !newMessage.trim()}>
-              <Send className="h-4 w-4 mr-2" />
-              {sending ? "Enviando..." : "Enviar"}
-            </Button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      )}
+
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+        {messages.map((m) => (
+          <div key={m.id} className="space-y-1">
+            {m.pregunta && (
+              <div className="flex justify-start">
+                <div className="bg-gray-200 px-3 py-2 rounded-xl max-w-[80%] text-sm">
+                  <p>{m.pregunta}</p>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    {m.source_channel || "canal"}
+                    {m.message_status ? ` · ${m.message_status}` : ""}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {m.respuesta && (
+              <div className="flex justify-end">
+                <div className="bg-[#5e17eb] text-white px-3 py-2 rounded-xl max-w-[80%] text-sm">
+                  <p>{m.respuesta}</p>
+                  <p className="text-[11px] text-indigo-100 mt-1 text-right">
+                    {m.source_channel || "manual"}
+                    {m.message_status ? ` · ${m.message_status}` : ""}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t p-4 space-y-2">
+        <Textarea
+          value={newMessage}
+          onChange={(e) => setNewMessage(e.target.value)}
+          placeholder="Escribe un mensaje para el cliente..."
+          className="min-h-22.5"
+          disabled={sending}
+        />
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex justify-end">
+          <Button onClick={sendMessage} disabled={sending || !newMessage.trim()}>
+            <Send className="h-4 w-4 mr-2" />
+            {sending ? "Enviando..." : "Enviar"}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
