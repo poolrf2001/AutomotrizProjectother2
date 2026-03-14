@@ -22,8 +22,12 @@ const estadoLabel = {
   rechazada: "Rechazada",
 };
 
-function formatCurrency(v) {
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(v || 0);
+function formatCurrency(v, currencyCode = "PEN") {
+  try {
+    return new Intl.NumberFormat("es-PE", { style: "currency", currency: currencyCode }).format(v || 0);
+  } catch {
+    return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(v || 0);
+  }
 }
 
 function formatDate(d) {
@@ -31,6 +35,22 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString("es-MX", {
     day: "2-digit", month: "short", year: "numeric",
   });
+}
+
+function formatCorrelativo(item) {
+  const year = new Date(item?.created_at || Date.now()).getFullYear();
+  const serie = String(item?.id || 0).padStart(3, "0");
+  return `${serie}-${year}`;
+}
+
+function calcExtraNeto(extra) {
+  const base = Number(extra?.monto || 0);
+  const tipo = extra?.descuento_tipo === "monto" ? "monto" : "porcentaje";
+  const valor = Number(extra?.descuento_valor || 0);
+  const descuento = tipo === "monto"
+    ? Math.max(0, Math.min(base, valor))
+    : base * Math.max(0, Math.min(100, valor)) / 100;
+  return Math.max(0, base - descuento);
 }
 
 export default function CotizacionesTable({
@@ -59,10 +79,11 @@ export default function CotizacionesTable({
       const doc = new jsPDF();
       const tipoLabel = data.tipo === "pyp" ? "Planchado y Pintura" : "Taller";
       const manoLabel = data.tipo === "pyp" ? "Paños" : "Mano de obra";
+      const currencyCode = data.moneda_codigo || "PEN";
 
       // Header
       doc.setFontSize(18);
-      doc.text(`Cotización #${data.id}`, 14, 20);
+      doc.text(`Cotización #${formatCorrelativo(data)}`, 14, 20);
       doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(`Tipo: ${tipoLabel}`, 14, 28);
@@ -104,9 +125,9 @@ export default function CotizacionesTable({
               p.numero_parte || "",
               p.producto_nombre || "",
               p.cantidad,
-              formatCurrency(p.precio_unitario),
+              formatCurrency(p.precio_unitario, currencyCode),
               d > 0 ? `${d}%` : "—",
-              formatCurrency(sub),
+              formatCurrency(sub, currencyCode),
             ];
           }),
           styles: { fontSize: 9 },
@@ -124,24 +145,24 @@ export default function CotizacionesTable({
         head: [["Tarifa", "Precio/hr", "Horas", "Subtotal"]],
         body: [[
           data.tarifa_nombre || "—",
-          formatCurrency(data.tarifa_hora),
+          formatCurrency(data.tarifa_hora, currencyCode),
           data.horas_trabajo || 0,
-          formatCurrency(data.subtotal_mano_obra),
+          formatCurrency(data.subtotal_mano_obra, currencyCode),
         ]],
         styles: { fontSize: 9 },
         headStyles: { fillColor: [41, 128, 185] },
       });
       y = doc.lastAutoTable.finalY + 8;
 
-      // Extras
+      // Adicionales
       if (data.extras?.length > 0) {
         doc.setFontSize(12);
-        doc.text("Gastos extras", 14, y);
+        doc.text("Adicionales", 14, y);
         y += 2;
         autoTable(doc, {
           startY: y,
-          head: [["Descripción", "Monto"]],
-          body: data.extras.map((e) => [e.descripcion, formatCurrency(e.monto)]),
+          head: [["Descripción", "Precio"]],
+          body: data.extras.map((e) => [e.descripcion, formatCurrency(calcExtraNeto(e), currencyCode)]),
           styles: { fontSize: 9 },
           headStyles: { fillColor: [41, 128, 185] },
         });
@@ -152,16 +173,25 @@ export default function CotizacionesTable({
       const descPct = Number(data.descuento_porcentaje || 0);
       const descMonto = Number(data.descuento_monto || 0);
       const totalsRows = [
-        ["Subtotal productos", formatCurrency(data.subtotal_productos)],
-        [`Subtotal ${manoLabel.toLowerCase()}`, formatCurrency(data.subtotal_mano_obra)],
-        ["Subtotal extras", formatCurrency(data.subtotal_extras)],
+        ["Subtotal productos", formatCurrency(data.subtotal_productos, currencyCode)],
+        [`Subtotal ${manoLabel.toLowerCase()}`, formatCurrency(data.subtotal_mano_obra, currencyCode)],
       ];
+      (data.extras || []).forEach((e) => {
+        totalsRows.push([`Adicional: ${e.descripcion}`, formatCurrency(calcExtraNeto(e), currencyCode)]);
+      });
       if (descPct > 0 || descMonto > 0) {
         const bruto = Number(data.subtotal_productos) + Number(data.subtotal_mano_obra) + Number(data.subtotal_extras);
         const totalDesc = bruto * descPct / 100 + descMonto;
-        totalsRows.push(["Descuento", `-${formatCurrency(totalDesc)}`]);
+        totalsRows.push(["Descuento", `-${formatCurrency(totalDesc, currencyCode)}`]);
       }
-      totalsRows.push(["TOTAL", formatCurrency(data.monto_total)]);
+      if (Number(data.incluir_igv || 0) === 1) {
+        const neto = Math.max(0, Number(data.subtotal_productos) + Number(data.subtotal_mano_obra) + Number(data.subtotal_extras)
+          - (Number(data.subtotal_productos) + Number(data.subtotal_mano_obra) + Number(data.subtotal_extras)) * Number(data.descuento_porcentaje || 0) / 100
+          - Number(data.descuento_monto || 0));
+        const pct = Number(data.impuesto_porcentaje || data.impuesto_porcentaje_config || 0);
+        totalsRows.push([`IGV (${pct}%)`, formatCurrency(neto * pct / 100, currencyCode)]);
+      }
+      totalsRows.push(["TOTAL", formatCurrency(data.monto_total, currencyCode)]);
 
       autoTable(doc, {
         startY: y,
@@ -187,7 +217,8 @@ export default function CotizacionesTable({
       (item.cliente_nombre || "").toLowerCase().includes(search) ||
       (item.descripcion || "").toLowerCase().includes(search) ||
       (item.usuario_nombre || "").toLowerCase().includes(search) ||
-      String(item.id).includes(search)
+      String(item.id).includes(search) ||
+      formatCorrelativo(item).toLowerCase().includes(search)
     );
   });
 
@@ -208,13 +239,13 @@ export default function CotizacionesTable({
           <TableHeader>
             <TableRow>
               <TableHead className="w-16">#</TableHead>
-              <TableHead>Fecha</TableHead>
-              {showTipo && <TableHead>Tipo</TableHead>}
               <TableHead>Cliente</TableHead>
               <TableHead>Descripción</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Creado por</TableHead>
+              <TableHead>Fecha</TableHead>
+              {showTipo && <TableHead>Tipo</TableHead>}
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -228,7 +259,20 @@ export default function CotizacionesTable({
             ) : (
               filtered.map((item) => (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.id}</TableCell>
+                  <TableCell className="font-medium">{formatCorrelativo(item)}</TableCell>
+                  <TableCell>{item.cliente_nombre || "Sin cliente"}</TableCell>
+                  <TableCell className="max-w-50 truncate">
+                    {item.descripcion || "—"}
+                  </TableCell>
+                  <TableCell className="text-right font-semibold">
+                    {formatCurrency(item.monto_total, item.moneda_codigo || "PEN")}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={estadoColor[item.estado] || ""}>
+                      {estadoLabel[item.estado] || item.estado}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>{item.usuario_nombre || "—"}</TableCell>
                   <TableCell>{formatDate(item.created_at)}</TableCell>
                   {showTipo && (
                     <TableCell>
@@ -237,19 +281,6 @@ export default function CotizacionesTable({
                       </Badge>
                     </TableCell>
                   )}
-                  <TableCell>{item.cliente_nombre || "Sin cliente"}</TableCell>
-                  <TableCell className="max-w-[200px] truncate">
-                    {item.descripcion || "—"}
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {formatCurrency(item.monto_total)}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={estadoColor[item.estado] || ""}>
-                      {estadoLabel[item.estado] || item.estado}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{item.usuario_nombre || "—"}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
                       <Button variant="ghost" size="icon" onClick={() => onView?.(item)} title="Ver detalle">

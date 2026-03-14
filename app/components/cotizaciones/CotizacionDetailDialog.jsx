@@ -27,8 +27,12 @@ const estadoLabel = {
   rechazada: "Rechazada",
 };
 
-function formatCurrency(v) {
-  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(v || 0);
+function formatCurrency(v, currencyCode = "PEN") {
+  try {
+    return new Intl.NumberFormat("es-PE", { style: "currency", currency: currencyCode }).format(v || 0);
+  } catch {
+    return new Intl.NumberFormat("es-PE", { style: "currency", currency: "PEN" }).format(v || 0);
+  }
 }
 
 function formatDate(d) {
@@ -36,6 +40,16 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString("es-MX", {
     day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
+}
+
+function calcExtraNeto(extra) {
+  const base = Number(extra?.monto || 0);
+  const tipo = extra?.descuento_tipo === "monto" ? "monto" : "porcentaje";
+  const valor = Number(extra?.descuento_valor || 0);
+  const descuento = tipo === "monto"
+    ? Math.max(0, Math.min(base, valor))
+    : base * Math.max(0, Math.min(100, valor)) / 100;
+  return Math.max(0, base - descuento);
 }
 
 export default function CotizacionDetailDialog({
@@ -93,6 +107,7 @@ export default function CotizacionDetailDialog({
   if (!data && !loading) return null;
 
   const label = data?.tipo === "pyp" ? "Paños" : "Mano de obra";
+  const currencyCode = data?.moneda_codigo || "PEN";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -123,7 +138,7 @@ export default function CotizacionDetailDialog({
                     onValueChange={updateStatus}
                     disabled={updatingStatus}
                   >
-                    <SelectTrigger className="w-[150px] h-8 inline-flex ml-2">
+                    <SelectTrigger className="w-37.5 h-8 inline-flex ml-2">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -202,11 +217,11 @@ export default function CotizacionDetailDialog({
                             <TableCell className="font-mono text-sm">{p.numero_parte}</TableCell>
                             <TableCell>{p.producto_nombre}</TableCell>
                             <TableCell className="text-right">{p.cantidad}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(p.precio_unitario)}</TableCell>
+                            <TableCell className="text-right">{formatCurrency(p.precio_unitario, currencyCode)}</TableCell>
                             <TableCell className="text-center">
                               {d > 0 ? <Badge variant="secondary">{d}%</Badge> : "\u2014"}
                             </TableCell>
-                            <TableCell className="text-right font-medium">{formatCurrency(sub)}</TableCell>
+                            <TableCell className="text-right font-medium">{formatCurrency(sub, currencyCode)}</TableCell>
                           </TableRow>
                         );
                       })}
@@ -222,7 +237,7 @@ export default function CotizacionDetailDialog({
               <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
                 <div className="flex justify-between">
                   <span>Tarifa:</span>
-                  <span>{data.tarifa_nombre || "\u2014"} \u2014 {formatCurrency(data.tarifa_hora)}/hr</span>
+                  <span>{data.tarifa_nombre || "\u2014"} \u2014 {formatCurrency(data.tarifa_hora, currencyCode)}/hr</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Horas:</span>
@@ -230,28 +245,28 @@ export default function CotizacionDetailDialog({
                 </div>
                 <div className="flex justify-between font-medium">
                   <span>Subtotal:</span>
-                  <span>{formatCurrency(data.subtotal_mano_obra)}</span>
+                  <span>{formatCurrency(data.subtotal_mano_obra, currencyCode)}</span>
                 </div>
               </div>
             </div>
 
-            {/* Extras */}
+            {/* Adicionales */}
             {data.extras?.length > 0 && (
               <div>
-                <h4 className="font-semibold mb-2">Gastos extras</h4>
+                <h4 className="font-semibold mb-2">Adicionales</h4>
                 <div className="border rounded-md">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead>Descripción</TableHead>
-                        <TableHead className="text-right">Monto</TableHead>
+                        <TableHead className="text-right">Precio</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {data.extras.map((e) => (
                         <TableRow key={e.id}>
                           <TableCell>{e.descripcion}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(e.monto)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(calcExtraNeto(e), currencyCode)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -264,16 +279,18 @@ export default function CotizacionDetailDialog({
             <div className="bg-muted/50 rounded-lg p-4 space-y-2">
               <div className="flex justify-between text-sm">
                 <span>Subtotal productos:</span>
-                <span>{formatCurrency(data.subtotal_productos)}</span>
+                <span>{formatCurrency(data.subtotal_productos, currencyCode)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span>Subtotal {label.toLowerCase()}:</span>
-                <span>{formatCurrency(data.subtotal_mano_obra)}</span>
+                <span>{formatCurrency(data.subtotal_mano_obra, currencyCode)}</span>
               </div>
-              <div className="flex justify-between text-sm">
-                <span>Subtotal extras:</span>
-                <span>{formatCurrency(data.subtotal_extras)}</span>
-              </div>
+              {(data.extras || []).map((e) => (
+                <div className="flex justify-between text-sm" key={`extra-${e.id}`}>
+                  <span>Adicional: {e.descripcion}</span>
+                  <span>{formatCurrency(calcExtraNeto(e), currencyCode)}</span>
+                </div>
+              ))}
               {(Number(data.descuento_porcentaje || 0) > 0 || Number(data.descuento_monto || 0) > 0) && (
                 <>
                   <hr />
@@ -281,20 +298,33 @@ export default function CotizacionDetailDialog({
                     <span>
                       Descuento
                       {Number(data.descuento_porcentaje || 0) > 0 && ` (${data.descuento_porcentaje}%)`}
-                      {Number(data.descuento_monto || 0) > 0 && ` + ${formatCurrency(data.descuento_monto)}`}
+                      {Number(data.descuento_monto || 0) > 0 && ` + ${formatCurrency(data.descuento_monto, currencyCode)}`}
                     </span>
                     <span>-{formatCurrency(
                       (Number(data.subtotal_productos) + Number(data.subtotal_mano_obra) + Number(data.subtotal_extras))
                         * Number(data.descuento_porcentaje || 0) / 100
                         + Number(data.descuento_monto || 0)
-                    )}</span>
+                    , currencyCode)}</span>
                   </div>
                 </>
+              )}
+              {Number(data.incluir_igv || 0) === 1 && (
+                <div className="flex justify-between text-sm">
+                  <span>IGV ({Number(data.impuesto_porcentaje || data.impuesto_porcentaje_config || 0)}%)</span>
+                  <span>{formatCurrency(
+                    Math.max(0,
+                      Number(data.subtotal_productos) + Number(data.subtotal_mano_obra) + Number(data.subtotal_extras)
+                      - (Number(data.subtotal_productos) + Number(data.subtotal_mano_obra) + Number(data.subtotal_extras)) * Number(data.descuento_porcentaje || 0) / 100
+                      - Number(data.descuento_monto || 0)
+                    ) * Number(data.impuesto_porcentaje || data.impuesto_porcentaje_config || 0) / 100,
+                    currencyCode
+                  )}</span>
+                </div>
               )}
               <hr />
               <div className="flex justify-between text-lg font-bold">
                 <span>TOTAL:</span>
-                <span className="text-green-600">{formatCurrency(data.monto_total)}</span>
+                <span className="text-green-600">{formatCurrency(data.monto_total, currencyCode)}</span>
               </div>
             </div>
           </div>

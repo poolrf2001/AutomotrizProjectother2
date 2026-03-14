@@ -25,7 +25,7 @@ export default function CotizacionDeleteDialog({
 
         <p className="text-sm text-muted-foreground">
           ¿Estás seguro de que deseas eliminar la cotización <strong>#{cotizacion?.id}</strong>?
-          Esta acción no se puede deshacer y se eliminarán todos los productos y gastos extras
+          Esta acción no se puede deshacer y se eliminarán todos los productos y adicionales
           asociados.
         </p>
 
