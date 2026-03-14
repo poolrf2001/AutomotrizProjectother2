@@ -1,38 +1,44 @@
-// app/api/etapasconversion/[id]/route.js
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-export async function PUT(req, context) {
+export async function PUT(req, { params }) {
   try {
-    const { id } = await context.params;
+    const { id } = await params;
     const idNum = Number(id);
 
-    if (Number.isNaN(idNum)) {
+    if (!Number.isInteger(idNum) || idNum <= 0) {
       return NextResponse.json({ message: "ID inválido" }, { status: 400 });
     }
 
     const body = await req.json();
 
     const nombre = String(body?.nombre ?? "").trim();
+
     const descripcion =
       body?.descripcion === null || body?.descripcion === undefined
         ? null
         : String(body.descripcion).trim();
 
+    const color =
+      body?.color === null ||
+      body?.color === undefined ||
+      String(body.color).trim() === ""
+        ? null
+        : String(body.color).trim();
+
     const sort_order =
-      body?.sort_order === "" || body?.sort_order === undefined || body?.sort_order === null
+      body?.sort_order === "" ||
+      body?.sort_order === null ||
+      body?.sort_order === undefined
         ? null
         : Number(body.sort_order);
 
     const is_active =
-      body?.is_active === undefined || body?.is_active === null
+      body?.is_active === null || body?.is_active === undefined
         ? 1
-        : Number(Boolean(body.is_active));
-
-    const color =
-      body?.color === null || body?.color === undefined || String(body.color).trim() === ""
-        ? null
-        : String(body.color).trim();
+        : body.is_active
+        ? 1
+        : 0;
 
     if (!nombre) {
       return NextResponse.json(
@@ -43,7 +49,7 @@ export async function PUT(req, context) {
 
     if (color && !/^#[0-9A-Fa-f]{6}$/.test(color)) {
       return NextResponse.json(
-        { message: "color debe ser HEX tipo #RRGGBB" },
+        { message: "color debe tener formato HEX #RRGGBB" },
         { status: 400 }
       );
     }
@@ -55,7 +61,7 @@ export async function PUT(req, context) {
       );
     }
 
-    const [result] = await db.query(
+    const [result] = await db.execute(
       `
       UPDATE etapasconversion
       SET nombre = ?, descripcion = ?, color = ?, sort_order = ?, is_active = ?
@@ -71,26 +77,30 @@ export async function PUT(req, context) {
       );
     }
 
-    return NextResponse.json({ message: "Actualizado" });
+    return NextResponse.json({ message: "Actualizado correctamente" });
   } catch (error) {
-    console.log(error);
+    console.error("PUT /api/etapasconversion/[id] =>", error);
+
     return NextResponse.json(
-      { message: "Error al actualizar etapa" },
+      {
+        message: "Error al actualizar etapa",
+        error: error?.code || "UNKNOWN_ERROR",
+      },
       { status: 500 }
     );
   }
 }
 
-export async function DELETE(req, context) {
+export async function DELETE(req, { params }) {
   try {
-    const { id } = await context.params;
+    const { id } = await params;
     const idNum = Number(id);
 
-    if (Number.isNaN(idNum)) {
+    if (!Number.isInteger(idNum) || idNum <= 0) {
       return NextResponse.json({ message: "ID inválido" }, { status: 400 });
     }
 
-    const [result] = await db.query(
+    const [result] = await db.execute(
       `DELETE FROM etapasconversion WHERE id = ?`,
       [idNum]
     );
@@ -102,11 +112,15 @@ export async function DELETE(req, context) {
       );
     }
 
-    return NextResponse.json({ message: "Eliminado" });
+    return NextResponse.json({ message: "Eliminado correctamente" });
   } catch (error) {
-    console.log(error);
+    console.error("DELETE /api/etapasconversion/[id] =>", error);
+
     return NextResponse.json(
-      { message: "Error al eliminar etapa" },
+      {
+        message: "Error al eliminar etapa",
+        error: error?.code || "UNKNOWN_ERROR",
+      },
       { status: 500 }
     );
   }

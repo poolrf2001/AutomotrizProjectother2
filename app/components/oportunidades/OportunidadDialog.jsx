@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 import {
   Select,
@@ -21,6 +20,8 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
+
+import { useAuth } from "@/context/AuthContext";
 
 function getLabel(item) {
   return (
@@ -34,6 +35,16 @@ function getLabel(item) {
   );
 }
 
+function normalizeDateInput(value) {
+  if (!value) return "";
+  return String(value).slice(0, 10);
+}
+
+function normalizeTimeInput(value) {
+  if (!value) return "";
+  return String(value).slice(0, 5);
+}
+
 const EMPTY_FORM = {
   cliente_id: "",
   marca_id: "",
@@ -42,11 +53,24 @@ const EMPTY_FORM = {
   suborigen_id: "",
   detalle: "",
   etapasconversion_id: "",
-  creado_por: "",
+  created_by: "",
   asignado_a: "",
+  fecha_agenda: "",
+  hora_agenda: "",
+  oportunidad_padre_id: "",
 };
 
-export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
+export default function OportunidadDialog({
+  open,
+  onOpenChange,
+  onSuccess,
+  defaultFecha = "",
+  defaultHora = "",
+  oportunidadPadreId = "",
+  oportunidad = null,
+}) {
+  const { user } = useAuth();
+
   const [form, setForm] = useState(EMPTY_FORM);
 
   const [clientes, setClientes] = useState([]);
@@ -61,10 +85,10 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
   const [loadingModelos, setLoadingModelos] = useState(false);
   const [loadingSuborigenes, setLoadingSuborigenes] = useState(false);
 
+  const [mode, setMode] = useState("new");
+
   useEffect(() => {
     if (!open) return;
-
-    setForm(EMPTY_FORM);
 
     async function loadInitialData() {
       try {
@@ -96,11 +120,74 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
           usuariosRes.json(),
         ]);
 
-        setClientes(Array.isArray(clientesData) ? clientesData : []);
-        setMarcas(Array.isArray(marcasData) ? marcasData : []);
-        setOrigenes(Array.isArray(origenesData) ? origenesData : []);
-        setEtapas(Array.isArray(etapasData) ? etapasData : []);
-        setUsuarios(Array.isArray(usuariosData) ? usuariosData : []);
+        const clientesList = Array.isArray(clientesData) ? clientesData : [];
+        const marcasList = Array.isArray(marcasData) ? marcasData : [];
+        const origenesList = Array.isArray(origenesData) ? origenesData : [];
+        const etapasList = Array.isArray(etapasData) ? etapasData : [];
+        const usuariosList = Array.isArray(usuariosData) ? usuariosData : [];
+
+        setClientes(clientesList);
+        setMarcas(marcasList);
+        setOrigenes(origenesList);
+        setEtapas(etapasList);
+        setUsuarios(usuariosList);
+
+        const etapaNuevo =
+          etapasList.find(
+            (e) => String(getLabel(e)).trim().toLowerCase() === "nuevo"
+          ) || null;
+
+        if (oportunidad) {
+          setMode("view");
+          setForm({
+            ...EMPTY_FORM,
+            cliente_id: oportunidad.cliente_id
+              ? String(oportunidad.cliente_id)
+              : "",
+            marca_id: oportunidad.marca_id ? String(oportunidad.marca_id) : "",
+            modelo_id: oportunidad.modelo_id
+              ? String(oportunidad.modelo_id)
+              : "",
+            origen_id: oportunidad.origen_id
+              ? String(oportunidad.origen_id)
+              : "",
+            suborigen_id: oportunidad.suborigen_id
+              ? String(oportunidad.suborigen_id)
+              : "",
+            detalle: oportunidad.detalle || "",
+            etapasconversion_id: oportunidad.etapasconversion_id
+              ? String(oportunidad.etapasconversion_id)
+              : etapaNuevo?.id
+              ? String(etapaNuevo.id)
+              : "",
+            created_by: oportunidad.created_by
+              ? String(oportunidad.created_by)
+              : user?.id
+              ? String(user.id)
+              : "",
+            asignado_a: oportunidad.asignado_a
+              ? String(oportunidad.asignado_a)
+              : "",
+            fecha_agenda: normalizeDateInput(oportunidad.fecha_agenda),
+            hora_agenda: normalizeTimeInput(oportunidad.hora_agenda),
+            oportunidad_padre_id: oportunidad.oportunidad_padre_id
+              ? String(oportunidad.oportunidad_padre_id)
+              : "",
+          });
+        } else {
+          setMode("new");
+          setForm({
+            ...EMPTY_FORM,
+            created_by: user?.id ? String(user.id) : "",
+            etapasconversion_id: etapaNuevo?.id ? String(etapaNuevo.id) : "",
+            asignado_a: "",
+            fecha_agenda: normalizeDateInput(defaultFecha),
+            hora_agenda: normalizeTimeInput(defaultHora),
+            oportunidad_padre_id: oportunidadPadreId
+              ? String(oportunidadPadreId)
+              : "",
+          });
+        }
       } catch (error) {
         console.error(error);
         toast.error("No se pudieron cargar los datos del formulario");
@@ -108,7 +195,7 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
     }
 
     loadInitialData();
-  }, [open]);
+  }, [open, user, defaultFecha, defaultHora, oportunidadPadreId, oportunidad]);
 
   useEffect(() => {
     if (!form.marca_id) {
@@ -164,7 +251,10 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
   }, [form.origen_id]);
 
   const usuariosActivos = useMemo(
-    () => usuarios.filter((u) => Number(u.is_active) === 1 || u.is_active === true),
+    () =>
+      usuarios.filter(
+        (u) => Number(u.is_active) === 1 || u.is_active === true
+      ),
     [usuarios]
   );
 
@@ -172,14 +262,43 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
     setForm((prev) => ({ ...prev, [field]: value }));
   }
 
-  async function handleSave() {
+  const isView = mode === "view";
+  const isEdit = mode === "edit";
+  const isReprogram = mode === "reprogram";
+  const isNew = mode === "new";
+
+  function isFieldDisabled(field) {
+    if (isView) return true;
+    if (isReprogram) {
+      return !["fecha_agenda", "hora_agenda", "detalle"].includes(field);
+    }
+    return false;
+  }
+
+  async function parseSafeResponse(res) {
+    const text = await res.text();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch {
+      return { message: text };
+    }
+  }
+
+  async function handleCreate() {
+    if (!user?.id) {
+      toast.error("No se encontró el usuario logueado");
+      return;
+    }
+
     if (
       !form.cliente_id ||
       !form.marca_id ||
       !form.modelo_id ||
       !form.origen_id ||
       !form.etapasconversion_id ||
-      !form.creado_por
+      !form.fecha_agenda ||
+      !form.hora_agenda
     ) {
       toast.error("Completa los campos obligatorios");
       return;
@@ -196,8 +315,13 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
         suborigen_id: form.suborigen_id ? Number(form.suborigen_id) : null,
         detalle: form.detalle || "",
         etapasconversion_id: Number(form.etapasconversion_id),
-        creado_por: Number(form.creado_por),
+        created_by: Number(form.created_by || user.id),
         asignado_a: form.asignado_a ? Number(form.asignado_a) : null,
+        fecha_agenda: normalizeDateInput(form.fecha_agenda),
+        hora_agenda: normalizeTimeInput(form.hora_agenda),
+        oportunidad_padre_id: form.oportunidad_padre_id
+          ? Number(form.oportunidad_padre_id)
+          : null,
       };
 
       const res = await fetch("/api/oportunidades", {
@@ -208,14 +332,14 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
         body: JSON.stringify(payload),
       });
 
-      const data = await res.json();
+      const data = await parseSafeResponse(res);
 
       if (!res.ok) {
         throw new Error(data?.message || "No se pudo guardar");
       }
 
       toast.success("Oportunidad creada");
-      onSuccess?.();
+      onSuccess?.(data);
     } catch (error) {
       console.error(error);
       toast.error(error.message || "No se pudo guardar la oportunidad");
@@ -224,11 +348,183 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
     }
   }
 
+  async function handleUpdate() {
+    if (!oportunidad?.id) {
+      toast.error("No se encontró la oportunidad a editar");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const payload = {
+        cliente_id: Number(form.cliente_id),
+        marca_id: Number(form.marca_id),
+        modelo_id: Number(form.modelo_id),
+        origen_id: Number(form.origen_id),
+        suborigen_id: form.suborigen_id ? Number(form.suborigen_id) : null,
+        detalle: form.detalle || "",
+        etapasconversion_id: Number(form.etapasconversion_id),
+        created_by: Number(form.created_by || user.id),
+        asignado_a: form.asignado_a ? Number(form.asignado_a) : null,
+        fecha_agenda: normalizeDateInput(form.fecha_agenda),
+        hora_agenda: normalizeTimeInput(form.hora_agenda),
+      };
+
+      console.log("Payload update:", payload);
+
+      const res = await fetch(`/api/oportunidades/${oportunidad.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await parseSafeResponse(res);
+
+      if (!res.ok) {
+        throw new Error(
+          data?.error ||
+            data?.sqlMessage ||
+            data?.message ||
+            "No se pudo actualizar"
+        );
+      }
+
+      toast.success(data?.message || "Oportunidad actualizada");
+      onSuccess?.(data);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || "No se pudo actualizar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReprogram() {
+    if (!oportunidad?.id) {
+      toast.error("No se encontró la oportunidad original");
+      return;
+    }
+
+    if (!form.fecha_agenda || !form.hora_agenda) {
+      toast.error("Fecha y hora son obligatorias para reprogramar");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const payload = {
+        cliente_id: Number(form.cliente_id),
+        marca_id: Number(form.marca_id),
+        modelo_id: Number(form.modelo_id),
+        origen_id: Number(form.origen_id),
+        suborigen_id: form.suborigen_id ? Number(form.suborigen_id) : null,
+        detalle: form.detalle || "",
+        etapasconversion_id: Number(form.etapasconversion_id),
+        created_by: Number(form.created_by || user.id),
+        asignado_a: form.asignado_a ? Number(form.asignado_a) : null,
+        fecha_agenda: normalizeDateInput(form.fecha_agenda),
+        hora_agenda: normalizeTimeInput(form.hora_agenda),
+        oportunidad_padre_id: Number(oportunidad.id),
+      };
+
+      const res = await fetch("/api/oportunidades", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await parseSafeResponse(res);
+
+      if (!res.ok) {
+        throw new Error(data?.message || "No se pudo reprogramar");
+      }
+
+      toast.success(data?.message || "Oportunidad reprogramada");
+      onSuccess?.(data);
+    } catch (error) {
+      console.error(error);
+      toast.error(error.message || "No se pudo reprogramar");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleSave() {
+    if (isEdit) return handleUpdate();
+    if (isReprogram) return handleReprogram();
+    return handleCreate();
+  }
+
+  const etapaActual = etapas.find(
+    (e) => String(e.id) === String(form.etapasconversion_id)
+  );
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!loading) onOpenChange(value);
+      }}
+    >
+      <DialogContent className="max-w-4xl">
         <DialogHeader>
-          <DialogTitle>Nueva oportunidad</DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <DialogTitle>
+                {isNew && "Nueva oportunidad"}
+                {isView && "Detalle de oportunidad"}
+                {isEdit && "Editar oportunidad"}
+                {isReprogram && "Reprogramar oportunidad"}
+              </DialogTitle>
+
+              {isReprogram && oportunidad?.oportunidad_id && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Se reprograma de la cita N° {oportunidad.oportunidad_id}
+                </p>
+              )}
+
+              {!isReprogram && oportunidad?.oportunidad_id && (
+                <p className="text-sm text-muted-foreground mt-1">
+                  Código: {oportunidad.oportunidad_id}
+                </p>
+              )}
+            </div>
+
+            {oportunidad && (
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={isEdit ? "default" : "outline"}
+                  onClick={() => setMode("edit")}
+                  disabled={loading}
+                >
+                  Editar
+                </Button>
+
+                <Button
+                  type="button"
+                  variant={isReprogram ? "default" : "outline"}
+                  onClick={() => {
+                    setMode("reprogram");
+                    setForm((prev) => ({
+                      ...prev,
+                      fecha_agenda: "",
+                      hora_agenda: "",
+                    }));
+                  }}
+                  disabled={loading}
+                >
+                  Reprogramar
+                </Button>
+              </div>
+            )}
+          </div>
         </DialogHeader>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -237,6 +533,7 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
             <Select
               value={form.cliente_id}
               onValueChange={(value) => updateField("cliente_id", value)}
+              disabled={isFieldDisabled("cliente_id")}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccionar cliente" />
@@ -252,22 +549,10 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Creado por *</label>
-            <Select
-              value={form.creado_por}
-              onValueChange={(value) => updateField("creado_por", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar usuario" />
-              </SelectTrigger>
-              <SelectContent>
-                {usuariosActivos.map((item) => (
-                  <SelectItem key={item.id} value={String(item.id)}>
-                    {getLabel(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <label className="text-sm font-medium">Creado por</label>
+            <div className="h-10 rounded-md border px-3 flex items-center text-sm bg-muted">
+              {user?.fullname || user?.username || `ID ${user?.id || ""}`}
+            </div>
           </div>
 
           <div>
@@ -278,6 +563,7 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
                 updateField("marca_id", value);
                 updateField("modelo_id", "");
               }}
+              disabled={isFieldDisabled("marca_id")}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccionar marca" />
@@ -297,11 +583,15 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
             <Select
               value={form.modelo_id}
               onValueChange={(value) => updateField("modelo_id", value)}
-              disabled={!form.marca_id || loadingModelos}
+              disabled={
+                !form.marca_id || loadingModelos || isFieldDisabled("modelo_id")
+              }
             >
               <SelectTrigger>
                 <SelectValue
-                  placeholder={loadingModelos ? "Cargando..." : "Seleccionar modelo"}
+                  placeholder={
+                    loadingModelos ? "Cargando..." : "Seleccionar modelo"
+                  }
                 />
               </SelectTrigger>
               <SelectContent>
@@ -322,6 +612,7 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
                 updateField("origen_id", value);
                 updateField("suborigen_id", "");
               }}
+              disabled={isFieldDisabled("origen_id")}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccionar origen" />
@@ -341,11 +632,17 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
             <Select
               value={form.suborigen_id}
               onValueChange={(value) => updateField("suborigen_id", value)}
-              disabled={!form.origen_id || loadingSuborigenes}
+              disabled={
+                !form.origen_id ||
+                loadingSuborigenes ||
+                isFieldDisabled("suborigen_id")
+              }
             >
               <SelectTrigger>
                 <SelectValue
-                  placeholder={loadingSuborigenes ? "Cargando..." : "Seleccionar suborigen"}
+                  placeholder={
+                    loadingSuborigenes ? "Cargando..." : "Seleccionar suborigen"
+                  }
                 />
               </SelectTrigger>
               <SelectContent>
@@ -359,22 +656,32 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
           </div>
 
           <div>
-            <label className="text-sm font-medium">Etapa *</label>
-            <Select
-              value={form.etapasconversion_id}
-              onValueChange={(value) => updateField("etapasconversion_id", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar etapa" />
-              </SelectTrigger>
-              <SelectContent>
-                {etapas.map((item) => (
-                  <SelectItem key={item.id} value={String(item.id)}>
-                    {getLabel(item)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <label className="text-sm font-medium">Fecha agenda *</label>
+            <input
+              type="date"
+              className="w-full h-10 rounded-md border px-3 text-sm"
+              value={form.fecha_agenda}
+              onChange={(e) => updateField("fecha_agenda", e.target.value)}
+              disabled={isFieldDisabled("fecha_agenda")}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Hora agenda *</label>
+            <input
+              type="time"
+              className="w-full h-10 rounded-md border px-3 text-sm"
+              value={form.hora_agenda}
+              onChange={(e) => updateField("hora_agenda", e.target.value)}
+              disabled={isFieldDisabled("hora_agenda")}
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium">Etapa</label>
+            <div className="h-10 rounded-md border px-3 flex items-center text-sm bg-muted">
+              {etapaActual ? getLabel(etapaActual) : "Nuevo"}
+            </div>
           </div>
 
           <div>
@@ -382,6 +689,7 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
             <Select
               value={form.asignado_a}
               onValueChange={(value) => updateField("asignado_a", value)}
+              disabled={isFieldDisabled("asignado_a")}
             >
               <SelectTrigger>
                 <SelectValue placeholder="Seleccionar usuario" />
@@ -403,17 +711,29 @@ export default function OportunidadDialog({ open, onOpenChange, onSuccess }) {
               value={form.detalle}
               onChange={(e) => updateField("detalle", e.target.value)}
               placeholder="Detalle de la oportunidad"
+              disabled={isFieldDisabled("detalle")}
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={loading}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={loading}
+          >
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={loading}>
-            Guardar
-          </Button>
+
+          {(isNew || isEdit || isReprogram) && (
+            <Button onClick={handleSave} disabled={loading}>
+              {isEdit
+                ? "Guardar cambios"
+                : isReprogram
+                ? "Guardar reprogramación"
+                : "Guardar"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

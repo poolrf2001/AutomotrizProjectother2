@@ -12,6 +12,8 @@ export async function GET(req, { params }) {
       `
       SELECT
         o.id,
+        o.oportunidad_id,
+        o.oportunidad_padre_id,
         o.cliente_id,
         o.marca_id,
         o.modelo_id,
@@ -19,18 +21,32 @@ export async function GET(req, { params }) {
         o.suborigen_id,
         o.detalle,
         o.etapasconversion_id,
-        o.creado_por,
+        o.created_by,
         o.asignado_a,
+
+        ec.sort_order AS etapa_sort_order,
+        ec.color AS etapa_color,
+
+        COALESCE((
+          SELECT SUM(CAST(ec2.descripcion AS DECIMAL(10,2)))
+          FROM etapasconversion ec2
+          WHERE ec2.sort_order <= ec.sort_order
+            AND ec2.descripcion IS NOT NULL
+            AND ec2.descripcion REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
+        ), 0) AS temperatura,
+
+        DATE_FORMAT(o.fecha_agenda, '%Y-%m-%d') AS fecha_agenda,
+        TIME_FORMAT(o.hora_agenda, '%H:%i') AS hora_agenda,
         o.created_at,
         o.updated_at,
 
-        c.name AS cliente_name,
+        c.nombre AS cliente_name,
         m.name AS marca_name,
         mo.name AS modelo_name,
         oc.name AS origen_name,
         sc.name AS suborigen_name,
-        ec.name AS etapa_name,
-        u1.fullname AS creado_por_name,
+        ec.nombre AS etapa_name,
+        u1.fullname AS created_by_name,
         u2.fullname AS asignado_a_name
 
       FROM oportunidades o
@@ -40,7 +56,7 @@ export async function GET(req, { params }) {
       LEFT JOIN origenes_citas oc ON oc.id = o.origen_id
       LEFT JOIN suborigenes_citas sc ON sc.id = o.suborigen_id
       LEFT JOIN etapasconversion ec ON ec.id = o.etapasconversion_id
-      LEFT JOIN usuarios u1 ON u1.id = o.creado_por
+      LEFT JOIN usuarios u1 ON u1.id = o.created_by
       LEFT JOIN usuarios u2 ON u2.id = o.asignado_a
       WHERE o.id = ?
       LIMIT 1
@@ -57,9 +73,12 @@ export async function GET(req, { params }) {
 
     return NextResponse.json(rows[0]);
   } catch (error) {
-    console.error(error);
+    console.error("GET /api/oportunidades/[id] error:", error);
     return NextResponse.json(
-      { message: "Error al obtener oportunidad" },
+      {
+        message: "Error al obtener oportunidad",
+        error: error.message,
+      },
       { status: 500 }
     );
   }
@@ -73,10 +92,10 @@ export async function PUT(req, { params }) {
     const { id } = await params;
     const body = await req.json();
 
-    const cliente_id = Number(body.cliente_id);
-    const marca_id = Number(body.marca_id);
-    const modelo_id = Number(body.modelo_id);
-    const origen_id = Number(body.origen_id);
+    const cliente_id = body.cliente_id ? Number(body.cliente_id) : null;
+    const marca_id = body.marca_id ? Number(body.marca_id) : null;
+    const modelo_id = body.modelo_id ? Number(body.modelo_id) : null;
+    const origen_id = body.origen_id ? Number(body.origen_id) : null;
 
     const suborigen_id =
       body.suborigen_id === null ||
@@ -86,8 +105,17 @@ export async function PUT(req, { params }) {
         : Number(body.suborigen_id);
 
     const detalle = (body.detalle || "").trim() || null;
-    const etapasconversion_id = Number(body.etapasconversion_id);
-    const creado_por = Number(body.creado_por);
+
+    const etapasconversion_id = body.etapasconversion_id
+      ? Number(body.etapasconversion_id)
+      : null;
+
+    const created_by =
+      body.created_by === null ||
+      body.created_by === undefined ||
+      body.created_by === ""
+        ? null
+        : Number(body.created_by);
 
     const asignado_a =
       body.asignado_a === null ||
@@ -96,18 +124,30 @@ export async function PUT(req, { params }) {
         ? null
         : Number(body.asignado_a);
 
+    const fecha_agenda =
+      body.fecha_agenda && String(body.fecha_agenda).trim() !== ""
+        ? String(body.fecha_agenda)
+        : null;
+
+    const hora_agenda =
+      body.hora_agenda && String(body.hora_agenda).trim() !== ""
+        ? String(body.hora_agenda)
+        : null;
+
     if (
       !cliente_id ||
       !marca_id ||
       !modelo_id ||
       !origen_id ||
       !etapasconversion_id ||
-      !creado_por
+      !created_by ||
+      !fecha_agenda ||
+      !hora_agenda
     ) {
       return NextResponse.json(
         {
           message:
-            "cliente_id, marca_id, modelo_id, origen_id, etapasconversion_id y creado_por son obligatorios",
+            "cliente_id, marca_id, modelo_id, origen_id, etapasconversion_id, created_by, fecha_agenda y hora_agenda son obligatorios",
         },
         { status: 400 }
       );
@@ -203,7 +243,7 @@ export async function PUT(req, { params }) {
 
     const [creador] = await db.query(
       `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
-      [creado_por]
+      [created_by]
     );
     if (!creador.length) {
       return NextResponse.json(
@@ -237,8 +277,11 @@ export async function PUT(req, { params }) {
         suborigen_id = ?,
         detalle = ?,
         etapasconversion_id = ?,
-        creado_por = ?,
-        asignado_a = ?
+        created_by = ?,
+        asignado_a = ?,
+        fecha_agenda = ?,
+        hora_agenda = ?,
+        updated_at = NOW()
       WHERE id = ?
       `,
       [
@@ -249,17 +292,26 @@ export async function PUT(req, { params }) {
         suborigen_id,
         detalle,
         etapasconversion_id,
-        creado_por,
+        created_by,
         asignado_a,
+        fecha_agenda,
+        hora_agenda,
         id,
       ]
     );
 
-    return NextResponse.json({ message: "Oportunidad actualizada" });
+    return NextResponse.json({
+      message: "Oportunidad actualizada",
+    });
   } catch (error) {
-    console.error(error);
+    console.error("PUT /api/oportunidades/[id] error:", error);
     return NextResponse.json(
-      { message: "Error al actualizar oportunidad" },
+      {
+        message: "Error al actualizar oportunidad",
+        error: error.message,
+        sqlMessage: error.sqlMessage || null,
+        code: error.code || null,
+      },
       { status: 500 }
     );
   }
@@ -286,9 +338,12 @@ export async function DELETE(req, { params }) {
 
     return NextResponse.json({ message: "Oportunidad eliminada" });
   } catch (error) {
-    console.error(error);
+    console.error("DELETE /api/oportunidades/[id] error:", error);
     return NextResponse.json(
-      { message: "Error al eliminar oportunidad" },
+      {
+        message: "Error al eliminar oportunidad",
+        error: error.message,
+      },
       { status: 500 }
     );
   }

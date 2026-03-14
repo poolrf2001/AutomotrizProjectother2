@@ -38,10 +38,19 @@ export default function AgendaPage() {
 
   const [horario, setHorario] = useState(null);
   const [slots, setSlots] = useState([]);
-
   const [oportunidades, setOportunidades] = useState([]);
 
+  const [createdByFilter, setCreatedByFilter] = useState("all");
+  const [assignedToFilter, setAssignedToFilter] = useState("all");
+
   const [openOportunidadDialog, setOpenOportunidadDialog] = useState(false);
+  const [dialogDefaults, setDialogDefaults] = useState({
+    fecha: "",
+    hora: "",
+    oportunidadPadreId: "",
+  });
+
+  const [selectedOportunidad, setSelectedOportunidad] = useState(null);
   const [menuCell, setMenuCell] = useState(null);
 
   const [weekStart, setWeekStart] = useState(
@@ -64,7 +73,7 @@ export default function AgendaPage() {
   useEffect(() => {
     if (scopeLoading) return;
 
-    fetch("/api/centros")
+    fetch("/api/centros", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
         const lista = Array.isArray(data) ? data : [];
@@ -95,16 +104,13 @@ export default function AgendaPage() {
       return;
     }
 
-    if (userCentros.length > 0 && !userCentros.includes(Number(centroId))) {
-      setHorario(null);
-      return;
-    }
-
-    fetch(`/api/agendacitas_centro/by-centro/${centroId}`)
+    fetch(`/api/agendacitas_centro/by-centro/${centroId}`, {
+      cache: "no-store",
+    })
       .then((r) => r.json())
       .then(setHorario)
       .catch(() => setHorario(null));
-  }, [centroId, userCentros]);
+  }, [centroId]);
 
   useEffect(() => {
     if (!horario?.week_json) {
@@ -112,22 +118,28 @@ export default function AgendaPage() {
       return;
     }
 
-    const minutes = horario.slot_minutes || 30;
-    const firstActive = Object.values(horario.week_json).find((d) => d.active);
+    const minutes = Number(horario.slot_minutes || 30);
+    const activos = Object.values(horario.week_json).filter((d) => d?.active);
 
-    if (!firstActive) {
+    if (!activos.length) {
       setSlots([]);
       return;
     }
 
+    let minStart = "23:59";
+    let maxEnd = "00:00";
+
+    activos.forEach((d) => {
+      if (d.start < minStart) minStart = d.start;
+      if (d.end > maxEnd) maxEnd = d.end;
+    });
+
     const arr = [];
-    let [h, m] = firstActive.start.split(":").map(Number);
-    const [eh, em] = firstActive.end.split(":").map(Number);
+    let [h, m] = minStart.split(":").map(Number);
+    const [eh, em] = maxEnd.split(":").map(Number);
 
     while (h < eh || (h === eh && m < em)) {
-      arr.push(
-        `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`
-      );
+      arr.push(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
       m += minutes;
       if (m >= 60) {
         h++;
@@ -140,7 +152,13 @@ export default function AgendaPage() {
 
   async function loadOportunidades() {
     try {
-      const r = await fetch("/api/oportunidades", { cache: "no-store" });
+      const fecha_desde = format(days[0], "yyyy-MM-dd");
+      const fecha_hasta = format(days[6], "yyyy-MM-dd");
+
+      const r = await fetch(
+        `/api/oportunidades?fecha_desde=${fecha_desde}&fecha_hasta=${fecha_hasta}`,
+        { cache: "no-store" }
+      );
       const data = await r.json();
 
       let lista = Array.isArray(data) ? data : [];
@@ -152,15 +170,6 @@ export default function AgendaPage() {
         });
       }
 
-      const start = format(days[0], "yyyy-MM-dd");
-      const end = format(days[6], "yyyy-MM-dd");
-
-      lista = lista.filter((o) => {
-        if (!o.created_at) return false;
-        const fecha = toLocalDate(o.created_at);
-        return fecha >= start && fecha <= end;
-      });
-
       setOportunidades(lista);
     } catch (error) {
       console.error(error);
@@ -171,7 +180,55 @@ export default function AgendaPage() {
   useEffect(() => {
     if (scopeLoading) return;
     loadOportunidades();
-  }, [centroId, weekStart, scopeLoading, userCentros, userTalleres]);
+  }, [weekStart, scopeLoading]);
+
+  const createdByOptions = useMemo(() => {
+    const map = new Map();
+
+    oportunidades.forEach((o) => {
+      if (o.created_by && o.created_by_name) {
+        map.set(String(o.created_by), {
+          id: String(o.created_by),
+          name: o.created_by_name,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, "es", { sensitivity: "base" })
+    );
+  }, [oportunidades]);
+
+  const assignedToOptions = useMemo(() => {
+    const map = new Map();
+
+    oportunidades.forEach((o) => {
+      if (o.asignado_a && o.asignado_a_name) {
+        map.set(String(o.asignado_a), {
+          id: String(o.asignado_a),
+          name: o.asignado_a_name,
+        });
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.name.localeCompare(b.name, "es", { sensitivity: "base" })
+    );
+  }, [oportunidades]);
+
+  const filteredOportunidades = useMemo(() => {
+    return oportunidades.filter((o) => {
+      const matchesCreatedBy =
+        createdByFilter === "all" ||
+        String(o.created_by) === String(createdByFilter);
+
+      const matchesAssignedTo =
+        assignedToFilter === "all" ||
+        String(o.asignado_a) === String(assignedToFilter);
+
+      return matchesCreatedBy && matchesAssignedTo;
+    });
+  }, [oportunidades, createdByFilter, assignedToFilter]);
 
   const dayMap = [
     "domingo",
@@ -183,42 +240,137 @@ export default function AgendaPage() {
     "sabado",
   ];
 
+  function normalizeDate(value) {
+    if (!value) return "";
+    return String(value).trim().slice(0, 10);
+  }
+
+  function toMinutesFromHourString(value) {
+    if (!value) return null;
+
+    const parts = String(value).trim().split(":");
+    const hh = Number(parts[0] || 0);
+    const mm = Number(parts[1] || 0);
+
+    if (Number.isNaN(hh) || Number.isNaN(mm)) return null;
+
+    return hh * 60 + mm;
+  }
+
+  function getSlotRange(slotHour) {
+    const start = toMinutesFromHourString(slotHour);
+    const duration = Number(horario?.slot_minutes || 30);
+
+    if (start == null) return null;
+
+    return {
+      start,
+      end: start + duration,
+    };
+  }
+
   function enabled(day, hour) {
     if (!horario) return true;
+
     const cfg = horario.week_json?.[dayMap[day.getDay()]];
     if (!cfg?.active) return false;
-    return hour >= cfg.start && hour < cfg.end;
+
+    const slotMinutes = toMinutesFromHourString(hour);
+    const startMinutes = toMinutesFromHourString(cfg.start);
+    const endMinutes = toMinutesFromHourString(cfg.end);
+
+    if (
+      slotMinutes == null ||
+      startMinutes == null ||
+      endMinutes == null
+    ) {
+      return false;
+    }
+
+    return slotMinutes >= startMinutes && slotMinutes < endMinutes;
   }
 
   function past(day, hour) {
     const now = new Date();
-    const slot = new Date(`${format(day, "yyyy-MM-dd")}T${hour}`);
-    return slot < now;
-  }
+    const minutes = toMinutesFromHourString(hour);
 
-  function toLocalHour(date) {
-    return new Date(date).toLocaleTimeString("es-PE", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    });
-  }
+    if (minutes == null) return false;
 
-  function toLocalDate(date) {
-    return new Date(date).toISOString().slice(0, 10);
+    const hh = Math.floor(minutes / 60);
+    const mm = minutes % 60;
+
+    const slotDate = new Date(day);
+    slotDate.setHours(hh, mm, 0, 0);
+
+    return slotDate < now;
   }
 
   function getOportunidades(day, hour) {
     const date = format(day, "yyyy-MM-dd");
+    const slotRange = getSlotRange(hour);
 
-    return oportunidades.filter((o) => {
-      if (!o.created_at) return false;
+    if (!slotRange) return [];
+
+    return filteredOportunidades.filter((o) => {
+      const fecha = normalizeDate(o.fecha_agenda);
+      const minutosOportunidad = toMinutesFromHourString(o.hora_agenda);
+
+      if (!fecha || minutosOportunidad == null) return false;
+      if (fecha !== date) return false;
 
       return (
-        toLocalDate(o.created_at) === date &&
-        toLocalHour(o.created_at) === hour
+        minutosOportunidad >= slotRange.start &&
+        minutosOportunidad < slotRange.end
       );
     });
+  }
+
+  function isNuevoStage(oportunidad) {
+    const etapa = String(oportunidad?.etapa_name || "")
+      .trim()
+      .toLowerCase();
+    return etapa === "nuevo";
+  }
+
+  function shouldPaintAsReprogramado(oportunidad) {
+    const hasPadre =
+      oportunidad?.oportunidad_padre_id !== null &&
+      oportunidad?.oportunidad_padre_id !== undefined &&
+      String(oportunidad.oportunidad_padre_id).trim() !== "";
+
+    return hasPadre && isNuevoStage(oportunidad);
+  }
+
+  function getVisualColor(oportunidad) {
+    if (shouldPaintAsReprogramado(oportunidad)) {
+      return "#8b5cf6";
+    }
+
+    if (
+      typeof oportunidad?.etapa_color === "string" &&
+      oportunidad.etapa_color.trim()
+    ) {
+      return oportunidad.etapa_color.trim();
+    }
+
+    return "#f97316";
+  }
+
+  function getCardStyle(oportunidad) {
+    const safeColor = getVisualColor(oportunidad);
+
+    return {
+      borderLeft: `4px solid ${safeColor}`,
+      backgroundColor: `${safeColor}15`,
+    };
+  }
+
+  function getEtapaVisualText(oportunidad) {
+    if (shouldPaintAsReprogramado(oportunidad)) {
+      return "Reprogramado";
+    }
+
+    return oportunidad?.etapa_name || oportunidad?.origen_name || "-";
   }
 
   function openMenu(day, hour, e) {
@@ -239,17 +391,11 @@ export default function AgendaPage() {
           {format(days[6], "dd MMM", { locale: es })}
         </span>
 
-        <Button
-          size="icon"
-          onClick={() => setWeekStart(subWeeks(weekStart, 1))}
-        >
+        <Button size="icon" onClick={() => setWeekStart(subWeeks(weekStart, 1))}>
           <ChevronLeft />
         </Button>
 
-        <Button
-          size="icon"
-          onClick={() => setWeekStart(addWeeks(weekStart, 1))}
-        >
+        <Button size="icon" onClick={() => setWeekStart(addWeeks(weekStart, 1))}>
           <ChevronRight />
         </Button>
 
@@ -278,15 +424,49 @@ export default function AgendaPage() {
           </SelectContent>
         </Select>
 
-        <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setOpenOportunidadDialog(true)}
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            Nueva oportunidad
-          </Button>
-        </div>
+        <Select value={createdByFilter} onValueChange={setCreatedByFilter}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder="Filtrar creado por" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los creadores</SelectItem>
+            {createdByOptions.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={assignedToFilter} onValueChange={setAssignedToFilter}>
+          <SelectTrigger className="w-[220px]">
+            <SelectValue placeholder="Filtrar asignado a" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos los asignados</SelectItem>
+            {assignedToOptions.map((item) => (
+              <SelectItem key={item.id} value={item.id}>
+                {item.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          variant="outline"
+          onClick={() => {
+            setSelectedOportunidad(null);
+            setDialogDefaults({
+              fecha: "",
+              hora: "",
+              oportunidadPadreId: "",
+            });
+            setOpenOportunidadDialog(true);
+          }}
+        >
+          <Plus className="w-4 h-4 mr-2" />
+          Nueva oportunidad
+        </Button>
       </div>
 
       {!scopeLoading && centros.length === 0 && (
@@ -302,7 +482,7 @@ export default function AgendaPage() {
             {days.map((d) => (
               <div
                 key={d.toISOString()}
-                className="p-2 text-center font-medium border-l"
+                className="p-2 text-center font-medium border-l capitalize"
               >
                 {format(d, "EEEE dd", { locale: es })}
               </div>
@@ -321,7 +501,7 @@ export default function AgendaPage() {
                 return (
                   <div
                     key={`${dayString}-${h}`}
-                    className={`border-t border-l h-24 relative ${
+                    className={`border-t border-l min-h-24 relative ${
                       blocked
                         ? "bg-gray-100 cursor-not-allowed"
                         : "hover:bg-[#5e17eb]/10 cursor-pointer"
@@ -332,25 +512,52 @@ export default function AgendaPage() {
                     }}
                   >
                     <div className="absolute inset-1 overflow-auto space-y-1">
-                      {oportunidadesSlot.map((o, i) => (
+                      {oportunidadesSlot.map((o) => (
                         <div
-                          key={`opp-${i}`}
-                          className="rounded shadow border text-[10px] p-1 overflow-hidden bg-[#fff7ed]"
+                          key={o.id}
+                          className="rounded shadow border text-[10px] p-1 overflow-hidden cursor-pointer"
+                          style={getCardStyle(o)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuCell(null);
+                            setSelectedOportunidad(o);
+                            setDialogDefaults({
+                              fecha: o.fecha_agenda || "",
+                              hora: o.hora_agenda || "",
+                              oportunidadPadreId: "",
+                            });
+                            setOpenOportunidadDialog(true);
+                          }}
                         >
-                          <div className="h-1 mb-1 rounded bg-orange-500" />
+                          
+
                           <div className="font-semibold">
-                            {o.cliente_name || "Oportunidad"}
+                            {o.oportunidad_id || "Oportunidad"}
                           </div>
+
                           <div className="truncate">
-                            {o.modelo_name || ""}
-                            {o.modelo_name && o.marca_name ? " - " : ""}
+                            {o.cliente_name || "Sin cliente"}
+                          </div>
+
+                          <div className="truncate">
                             {o.marca_name || ""}
+                            {o.marca_name && o.modelo_name ? " - " : ""}
+                            {o.modelo_name || ""}
                           </div>
+
                           <div className="truncate">
-                            {o.etapa_name || o.origen_name || "-"}
+                            {getEtapaVisualText(o)}
+                          </div>
+
+                          <div className="truncate text-[9px]">
+                            {o.origen_name || ""}
                           </div>
                           <div className="truncate text-[9px]">
-                            {o.suborigen_name || o.detalle || ""}
+                            {o.detalle || ""}
+                          </div>
+
+                          <div className="text-[9px] text-gray-500">
+                            {String(o.hora_agenda || "").slice(0, 8)}
                           </div>
                         </div>
                       ))}
@@ -362,11 +569,17 @@ export default function AgendaPage() {
                         <div
                           ref={menuRef}
                           onClick={(e) => e.stopPropagation()}
-                          className="absolute z-10 bg-white border rounded shadow p-2 top-2 left-2 w-44"
+                          className="absolute z-10 bg-white border rounded shadow p-2 top-2 left-2 w-48"
                         >
                           <button
-                            className="block w-full text-left hover:bg-gray-100 px-2 py-1"
+                            className="block w-full text-left hover:bg-gray-100 px-2 py-1 rounded"
                             onClick={() => {
+                              setSelectedOportunidad(null);
+                              setDialogDefaults({
+                                fecha: dayString,
+                                hora: h,
+                                oportunidadPadreId: "",
+                              });
                               setMenuCell(null);
                               setOpenOportunidadDialog(true);
                             }}
@@ -386,8 +599,18 @@ export default function AgendaPage() {
       <OportunidadDialog
         open={openOportunidadDialog}
         onOpenChange={setOpenOportunidadDialog}
+        defaultFecha={dialogDefaults.fecha}
+        defaultHora={dialogDefaults.hora}
+        oportunidadPadreId={dialogDefaults.oportunidadPadreId}
+        oportunidad={selectedOportunidad}
         onSuccess={() => {
           setOpenOportunidadDialog(false);
+          setSelectedOportunidad(null);
+          setDialogDefaults({
+            fecha: "",
+            hora: "",
+            oportunidadPadreId: "",
+          });
           loadOportunidades();
         }}
       />
