@@ -361,7 +361,7 @@ export default function ConversationsPage() {
   }
 
   return (
-    <div className="h-full min-h-0 flex flex-col gap-2">
+    <div className="h-full min-h-0 flex flex-col gap-2 overflow-y-auto pr-1">
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-2 items-start">
         {pageError && (
           <div className="xl:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">

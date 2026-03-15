@@ -38,6 +38,7 @@ export default function TimelineSheet({
   const [selectedChannel, setSelectedChannel] = useState("whatsapp");
   const scrollRef = useRef(null);
   const lastMarkedRef = useRef(0);
+  const stickToBottomRef = useRef(true);
 
   function toDatetimeLocalValue(dateLike) {
     if (!dateLike) return "";
@@ -198,8 +199,28 @@ export default function TimelineSheet({
   }, [open, session]);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const el = scrollRef.current;
+    if (!el) return;
+
+    function handleScroll() {
+      const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      stickToBottomRef.current = distanceToBottom < 80;
+    }
+
+    el.addEventListener("scroll", handleScroll);
+    handleScroll();
+
+    return () => {
+      el.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (stickToBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
 
