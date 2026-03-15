@@ -2,10 +2,10 @@ const mysql = require('mysql2/promise');
 
 (async () => {
   const conn = await mysql.createConnection({
-    host: '193.203.175.251',
-    user: 'u330129056_root',
-    password: 'C!nBNAqJR0c',
-    database: 'u330129056_picaje'
+    host: process.env.DB_HOST || '134.209.174.175',
+    user: process.env.DB_USER || 'user',
+    password: process.env.DB_PASS || '12345678root',
+    database: process.env.DB_NAME || 'picaje'
   });
 
   // Add centro/taller/mostrador + descuento to cotizaciones
