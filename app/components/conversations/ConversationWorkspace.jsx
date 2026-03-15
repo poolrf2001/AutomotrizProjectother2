@@ -257,6 +257,7 @@ export default function ConversationWorkspace({
           text,
           direction: "outbound",
           source: "manual_ui",
+          source_channel: session?.source_channel || "whatsapp",
         }),
       });
 

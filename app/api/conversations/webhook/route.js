@@ -12,6 +12,100 @@ function isMissingColumnError(error) {
   return error?.code === "ER_BAD_FIELD_ERROR" || error?.errno === 1054;
 }
 
+function isMissingTableError(error) {
+  return error?.code === "ER_NO_SUCH_TABLE" || error?.errno === 1146;
+}
+
+function normalizePlatform(raw) {
+  const value = String(raw || "").trim().toLowerCase();
+  if (value === "instagram" || value === "facebook") return value;
+  return null;
+}
+
+function normalizeCell(rawPhone) {
+  return String(rawPhone || "").replace(/\D/g, "").trim();
+}
+
+async function resolvePhoneFromSocialIdentity(platform, platformId) {
+  if (!platform || !platformId) return null;
+
+  try {
+    const [rows] = await db.query(
+      `
+      SELECT celular
+      FROM social_identities
+      WHERE platform = ?
+        AND platform_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [platform, platformId]
+    );
+
+    const celular = rows?.[0]?.celular;
+    if (!celular) return null;
+    return normalizePhone(celular);
+  } catch (error) {
+    if (isMissingTableError(error) || isMissingColumnError(error)) return null;
+    throw error;
+  }
+}
+
+async function linkSocialIdentity({ platform, platformId, phone }) {
+  if (!platform || !platformId || !phone) {
+    return { linked: false, reason: "Datos incompletos para vinculación" };
+  }
+
+  const celular = normalizeCell(phone);
+  if (!celular) return { linked: false, reason: "Celular inválido" };
+
+  try {
+    const [rows] = await db.query(
+      `
+      SELECT id, celular
+      FROM social_identities
+      WHERE platform = ?
+        AND platform_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [platform, platformId]
+    );
+
+    const existing = rows?.[0] || null;
+
+    if (existing?.id) {
+      if (String(existing.celular || "") !== celular) {
+        await db.query(
+          `
+          UPDATE social_identities
+          SET celular = ?
+          WHERE id = ?
+          `,
+          [celular, existing.id]
+        );
+      }
+
+      return { linked: true, updated: true };
+    }
+
+    await db.query(
+      `
+      INSERT INTO social_identities (platform, platform_id, celular, created_at)
+      VALUES (?, ?, ?, NOW())
+      `,
+      [platform, platformId, celular]
+    );
+
+    return { linked: true, created: true };
+  } catch (error) {
+    if (isMissingTableError(error) || isMissingColumnError(error)) {
+      return { linked: false, reason: "Tabla social_identities no disponible" };
+    }
+    throw error;
+  }
+}
+
 function getSlaMinutes() {
   const raw = Number(process.env.CONVERSATIONS_SLA_MINUTES || 30);
   if (Number.isNaN(raw)) return 30;
@@ -188,6 +282,8 @@ async function resolveSessionId(phone, clientId) {
 //   text: string,
 //   source?: string,
 //   client_id?: number,
+//   platform?: "instagram" | "facebook",
+//   platform_id?: string,
 //   external_message_id?: string,
 //   event_type?: "message" | "status",
 //   status?: "queued" | "sent" | "delivered" | "read" | "failed",
@@ -239,8 +335,16 @@ export async function POST(req) {
     }
 
     const text = (body?.text || "").trim();
-    const phone = normalizePhone(body?.phone);
     const source = (body?.source || "n8n").trim();
+    const platform = normalizePlatform(body?.platform || body?.source_channel || source);
+    const platformId = String(
+      body?.platform_id || body?.social_id || body?.sender_id || ""
+    ).trim();
+    const providedPhone = normalizePhone(body?.phone);
+    const identityPhone = providedPhone
+      ? null
+      : await resolvePhoneFromSocialIdentity(platform, platformId);
+    const phone = providedPhone || identityPhone;
     const clientId = Number(body?.client_id) || null;
 
     if (!text) {
@@ -249,7 +353,12 @@ export async function POST(req) {
 
     if (!phone && !clientId) {
       return NextResponse.json(
-        { message: "Se requiere phone o client_id" },
+        {
+          message: "Se requiere phone o client_id (o identidad social ya vinculada)",
+          needs_identity_link: Boolean(platform && platformId),
+          platform: platform || null,
+          platform_id: platformId || null,
+        },
         { status: 400 }
       );
     }
@@ -278,6 +387,12 @@ export async function POST(req) {
       source,
       externalMessageId,
       providerPayload,
+    });
+
+    const identityLink = await linkSocialIdentity({
+      platform,
+      platformId,
+      phone,
     });
 
     const slaMinutes = getSlaMinutes();
@@ -322,6 +437,10 @@ export async function POST(req) {
         message_id: inserted.id,
         source,
         source_channel: sourceChannel,
+        platform: platform || null,
+        platform_id: platformId || null,
+        identity_phone_resolved: Boolean(identityPhone),
+        identity_linked: Boolean(identityLink?.linked),
         external_message_id: externalMessageId || null,
         tracking_enabled: inserted.tracked,
         idempotency_key: inserted.idempotencyKey,

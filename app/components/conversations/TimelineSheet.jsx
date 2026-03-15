@@ -219,6 +219,7 @@ export default function TimelineSheet({
           text,
           direction: "outbound",
           source: "manual_ui",
+          source_channel: session?.source_channel || "whatsapp",
         }),
       });
 

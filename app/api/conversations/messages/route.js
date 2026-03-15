@@ -51,6 +51,60 @@ function getSlaMinutes() {
   return Math.max(5, Math.min(raw, 1440));
 }
 
+function normalizeCell(rawPhone) {
+  return String(rawPhone || "").replace(/\D/g, "").trim();
+}
+
+function normalizeSocialPlatform(rawChannel) {
+  const value = String(rawChannel || "").trim().toLowerCase();
+  if (value === "instagram" || value === "facebook") return value;
+  return null;
+}
+
+async function resolveSocialRecipient({ phone, sourceChannel }) {
+  const platform = normalizeSocialPlatform(sourceChannel);
+  if (!platform || !phone) return null;
+
+  const compact = normalizeCell(phone);
+  const candidates = [...new Set([
+    String(phone || "").trim(),
+    compact,
+    compact?.length === 9 ? `51${compact}` : null,
+    compact?.length === 9 ? `+51${compact}` : null,
+  ].filter(Boolean))];
+
+  if (!candidates.length) return null;
+
+  try {
+    const placeholders = candidates.map(() => "?").join(", ");
+    const [rows] = await db.query(
+      `
+      SELECT platform, platform_id, celular
+      FROM social_identities
+      WHERE platform = ?
+        AND celular IN (${placeholders})
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [platform, ...candidates]
+    );
+
+    const found = rows?.[0] || null;
+    if (!found?.platform_id) return null;
+
+    return {
+      platform,
+      platform_id: String(found.platform_id),
+      celular: found.celular || null,
+    };
+  } catch (error) {
+    if (isMissingColumnError(error) || error?.code === "ER_NO_SUCH_TABLE" || error?.errno === 1146) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function findByIdempotency(idempotencyKey) {
   try {
     const [rows] = await db.query(
@@ -298,12 +352,19 @@ export async function POST(req) {
     let deliveryTrackingEnabled = inserted.tracked;
 
     if (!isInbound) {
+      const socialRecipient = await resolveSocialRecipient({
+        phone: session.phone,
+        sourceChannel,
+      });
+
       const outboundPayload = {
         session_id: sessionId,
         phone: session.phone,
         text,
         source,
         source_channel: sourceChannel,
+        platform: socialRecipient?.platform || null,
+        platform_id: socialRecipient?.platform_id || null,
         idempotency_key: idempotencyKey,
         external_message_id: externalMessageId || null,
         created_at: new Date().toISOString(),
