@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+const REGEX_OP = "^OP-[0-9]+$";
+
 /* =========================
    GET: obtener una oportunidad
+   - solo OP
 ========================= */
 export async function GET(req, { params }) {
   try {
@@ -59,14 +62,15 @@ export async function GET(req, { params }) {
       LEFT JOIN usuarios u1 ON u1.id = o.created_by
       LEFT JOIN usuarios u2 ON u2.id = o.asignado_a
       WHERE o.id = ?
+        AND o.oportunidad_id REGEXP ?
       LIMIT 1
       `,
-      [id]
+      [id, REGEX_OP]
     );
 
     if (!rows.length) {
       return NextResponse.json(
-        { message: "Oportunidad no encontrada" },
+        { message: "Oportunidad OP no encontrada" },
         { status: 404 }
       );
     }
@@ -86,6 +90,7 @@ export async function GET(req, { params }) {
 
 /* =========================
    PUT: actualizar oportunidad
+   - solo OP
 ========================= */
 export async function PUT(req, { params }) {
   try {
@@ -126,12 +131,12 @@ export async function PUT(req, { params }) {
 
     const fecha_agenda =
       body.fecha_agenda && String(body.fecha_agenda).trim() !== ""
-        ? String(body.fecha_agenda)
+        ? String(body.fecha_agenda).trim()
         : null;
 
     const hora_agenda =
       body.hora_agenda && String(body.hora_agenda).trim() !== ""
-        ? String(body.hora_agenda)
+        ? String(body.hora_agenda).trim()
         : null;
 
     if (
@@ -154,13 +159,19 @@ export async function PUT(req, { params }) {
     }
 
     const [exists] = await db.query(
-      `SELECT id FROM oportunidades WHERE id = ? LIMIT 1`,
-      [id]
+      `
+      SELECT id
+      FROM oportunidades
+      WHERE id = ?
+        AND oportunidad_id REGEXP ?
+      LIMIT 1
+      `,
+      [id, REGEX_OP]
     );
 
     if (!exists.length) {
       return NextResponse.json(
-        { message: "Oportunidad no encontrada" },
+        { message: "Oportunidad OP no encontrada" },
         { status: 404 }
       );
     }
@@ -283,6 +294,7 @@ export async function PUT(req, { params }) {
         hora_agenda = ?,
         updated_at = NOW()
       WHERE id = ?
+        AND oportunidad_id REGEXP ?
       `,
       [
         cliente_id,
@@ -297,11 +309,12 @@ export async function PUT(req, { params }) {
         fecha_agenda,
         hora_agenda,
         id,
+        REGEX_OP,
       ]
     );
 
     return NextResponse.json({
-      message: "Oportunidad actualizada",
+      message: "Oportunidad OP actualizada",
     });
   } catch (error) {
     console.error("PUT /api/oportunidades/[id] error:", error);
@@ -319,24 +332,29 @@ export async function PUT(req, { params }) {
 
 /* =========================
    DELETE: eliminar oportunidad
+   - solo OP
 ========================= */
 export async function DELETE(req, { params }) {
   try {
     const { id } = await params;
 
     const [result] = await db.query(
-      `DELETE FROM oportunidades WHERE id = ?`,
-      [id]
+      `
+      DELETE FROM oportunidades
+      WHERE id = ?
+        AND oportunidad_id REGEXP ?
+      `,
+      [id, REGEX_OP]
     );
 
     if (!result.affectedRows) {
       return NextResponse.json(
-        { message: "Oportunidad no encontrada" },
+        { message: "Oportunidad OP no encontrada" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ message: "Oportunidad eliminada" });
+    return NextResponse.json({ message: "Oportunidad OP eliminada" });
   } catch (error) {
     console.error("DELETE /api/oportunidades/[id] error:", error);
     return NextResponse.json(

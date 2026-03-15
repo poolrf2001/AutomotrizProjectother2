@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+const REGEX_OP = "^OP-[0-9]+$";
+
 async function getEtapaIdByNombre(nombre) {
   const [rows] = await db.query(
     `
@@ -28,13 +30,19 @@ export async function PATCH(req, { params }) {
         : Number(body.asignado_a);
 
     const [exists] = await db.query(
-      `SELECT id FROM oportunidades WHERE id = ? LIMIT 1`,
-      [id]
+      `
+      SELECT id, oportunidad_id
+      FROM oportunidades
+      WHERE id = ?
+        AND oportunidad_id REGEXP ?
+      LIMIT 1
+      `,
+      [id, REGEX_OP]
     );
 
     if (!exists.length) {
       return NextResponse.json(
-        { message: "Oportunidad no encontrada" },
+        { message: "Oportunidad OP no encontrada" },
         { status: 404 }
       );
     }
@@ -69,12 +77,13 @@ export async function PATCH(req, { params }) {
           etapasconversion_id = ?,
           updated_at = NOW()
         WHERE id = ?
+          AND oportunidad_id REGEXP ?
         `,
-        [asignado_a, etapaAsignadoId, id]
+        [asignado_a, etapaAsignadoId, id, REGEX_OP]
       );
 
       return NextResponse.json({
-        message: "Oportunidad asignada correctamente",
+        message: "Oportunidad OP asignada correctamente",
       });
     }
 
@@ -95,18 +104,19 @@ export async function PATCH(req, { params }) {
         etapasconversion_id = ?,
         updated_at = NOW()
       WHERE id = ?
+        AND oportunidad_id REGEXP ?
       `,
-      [etapaNuevoId, id]
+      [etapaNuevoId, id, REGEX_OP]
     );
 
     return NextResponse.json({
-      message: "Asignación removida correctamente",
+      message: "Asignación removida correctamente de la oportunidad OP",
     });
   } catch (error) {
     console.error("PATCH /api/oportunidades/[id]/asignar error:", error);
     return NextResponse.json(
       {
-        message: "Error al asignar oportunidad",
+        message: "Error al asignar oportunidad OP",
         error: error.message,
         sqlMessage: error.sqlMessage || null,
         code: error.code || null,

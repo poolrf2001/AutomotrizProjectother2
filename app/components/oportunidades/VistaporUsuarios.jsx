@@ -39,60 +39,133 @@ function generateHours() {
 function renderTooltipContent(card) {
   return (
     <div className="space-y-1 text-sm">
-      <div><span className="font-semibold">Código:</span> {card?.oportunidad_id || "-"}</div>
-      <div><span className="font-semibold">Cliente:</span> {card?.cliente_name || "-"}</div>
-      <div><span className="font-semibold">Vehículo:</span> {card?.modelo_name || "-"} {card?.marca_name ? `- ${card.marca_name}` : ""}</div>
-      <div><span className="font-semibold">Origen:</span> {card?.origen_name || "-"}</div>
-      <div><span className="font-semibold">Suborigen:</span> {card?.suborigen_name || "-"}</div>
-      <div><span className="font-semibold">Etapa:</span> {card?.etapa_name || "-"}</div>
-      <div><span className="font-semibold">Asignado a:</span> {card?.asignado_a_name || "Sin asignar"}</div>
-      <div><span className="font-semibold">Fecha:</span> {card?.fecha_agenda || "-"}</div>
-      <div><span className="font-semibold">Hora:</span> {getHoraLabel(card?.hora_agenda) || "-"}</div>
+      <div>
+        <span className="font-semibold">Código:</span>{" "}
+        {card?.oportunidad_id || "-"}
+      </div>
+      <div>
+        <span className="font-semibold">Cliente:</span>{" "}
+        {card?.cliente_name || "-"}
+      </div>
+      <div>
+        <span className="font-semibold">Vehículo:</span>{" "}
+        {card?.modelo_name || "-"}
+        {card?.marca_name ? ` - ${card.marca_name}` : ""}
+      </div>
+      <div>
+        <span className="font-semibold">Origen:</span>{" "}
+        {card?.origen_name || "-"}
+      </div>
+      <div>
+        <span className="font-semibold">Suborigen:</span>{" "}
+        {card?.suborigen_name || "-"}
+      </div>
+      <div>
+        <span className="font-semibold">Etapa:</span>{" "}
+        {card?.etapa_name || "-"}
+      </div>
+      <div>
+        <span className="font-semibold">Asignado a:</span>{" "}
+        {card?.asignado_a_name || "Sin asignar"}
+      </div>
+      <div>
+        <span className="font-semibold">Fecha:</span>{" "}
+        {card?.fecha_agenda || "-"}
+      </div>
+      <div>
+        <span className="font-semibold">Hora:</span>{" "}
+        {getHoraLabel(card?.hora_agenda) || "-"}
+      </div>
       {card?.detalle ? (
-        <div><span className="font-semibold">Detalle:</span> {card.detalle}</div>
+        <div>
+          <span className="font-semibold">Detalle:</span> {card.detalle}
+        </div>
       ) : null}
     </div>
   );
 }
 
-export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) {
+export default function VistaPorUsuarios({
+  rows,
+  usuarios,
+  onOpenOportunidad,
+  canViewAll = false,
+  currentUserId = null,
+}) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [openUsers, setOpenUsers] = useState(false);
 
   const usuariosActivos = useMemo(() => {
-    return usuarios.filter(
+    const base = (usuarios || []).filter(
       (u) =>
         Number(u?.is_active) === 1 ||
         u?.is_active === true ||
         u?.is_active == null
     );
-  }, [usuarios]);
+
+    if (canViewAll) return base;
+
+    return base.filter((u) => String(u?.id) === String(currentUserId));
+  }, [usuarios, canViewAll, currentUserId]);
 
   useEffect(() => {
-    if (usuariosActivos.length && selectedUsers.length === 0) {
-      setSelectedUsers(usuariosActivos.map((u) => String(u.id)));
+    if (!usuariosActivos.length) {
+      setSelectedUsers([]);
+      return;
     }
-  }, [usuariosActivos, selectedUsers.length]);
+
+    if (canViewAll) {
+      if (selectedUsers.length === 0) {
+        setSelectedUsers(usuariosActivos.map((u) => String(u.id)));
+      }
+      return;
+    }
+
+    setSelectedUsers(
+      currentUserId != null ? [String(currentUserId)] : []
+    );
+  }, [usuariosActivos, canViewAll, currentUserId]);
 
   const horas = useMemo(() => generateHours(), []);
 
   const usuariosFiltrados = useMemo(() => {
+    if (!canViewAll) {
+      return usuariosActivos;
+    }
+
     if (!selectedUsers.length) return usuariosActivos;
+
     return usuariosActivos.filter((u) => selectedUsers.includes(String(u.id)));
-  }, [usuariosActivos, selectedUsers]);
+  }, [usuariosActivos, selectedUsers, canViewAll]);
+
+  const visibleRows = useMemo(() => {
+    if (canViewAll) return rows || [];
+    if (!currentUserId) return [];
+
+    return (rows || []).filter(
+      (r) => String(r?.asignado_a ?? "") === String(currentUserId)
+    );
+  }, [rows, canViewAll, currentUserId]);
 
   const oportunidadesAsignadas = useMemo(() => {
-    return rows.filter((r) => r?.asignado_a != null && r?.hora_agenda && r?.fecha_agenda);
-  }, [rows]);
+    return visibleRows.filter(
+      (r) => r?.asignado_a != null && r?.hora_agenda && r?.fecha_agenda
+    );
+  }, [visibleRows]);
 
   const noLlegaron = useMemo(() => {
-    return rows.filter((r) => {
+    return visibleRows.filter((r) => {
       const etapa = String(r?.etapa_name || "").toLowerCase().trim();
-      return etapa.includes("no llegó") || etapa.includes("no llego");
+      return (
+        (etapa.includes("no llegó") || etapa.includes("no llego")) &&
+        r?.hora_agenda
+      );
     });
-  }, [rows]);
+  }, [visibleRows]);
 
   function toggleUser(id) {
+    if (!canViewAll) return;
+
     const key = String(id);
     setSelectedUsers((prev) =>
       prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]
@@ -102,41 +175,45 @@ export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) 
   return (
     <TooltipProvider delayDuration={150}>
       <div className="space-y-4">
-        <div className="flex items-center justify-end">
-          <Popover open={openUsers} onOpenChange={setOpenUsers}>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className="rounded-full">
-                Asesores +{selectedUsers.length}
-                <ChevronsUpDown className="ml-2 h-4 w-4" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[280px] p-2">
-              <div className="space-y-2 max-h-[300px] overflow-auto">
-                {usuariosActivos.map((u) => {
-                  const checked = selectedUsers.includes(String(u.id));
-                  return (
-                    <button
-                      key={u.id}
-                      type="button"
-                      onClick={() => toggleUser(u.id)}
-                      className="w-full flex items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-muted"
-                    >
-                      <div
-                        className={cn(
-                          "flex h-4 w-4 items-center justify-center rounded border text-[10px]",
-                          checked ? "bg-primary text-primary-foreground" : "bg-white"
-                        )}
+        {canViewAll && (
+          <div className="flex items-center justify-end">
+            <Popover open={openUsers} onOpenChange={setOpenUsers}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="rounded-full">
+                  Asesores +{selectedUsers.length}
+                  <ChevronsUpDown className="ml-2 h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[280px] p-2">
+                <div className="space-y-2 max-h-[300px] overflow-auto">
+                  {usuariosActivos.map((u) => {
+                    const checked = selectedUsers.includes(String(u.id));
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleUser(u.id)}
+                        className="w-full flex items-center gap-2 rounded-md px-2 py-2 text-left hover:bg-muted"
                       >
-                        {checked ? "✓" : ""}
-                      </div>
-                      <span className="text-sm">{getUserLabel(u)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
+                        <div
+                          className={cn(
+                            "flex h-4 w-4 items-center justify-center rounded border text-[10px]",
+                            checked
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-white"
+                          )}
+                        >
+                          {checked ? "✓" : ""}
+                        </div>
+                        <span className="text-sm">{getUserLabel(u)}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
 
         <div className="rounded-2xl border">
           <div className="overflow-auto max-h-[75vh]">
@@ -161,13 +238,19 @@ export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) 
 
               {usuariosFiltrados.map((usuario, idx) => {
                 const colorDot =
-                  idx % 3 === 0 ? "bg-cyan-500" : idx % 3 === 1 ? "bg-blue-500" : "bg-indigo-700";
+                  idx % 3 === 0
+                    ? "bg-cyan-500"
+                    : idx % 3 === 1
+                    ? "bg-blue-500"
+                    : "bg-indigo-700";
 
                 return (
                   <div key={usuario.id} className="contents">
                     <div className="sticky left-0 z-10 bg-background border-r border-b p-4 flex items-center gap-3 min-h-[92px]">
                       <span className={cn("h-2.5 w-2.5 rounded-full", colorDot)} />
-                      <span className="text-sm leading-5">{getUserLabel(usuario)}</span>
+                      <span className="text-sm leading-5">
+                        {getUserLabel(usuario)}
+                      </span>
                     </div>
 
                     {horas.map((hora) => {
@@ -191,8 +274,12 @@ export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) 
                                   className="rounded-md border bg-white p-2 text-xs shadow-sm h-full w-full text-left transition hover:bg-slate-50"
                                   style={{
                                     borderTop: `4px solid ${
-                                      String(card?.etapa_name || "").toLowerCase().includes("no llegó") ||
-                                      String(card?.etapa_name || "").toLowerCase().includes("no llego")
+                                      String(card?.etapa_name || "")
+                                        .toLowerCase()
+                                        .includes("no llegó") ||
+                                      String(card?.etapa_name || "")
+                                        .toLowerCase()
+                                        .includes("no llego")
                                         ? "#ef4444"
                                         : "#10b981"
                                     }`,
@@ -201,7 +288,9 @@ export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) 
                                   <div className="font-bold truncate">
                                     {card.oportunidad_id}
                                   </div>
-                                  <div className="truncate">{card.cliente_name || ""}</div>
+                                  <div className="truncate">
+                                    {card.cliente_name || ""}
+                                  </div>
                                   <div>{getHoraLabel(card.hora_agenda) || "-"}</div>
                                 </button>
                               </TooltipTrigger>
@@ -223,7 +312,9 @@ export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) 
               </div>
 
               {horas.map((hora) => {
-                const items = noLlegaron.filter((r) => getHoraLabel(r?.hora_agenda) === hora);
+                const items = noLlegaron.filter(
+                  (r) => getHoraLabel(r?.hora_agenda) === hora
+                );
 
                 return (
                   <div key={`no-llego-${hora}`} className="border-r p-1 min-h-[92px]">
@@ -237,9 +328,15 @@ export default function VistaPorUsuarios({ rows, usuarios, onOpenOportunidad }) 
                               className="rounded-md border bg-white p-2 text-xs shadow-sm w-full text-left transition hover:bg-slate-50"
                               style={{ borderTop: "4px solid #ef4444" }}
                             >
-                              <div className="font-bold truncate">{card.oportunidad_id}</div>
-                              <div className="truncate">{card.cliente_name || ""}</div>
-                              <div className="font-semibold uppercase">NO LLEGÓ</div>
+                              <div className="font-bold truncate">
+                                {card.oportunidad_id}
+                              </div>
+                              <div className="truncate">
+                                {card.cliente_name || ""}
+                              </div>
+                              <div className="font-semibold uppercase">
+                                NO LLEGÓ
+                              </div>
                             </button>
                           </TooltipTrigger>
                           <TooltipContent side="top" className="max-w-[320px]">

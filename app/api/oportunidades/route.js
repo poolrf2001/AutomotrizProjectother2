@@ -3,6 +3,9 @@ import { db } from "@/lib/db";
 
 /* =========================
    GET: listar oportunidades
+   - solo devuelve las vigentes
+   - si una oportunidad fue reprogramada, muestra solo la última
+   - solo lista registros OP-[numero]
 ========================= */
 export async function GET(req) {
   try {
@@ -67,6 +70,12 @@ export async function GET(req) {
       LEFT JOIN usuarios u2 ON u2.id = o.asignado_a
       LEFT JOIN oportunidades op ON op.id = o.oportunidad_padre_id
       WHERE 1 = 1
+        AND o.oportunidad_id REGEXP '^OP-[0-9]+$'
+        AND NOT EXISTS (
+          SELECT 1
+          FROM oportunidades child
+          WHERE child.oportunidad_padre_id = o.id
+        )
     `;
 
     const params = [];
@@ -106,7 +115,7 @@ export async function GET(req) {
       params.push(fecha_hasta);
     }
 
-    query += ` ORDER BY o.id DESC`;
+    query += ` ORDER BY o.fecha_agenda ASC, o.hora_agenda ASC, o.id DESC`;
 
     const [rows] = await db.query(query, params);
 
@@ -122,9 +131,15 @@ export async function GET(req) {
 
 /* =========================
    POST: crear oportunidad o reprogramar
+   - reprogramación conserva el mismo código del padre
+   - nuevas oportunidades generan correlativo OP-[numero]
 ========================= */
 export async function POST(req) {
+  const conn = await db.getConnection();
+
   try {
+    await conn.beginTransaction();
+
     const body = await req.json();
 
     const cliente_id = body.cliente_id ? Number(body.cliente_id) : null;
@@ -147,21 +162,21 @@ export async function POST(req) {
 
     const created_by = Number(body.created_by || body.creado_por);
 
-    const asignado_a =
-      body.asignado_a === null ||
-      body.asignado_a === undefined ||
-      body.asignado_a === ""
-        ? null
-        : Number(body.asignado_a);
+    const bodyTraeAsignadoA =
+      body.asignado_a !== null &&
+      body.asignado_a !== undefined &&
+      body.asignado_a !== "";
+
+    const asignado_a = bodyTraeAsignadoA ? Number(body.asignado_a) : null;
 
     const fecha_agenda =
       body.fecha_agenda && String(body.fecha_agenda).trim() !== ""
-        ? String(body.fecha_agenda)
+        ? String(body.fecha_agenda).trim()
         : null;
 
     const hora_agenda =
       body.hora_agenda && String(body.hora_agenda).trim() !== ""
-        ? String(body.hora_agenda)
+        ? String(body.hora_agenda).trim()
         : null;
 
     const oportunidad_padre_id =
@@ -174,36 +189,24 @@ export async function POST(req) {
     const esReprogramacion = !!oportunidad_padre_id;
 
     if (!created_by) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "created_by es obligatorio" },
         { status: 400 }
       );
     }
 
-    const [creador] = await db.query(
+    const [creador] = await conn.query(
       `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
       [created_by]
     );
 
     if (!creador.length) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "El usuario creador no existe" },
         { status: 404 }
       );
-    }
-
-    if (asignado_a) {
-      const [asignado] = await db.query(
-        `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
-        [asignado_a]
-      );
-
-      if (!asignado.length) {
-        return NextResponse.json(
-          { message: "El usuario asignado no existe" },
-          { status: 404 }
-        );
-      }
     }
 
     let finalClienteId = cliente_id;
@@ -212,9 +215,11 @@ export async function POST(req) {
     let finalOrigenId = origen_id;
     let finalSuborigenId = suborigen_id;
     let finalEtapaId = etapasconversion_id;
+    let finalAsignadoA = asignado_a;
+    let finalOportunidadCodigo = null;
 
     if (esReprogramacion) {
-      const [padreRows] = await db.query(
+      const [padreRows] = await conn.query(
         `
         SELECT *
         FROM oportunidades
@@ -225,6 +230,7 @@ export async function POST(req) {
       );
 
       if (!padreRows.length) {
+        await conn.rollback();
         return NextResponse.json(
           { message: "La oportunidad original no existe" },
           { status: 404 }
@@ -239,8 +245,14 @@ export async function POST(req) {
       finalOrigenId = padre.origen_id;
       finalSuborigenId = padre.suborigen_id;
       finalEtapaId = padre.etapasconversion_id;
+      finalOportunidadCodigo = padre.oportunidad_id;
+
+      if (!bodyTraeAsignadoA) {
+        finalAsignadoA = padre.asignado_a ?? null;
+      }
 
       if (!fecha_agenda || !hora_agenda) {
+        await conn.rollback();
         return NextResponse.json(
           { message: "Para reprogramar debes enviar fecha_agenda y hora_agenda" },
           { status: 400 }
@@ -254,6 +266,7 @@ export async function POST(req) {
         !finalOrigenId ||
         !finalEtapaId
       ) {
+        await conn.rollback();
         return NextResponse.json(
           {
             message:
@@ -264,44 +277,48 @@ export async function POST(req) {
       }
     }
 
-    const [cliente] = await db.query(
+    const [cliente] = await conn.query(
       `SELECT id FROM clientes WHERE id = ? LIMIT 1`,
       [finalClienteId]
     );
     if (!cliente.length) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "El cliente no existe" },
         { status: 404 }
       );
     }
 
-    const [marca] = await db.query(
+    const [marca] = await conn.query(
       `SELECT id FROM marcas WHERE id = ? LIMIT 1`,
       [finalMarcaId]
     );
     if (!marca.length) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "La marca no existe" },
         { status: 404 }
       );
     }
 
-    const [modelo] = await db.query(
+    const [modelo] = await conn.query(
       `SELECT id FROM modelos WHERE id = ? LIMIT 1`,
       [finalModeloId]
     );
     if (!modelo.length) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "El modelo no existe" },
         { status: 404 }
       );
     }
 
-    const [origen] = await db.query(
+    const [origen] = await conn.query(
       `SELECT id FROM origenes_citas WHERE id = ? LIMIT 1`,
       [finalOrigenId]
     );
     if (!origen.length) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "El origen no existe" },
         { status: 404 }
@@ -309,7 +326,7 @@ export async function POST(req) {
     }
 
     if (finalSuborigenId) {
-      const [suborigen] = await db.query(
+      const [suborigen] = await conn.query(
         `
         SELECT id
         FROM suborigenes_citas
@@ -320,6 +337,7 @@ export async function POST(req) {
       );
 
       if (!suborigen.length) {
+        await conn.rollback();
         return NextResponse.json(
           {
             message: "El suborigen no existe o no pertenece al origen seleccionado",
@@ -329,18 +347,49 @@ export async function POST(req) {
       }
     }
 
-    const [etapa] = await db.query(
+    const [etapa] = await conn.query(
       `SELECT id FROM etapasconversion WHERE id = ? LIMIT 1`,
       [finalEtapaId]
     );
     if (!etapa.length) {
+      await conn.rollback();
       return NextResponse.json(
         { message: "La etapa de conversión no existe" },
         { status: 404 }
       );
     }
 
-    const [result] = await db.query(
+    if (finalAsignadoA) {
+      const [asignado] = await conn.query(
+        `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
+        [finalAsignadoA]
+      );
+
+      if (!asignado.length) {
+        await conn.rollback();
+        return NextResponse.json(
+          { message: "El usuario asignado no existe" },
+          { status: 404 }
+        );
+      }
+    }
+
+    if (!esReprogramacion) {
+      const [maxRows] = await conn.query(`
+        SELECT COALESCE(
+          MAX(CAST(SUBSTRING(oportunidad_id, 4) AS UNSIGNED)),
+          0
+        ) AS max_num
+        FROM oportunidades
+        WHERE oportunidad_padre_id IS NULL
+          AND oportunidad_id REGEXP '^OP-[0-9]+$'
+      `);
+
+      const nextNum = Number(maxRows?.[0]?.max_num || 0) + 1;
+      finalOportunidadCodigo = `OP-${nextNum}`;
+    }
+
+    const [result] = await conn.query(
       `
       INSERT INTO oportunidades
       (
@@ -355,9 +404,10 @@ export async function POST(req) {
         asignado_a,
         fecha_agenda,
         hora_agenda,
-        oportunidad_padre_id
+        oportunidad_padre_id,
+        oportunidad_id
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         finalClienteId,
@@ -368,23 +418,15 @@ export async function POST(req) {
         detalle,
         finalEtapaId,
         created_by,
-        asignado_a,
+        finalAsignadoA,
         fecha_agenda,
         hora_agenda,
         oportunidad_padre_id,
+        finalOportunidadCodigo,
       ]
     );
 
-    const codigoOportunidad = `OP-${result.insertId}`;
-
-    await db.query(
-      `
-      UPDATE oportunidades
-      SET oportunidad_id = ?
-      WHERE id = ?
-      `,
-      [codigoOportunidad, result.insertId]
-    );
+    await conn.commit();
 
     return NextResponse.json(
       {
@@ -392,11 +434,12 @@ export async function POST(req) {
           ? "Oportunidad reprogramada"
           : "Oportunidad creada",
         id: result.insertId,
-        oportunidad_id: codigoOportunidad,
+        oportunidad_id: finalOportunidadCodigo,
       },
       { status: 201 }
     );
   } catch (error) {
+    await conn.rollback();
     console.error("POST /api/oportunidades error:", error);
     return NextResponse.json(
       {
@@ -405,5 +448,7 @@ export async function POST(req) {
       },
       { status: 500 }
     );
+  } finally {
+    conn.release();
   }
 }
