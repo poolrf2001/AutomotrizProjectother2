@@ -94,6 +94,18 @@ export default function VistaPorUsuarios({
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [openUsers, setOpenUsers] = useState(false);
+  const [estadosTiempo, setEstadosTiempo] = useState([]);
+
+  // Cargar configuración de estados de tiempo
+  useEffect(() => {
+    fetch("/api/configuracion-estados-tiempo", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data) => {
+        const lista = Array.isArray(data) ? data : [];
+        setEstadosTiempo(lista);
+      })
+      .catch(() => setEstadosTiempo([]));
+  }, []);
 
   const usuariosActivos = useMemo(() => {
     const base = (usuarios || []).filter(
@@ -153,15 +165,118 @@ export default function VistaPorUsuarios({
     );
   }, [visibleRows]);
 
-  const noLlegaron = useMemo(() => {
-    return visibleRows.filter((r) => {
-      const etapa = String(r?.etapa_name || "").toLowerCase().trim();
-      return (
-        (etapa.includes("no llegó") || etapa.includes("no llego")) &&
-        r?.hora_agenda
+  // Función para calcular minutos restantes
+  function getMinutosRestantes(fechaAgenda, horaAgenda) {
+    if (!fechaAgenda || !horaAgenda) return null;
+
+    try {
+      const fechaStr = String(fechaAgenda).trim().split("T")[0];
+      const horaStr = String(horaAgenda)
+        .trim()
+        .split(":")
+        .slice(0, 2)
+        .join(":");
+
+      const fechaHoraString = `${fechaStr}T${horaStr}:00`;
+      const ahora = new Date();
+      const agendaDateTime = new Date(fechaHoraString);
+
+      if (isNaN(agendaDateTime.getTime())) {
+        return null;
+      }
+
+      const diferencia = agendaDateTime.getTime() - ahora.getTime();
+      const minutos = Math.floor(diferencia / 1000 / 60);
+
+      return minutos;
+    } catch (error) {
+      console.error("Error calculando minutos:", error);
+      return null;
+    }
+  }
+
+  // Función para obtener el estado de tiempo
+  function getEstadoTiempo(minutosRestantes, etapasconversion_id) {
+    // Solo lógica dinámica si es "Nuevo" (etapasconversion_id === 1)
+    if (etapasconversion_id !== 1 && etapasconversion_id !== 2) {
+      return "suficiente";
+    }
+
+    if (minutosRestantes === null) {
+      return null;
+    }
+
+    const estadoActivo = estadosTiempo.find(
+      (e) =>
+        e.activo &&
+        minutosRestantes >= e.minutos_desde &&
+        minutosRestantes <= e.minutos_hasta
+    );
+
+    if (estadoActivo) {
+      return estadoActivo.estado; // "verde", "amarillo" o "rojo"
+    }
+
+    return null;
+  }
+
+  // Función para obtener color hexadecimal del estado
+  function getColorEstado(minutosRestantes, etapasconversion_id) {
+    // Solo lógica dinámica si es "Nuevo" (etapasconversion_id === 1)
+    if (etapasconversion_id !== 1 && etapasconversion_id !== 2) {
+      return "#28a745"; // verde por defecto
+    }
+
+    if (minutosRestantes === null) {
+      return "#6b7280"; // gris
+    }
+
+    const estadoActivo = estadosTiempo.find(
+      (e) =>
+        e.activo &&
+        minutosRestantes >= e.minutos_desde &&
+        minutosRestantes <= e.minutos_hasta
+    );
+
+    return estadoActivo?.color_hexadecimal || "#6b7280";
+  }
+
+  // Función para determinar si el color es oscuro
+  function esColorOscuro(color) {
+    const hex = color.replace("#", "");
+    const r = parseInt(hex.substr(0, 2), 16);
+    const g = parseInt(hex.substr(2, 2), 16);
+    const b = parseInt(hex.substr(4, 2), 16);
+    const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+    return brightness < 128;
+  }
+
+  // Calcular resumen de estados
+  const resumenEstados = useMemo(() => {
+    const resumen = {
+      retrasado: 0,
+      cercaHora: 0,
+      tiempoSuficiente: 0,
+    };
+
+    oportunidadesAsignadas.forEach((card) => {
+      const minutosRestantes = getMinutosRestantes(
+        card.fecha_agenda,
+        card.hora_agenda
       );
+      const estado = getEstadoTiempo(minutosRestantes, card.etapasconversion_id);
+
+      if (estado === "rojo") {
+        resumen.retrasado++;
+      } else if (estado === "amarillo") {
+        resumen.cercaHora++;
+      } else if (estado === "verde" || estado === "suficiente") {
+        resumen.tiempoSuficiente++;
+      }
     });
-  }, [visibleRows]);
+
+    return resumen;
+  }, [oportunidadesAsignadas, estadosTiempo]);
 
   function toggleUser(id) {
     if (!canViewAll) return;
@@ -215,6 +330,28 @@ export default function VistaPorUsuarios({
           </div>
         )}
 
+        {/* Resumen de estados */}
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg border border-red-300 bg-red-50 p-3">
+            <div className="text-2xl font-bold text-red-600">
+              {resumenEstados.retrasado}
+            </div>
+            <div className="text-xs text-red-700 font-medium">Retrasados</div>
+          </div>
+          <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3">
+            <div className="text-2xl font-bold text-yellow-600">
+              {resumenEstados.cercaHora}
+            </div>
+            <div className="text-xs text-yellow-700 font-medium">Cerca de la hora</div>
+          </div>
+          <div className="rounded-lg border border-green-300 bg-green-50 p-3">
+            <div className="text-2xl font-bold text-green-600">
+              {resumenEstados.tiempoSuficiente}
+            </div>
+            <div className="text-xs text-green-700 font-medium">Tiempo suficiente</div>
+          </div>
+        </div>
+
         <div className="rounded-2xl border">
           <div className="overflow-auto max-h-[75vh]">
             <div
@@ -260,91 +397,55 @@ export default function VistaPorUsuarios({
                           getHoraLabel(r?.hora_agenda) === hora
                       );
 
+                      if (!card) {
+                        return (
+                          <div
+                            key={`${usuario.id}-${hora}`}
+                            className="border-b border-r min-h-[92px] p-1"
+                          />
+                        );
+                      }
+
+                      const colorEstado = getColorEstado(
+                        getMinutosRestantes(card.fecha_agenda, card.hora_agenda),
+                        card.etapasconversion_id
+                      );
+                      const textOscuro = esColorOscuro(colorEstado);
+                      const textColor = textOscuro ? "#ffffff" : "#000000";
+
                       return (
                         <div
                           key={`${usuario.id}-${hora}`}
                           className="border-b border-r min-h-[92px] p-1"
                         >
-                          {card ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  onClick={() => onOpenOportunidad?.(card)}
-                                  className="rounded-md border bg-white p-2 text-xs shadow-sm h-full w-full text-left transition hover:bg-slate-50"
-                                  style={{
-                                    borderTop: `4px solid ${
-                                      String(card?.etapa_name || "")
-                                        .toLowerCase()
-                                        .includes("no llegó") ||
-                                      String(card?.etapa_name || "")
-                                        .toLowerCase()
-                                        .includes("no llego")
-                                        ? "#ef4444"
-                                        : "#10b981"
-                                    }`,
-                                  }}
-                                >
-                                  <div className="font-bold truncate">
-                                    {card.oportunidad_id}
-                                  </div>
-                                  <div className="truncate">
-                                    {card.cliente_name || ""}
-                                  </div>
-                                  <div>{getHoraLabel(card.hora_agenda) || "-"}</div>
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" className="max-w-[320px]">
-                                {renderTooltipContent(card)}
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : null}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                onClick={() => onOpenOportunidad?.(card)}
+                                className="rounded-md border p-2 text-xs shadow-sm h-full w-full text-left transition hover:opacity-80"
+                                style={{
+                                  backgroundColor: colorEstado,
+                                  color: textColor,
+                                  borderColor: colorEstado,
+                                }}
+                              >
+                                <div className="font-bold truncate">
+                                  {card.oportunidad_id}
+                                </div>
+                                <div className="truncate">
+                                  {card.cliente_name || ""}
+                                </div>
+                                <div>{getHoraLabel(card.hora_agenda) || "-"}</div>
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-[320px]">
+                              {renderTooltipContent(card)}
+                            </TooltipContent>
+                          </Tooltip>
                         </div>
                       );
                     })}
-                  </div>
-                );
-              })}
-
-              <div className="sticky left-0 z-10 bg-background border-r p-4 flex items-center gap-3 min-h-[92px]">
-                <span className="text-red-500 text-xl">◔</span>
-                <span className="text-sm">No llegó</span>
-              </div>
-
-              {horas.map((hora) => {
-                const items = noLlegaron.filter(
-                  (r) => getHoraLabel(r?.hora_agenda) === hora
-                );
-
-                return (
-                  <div key={`no-llego-${hora}`} className="border-r p-1 min-h-[92px]">
-                    <div className="space-y-1">
-                      {items.map((card) => (
-                        <Tooltip key={card.id}>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              onClick={() => onOpenOportunidad?.(card)}
-                              className="rounded-md border bg-white p-2 text-xs shadow-sm w-full text-left transition hover:bg-slate-50"
-                              style={{ borderTop: "4px solid #ef4444" }}
-                            >
-                              <div className="font-bold truncate">
-                                {card.oportunidad_id}
-                              </div>
-                              <div className="truncate">
-                                {card.cliente_name || ""}
-                              </div>
-                              <div className="font-semibold uppercase">
-                                NO LLEGÓ
-                              </div>
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-[320px]">
-                            {renderTooltipContent(card)}
-                          </TooltipContent>
-                        </Tooltip>
-                      ))}
-                    </div>
                   </div>
                 );
               })}
