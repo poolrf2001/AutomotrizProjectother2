@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Eye } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import ConversationWorkspace from "@/app/components/conversations/ConversationWo
 import { useAuth } from "@/context/AuthContext";
 
 export default function ConversationsPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
   const [metrics, setMetrics] = useState({
@@ -45,13 +47,27 @@ export default function ConversationsPage() {
   const [bulkSummary, setBulkSummary] = useState(null);
   const [selectedSessionIds, setSelectedSessionIds] = useState([]);
   const [bulkTargetMode, setBulkTargetMode] = useState("filtered");
+  const [pageError, setPageError] = useState("");
 
   async function load() {
     try {
+      setPageError("");
+
       const [sessionsRes, metricsRes] = await Promise.all([
         fetch("/api/conversations/clients", { cache: "no-store" }),
         fetch(`/api/conversations/metrics?user_id=${user?.id || 0}`, { cache: "no-store" }),
       ]);
+
+      if (sessionsRes.status === 401 || metricsRes.status === 401) {
+        localStorage.removeItem("user");
+        setPageError("Tu sesión expiró. Redirigiendo a login...");
+        router.push("/login");
+        return;
+      }
+
+      if (!sessionsRes.ok || !metricsRes.ok) {
+        throw new Error("No se pudo cargar la bandeja de mensajes");
+      }
 
       const sessionsData = await sessionsRes.json();
       const metricsData = await metricsRes.json();
@@ -63,6 +79,7 @@ export default function ConversationsPage() {
       }));
     } catch (error) {
       console.error("Error cargando conversaciones:", error);
+      setPageError(error?.message || "Error cargando conversaciones");
       setSessions([]);
     }
   }
@@ -346,6 +363,12 @@ export default function ConversationsPage() {
   return (
     <div className="h-full min-h-0 flex flex-col gap-3">
       <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-2 items-start">
+        {pageError && (
+          <div className="xl:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {pageError}
+          </div>
+        )}
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <Input
             value={search}
