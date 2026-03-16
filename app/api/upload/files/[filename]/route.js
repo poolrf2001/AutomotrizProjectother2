@@ -27,9 +27,14 @@ function resolveFilePath(filename) {
   return path.join(uploadDir, filename);
 }
 
-export async function HEAD(_req, { params }) {
+async function getFilenameFromContext(context) {
+  const resolvedParams = await Promise.resolve(context?.params);
+  return sanitizeFilename(resolvedParams?.filename);
+}
+
+export async function HEAD(_req, context) {
   try {
-    const filename = sanitizeFilename(params?.filename);
+    const filename = await getFilenameFromContext(context);
     if (!filename) {
       return NextResponse.json({ message: "Archivo inválido" }, { status: 400 });
     }
@@ -55,9 +60,9 @@ export async function HEAD(_req, { params }) {
   }
 }
 
-export async function GET(_req, { params }) {
+export async function GET(_req, context) {
   try {
-    const filename = sanitizeFilename(params?.filename);
+    const filename = await getFilenameFromContext(context);
     if (!filename) {
       return NextResponse.json({ message: "Archivo inválido" }, { status: 400 });
     }
