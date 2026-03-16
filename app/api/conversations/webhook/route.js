@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { randomUUID } from "crypto";
+import {
+  enqueueOutbound,
+  isMissingTableError,
+  processOutboxItem,
+} from "@/lib/conversationsOutbox";
 
 function normalizePhone(rawPhone) {
   return String(rawPhone || "")
@@ -259,6 +264,167 @@ function getSlaMinutes() {
   const raw = Number(process.env.CONVERSATIONS_SLA_MINUTES || 30);
   if (Number.isNaN(raw)) return 30;
   return Math.max(5, Math.min(raw, 1440));
+}
+
+function getCtaAutoReplyText(actionType) {
+  if (actionType === "contact") {
+    return "Gracias por tu respuesta. Un asesor se pondra en contacto contigo en breve.";
+  }
+
+  if (actionType === "stop_promotions") {
+    return "Entendido. Hemos registrado tu solicitud y dejaremos de enviarte promociones.";
+  }
+
+  return null;
+}
+
+async function getSessionPhone(sessionId) {
+  if (!sessionId) return null;
+
+  const [rows] = await db.query(
+    `
+    SELECT phone
+    FROM conversation_sessions
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [sessionId]
+  );
+
+  return normalizePhone(rows?.[0]?.phone || "") || null;
+}
+
+async function insertAutoReplyLog({ sessionId, phone, text, sourceChannel, idempotencyKey }) {
+  try {
+    const [result] = await db.query(
+      `
+      INSERT INTO agent_actions_log (
+        session_id,
+        phone,
+        action_type,
+        intent,
+        request_text,
+        response_text,
+        message_direction,
+        message_status,
+        source_channel,
+        idempotency_key,
+        success,
+        error_message,
+        created_at
+      ) VALUES (?, ?, 'AUTO_REPLY', 'AUTO_REPLY', NULL, ?, 'outbound', 'queued', ?, ?, 1, NULL, NOW())
+      `,
+      [sessionId, phone || null, text, sourceChannel || null, idempotencyKey]
+    );
+
+    return { id: result.insertId, tracked: true };
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error;
+
+    const [legacyResult] = await db.query(
+      `
+      INSERT INTO agent_actions_log (
+        session_id,
+        phone,
+        action_type,
+        intent,
+        request_text,
+        response_text,
+        success,
+        error_message,
+        created_at
+      ) VALUES (?, ?, 'AUTO_REPLY', 'AUTO_REPLY', NULL, ?, 1, NULL, NOW())
+      `,
+      [sessionId, phone || null, text]
+    );
+
+    return { id: legacyResult.insertId, tracked: false };
+  }
+}
+
+async function updateSessionAfterOutbound({ sessionId, messageId }) {
+  await db.query(
+    `
+    UPDATE conversation_sessions
+    SET
+      updated_at = NOW(),
+      last_intent = 'AUTO_REPLY',
+      last_message_id = ?
+    WHERE id = ?
+    `,
+    [messageId, sessionId]
+  );
+}
+
+async function enqueueCtaAutoReply({
+  sessionId,
+  phone,
+  sourceChannel,
+  actionType,
+  externalMessageId,
+  campaignResponse,
+}) {
+  const text = getCtaAutoReplyText(actionType);
+  if (!text) return { attempted: false, reason: "No aplica auto-reply" };
+
+  const resolvedPhone = normalizePhone(phone) || await getSessionPhone(sessionId);
+  if (!resolvedPhone) {
+    return { attempted: false, reason: "No se pudo resolver telefono para auto-reply" };
+  }
+
+  const idempotencyKey = `cta_autoreply:${campaignResponse?.campaign_recipient_id || "na"}:${actionType}:${externalMessageId || randomUUID()}`;
+
+  const inserted = await insertAutoReplyLog({
+    sessionId,
+    phone: resolvedPhone,
+    text,
+    sourceChannel,
+    idempotencyKey,
+  });
+
+  await updateSessionAfterOutbound({
+    sessionId,
+    messageId: inserted.id,
+  });
+
+  const payload = {
+    session_id: sessionId,
+    phone: resolvedPhone,
+    text,
+    source: "campaign_cta_auto_reply",
+    source_channel: sourceChannel || "whatsapp",
+    idempotency_key: idempotencyKey,
+    external_message_id: null,
+    reply_to_external_message_id: externalMessageId || null,
+    campaign_id: campaignResponse?.campaign_id || null,
+    campaign_recipient_id: campaignResponse?.campaign_recipient_id || null,
+    cta_action: actionType,
+    created_at: new Date().toISOString(),
+  };
+
+  const outbox = await enqueueOutbound({
+    sessionId,
+    messageLogId: inserted.id,
+    phone: resolvedPhone,
+    source: "campaign_cta_auto_reply",
+    sourceChannel: sourceChannel || "whatsapp",
+    idempotencyKey,
+    externalMessageId: null,
+    payload,
+  });
+
+  if (!outbox.enabled || !outbox.id) {
+    return { attempted: false, reason: "Outbox no disponible" };
+  }
+
+  const processResult = await processOutboxItem(outbox.id);
+  return {
+    attempted: true,
+    outbox_id: outbox.id,
+    sent: Boolean(processResult?.ok),
+    outbox_status: processResult?.status || (processResult?.ok ? "sent" : "retrying"),
+    reason: processResult?.reason || null,
+  };
 }
 
 async function findByExternalMessageId(externalMessageId) {
@@ -733,6 +899,8 @@ export async function POST(req) {
     });
 
     const actionType = getMessageActionType(body);
+    let ctaAutoReply = { attempted: false, reason: "No aplica" };
+
     if (campaignResponse?.matched && actionType) {
       const actionPayload = {
         external_message_id: externalMessageId || null,
@@ -768,6 +936,25 @@ export async function POST(req) {
             external_message_id: externalMessageId || null,
           },
         });
+      }
+
+      if (actionType === "contact" || actionType === "stop_promotions") {
+        try {
+          ctaAutoReply = await enqueueCtaAutoReply({
+            sessionId,
+            phone,
+            sourceChannel,
+            actionType,
+            externalMessageId,
+            campaignResponse,
+          });
+        } catch (error) {
+          if (!isMissingTableError(error)) throw error;
+          ctaAutoReply = {
+            attempted: false,
+            reason: "Tabla outbox no disponible para auto-reply",
+          };
+        }
       }
     }
 
@@ -828,6 +1015,7 @@ export async function POST(req) {
         idempotency_key: inserted.idempotencyKey,
         campaign_response_matched: Boolean(campaignResponse?.matched),
         campaign_response: campaignResponse,
+        cta_auto_reply: ctaAutoReply,
       },
       { status: 201 }
     );

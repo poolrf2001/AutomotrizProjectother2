@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Circle, RefreshCw, Send, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,26 @@ function buildMessageFromTemplate(content) {
   return blocks.join("\n\n");
 }
 
+function getFilterContextByCampaignType(campaignType) {
+  if (campaignType === "ventas") {
+    return {
+      title: "Intereses de compra",
+      description: "Se cruza con oportunidades activas y tabla de intereses de ventas por marca/modelo.",
+      marcaLabel: "Marca de interes (multiple)",
+      modeloLabel: "Modelo de interes (multiple)",
+      anioLabel: "Ano de interes",
+    };
+  }
+
+  return {
+    title: "Parque vehicular postventa",
+    description: "Se filtra sobre vehiculos del cliente por marca/modelo/anio para mantenimiento y servicio.",
+    marcaLabel: "Marca del vehiculo (multiple)",
+    modeloLabel: "Modelo del vehiculo (multiple)",
+    anioLabel: "Ano del vehiculo",
+  };
+}
+
 export default function EnviosMasivosPage() {
   const canView = useRequirePerm("mensajes", "view");
 
@@ -137,7 +157,22 @@ export default function EnviosMasivosPage() {
     });
   }
 
-  async function loadRows() {
+  const filterContext = useMemo(
+    () => getFilterContextByCampaignType(form.campaign_type),
+    [form.campaign_type]
+  );
+
+  const filterPreviewKey = useMemo(
+    () => JSON.stringify({
+      campaign_type: form.campaign_type,
+      marca_ids: form.filters.marca_ids,
+      modelo_ids: form.filters.modelo_ids,
+      anio: form.filters.anio,
+    }),
+    [form.campaign_type, form.filters.anio, form.filters.marca_ids, form.filters.modelo_ids]
+  );
+
+  const loadRows = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch("/api/envios-masivos", { cache: "no-store" });
@@ -154,9 +189,9 @@ export default function EnviosMasivosPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
-  async function loadCatalogs() {
+  const loadCatalogs = useCallback(async () => {
     try {
       const [marcasRes, modelosRes] = await Promise.all([
         fetch("/api/marcas", { cache: "no-store" }),
@@ -179,13 +214,23 @@ export default function EnviosMasivosPage() {
       setMarcas([]);
       setModelos([]);
     }
-  }
+  }, []);
 
   useEffect(() => {
     if (!canView) return;
     loadRows();
     loadCatalogs();
   }, [canView]);
+
+  useEffect(() => {
+    if (!canView) return;
+
+    const timer = setInterval(() => {
+      loadRows();
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [canView, loadRows]);
 
   const modelosFiltrados = useMemo(() => {
     const selectedMarcaIds = Array.isArray(form.filters.marca_ids)
@@ -246,7 +291,9 @@ export default function EnviosMasivosPage() {
     }
   }
 
-  async function previewAudience() {
+  async function previewAudience(options = {}) {
+    const silent = Boolean(options?.silent);
+
     try {
       setPreviewing(true);
 
@@ -270,14 +317,28 @@ export default function EnviosMasivosPage() {
         sample: Array.isArray(data?.sample) ? data.sample : [],
       });
 
-      toast.success(`Audiencia calculada: ${Number(data?.total || 0)} clientes`);
+      if (!silent) {
+        toast.success(`Audiencia calculada: ${Number(data?.total || 0)} clientes`);
+      }
     } catch (error) {
-      toast.error(error?.message || "Error en vista previa");
+      if (!silent) {
+        toast.error(error?.message || "Error en vista previa");
+      }
       setPreview({ total: 0, sample: [] });
     } finally {
       setPreviewing(false);
     }
   }
+
+  useEffect(() => {
+    if (!wizardOpen || step !== 0) return;
+
+    const timer = setTimeout(() => {
+      previewAudience({ silent: true });
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [wizardOpen, step, filterPreviewKey]);
 
   async function createCampaign() {
     try {
@@ -337,7 +398,7 @@ export default function EnviosMasivosPage() {
       return;
     }
 
-    await previewAudience();
+    await previewAudience({ silent: true });
     setStep(1);
   }
 
@@ -426,6 +487,9 @@ export default function EnviosMasivosPage() {
           <p className="text-sm text-muted-foreground">
             Campañas de WhatsApp para ventas y postventa con programación y seguimiento.
           </p>
+          <p className="text-xs text-muted-foreground">
+            Atenciones CTA: interacciones de clientes sobre botones de campana (contacto o detener promociones).
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={syncInteresesVentas} disabled={syncingInterests}>
@@ -445,6 +509,10 @@ export default function EnviosMasivosPage() {
           </Button>
         </div>
       </div>
+
+      <p className="-mt-4 text-xs text-muted-foreground">
+        El boton "Sincronizar intereses ventas" carga/actualiza intereses desde oportunidades para que el filtro de campanas de ventas impacte al publico correcto.
+      </p>
 
       <section className="rounded-lg border bg-white p-4 shadow-sm">
         <h2 className="mb-4 text-base font-semibold">Lista de envíos masivos</h2>
@@ -617,7 +685,7 @@ export default function EnviosMasivosPage() {
 
               <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Marca (múltiple)</label>
+                  <label className="text-sm font-medium">{filterContext.marcaLabel}</label>
                   <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-2">
                     {marcas.map((marca) => {
                       const checked = Array.isArray(form.filters.marca_ids)
@@ -651,7 +719,7 @@ export default function EnviosMasivosPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Modelo (múltiple)</label>
+                  <label className="text-sm font-medium">{filterContext.modeloLabel}</label>
                   <div className="max-h-40 space-y-2 overflow-y-auto rounded-md border p-2">
                     {modelosFiltrados.map((modelo) => {
                       const checked = Array.isArray(form.filters.modelo_ids)
@@ -688,7 +756,7 @@ export default function EnviosMasivosPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Año</label>
+                  <label className="text-sm font-medium">{filterContext.anioLabel}</label>
                   <Input
                     value={form.filters.anio}
                     onChange={(e) => setForm((prev) => ({
@@ -700,12 +768,22 @@ export default function EnviosMasivosPage() {
                 </div>
               </div>
 
+              <div className="rounded-md border border-dashed bg-slate-50 p-2 text-xs text-muted-foreground">
+                <p className="font-medium text-slate-700">{filterContext.title}</p>
+                <p>{filterContext.description}</p>
+              </div>
+
               <div className="rounded-md border bg-slate-50 p-3 text-sm">
                 <p className="font-medium">Clientes impactados</p>
-                <p className="text-muted-foreground">Total deduplicado: {preview.total}</p>
+                <p className="text-muted-foreground">
+                  Total deduplicado: {preview.total} {previewing ? "(actualizando...)" : ""}
+                </p>
                 {preview.sample.length > 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Muestra: {preview.sample.slice(0, 5).map((row) => row.phone).join(", ")}
+                    Muestra: {preview.sample
+                      .slice(0, 5)
+                      .map((row) => row.recipient_name || row.phone)
+                      .join(", ")}
                   </p>
                 )}
               </div>
