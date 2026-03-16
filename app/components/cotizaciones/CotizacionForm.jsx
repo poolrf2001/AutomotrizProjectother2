@@ -92,8 +92,12 @@ export default function CotizacionForm({
   const [newAdicionalDesc, setNewAdicionalDesc] = useState("");
   const [newAdicionalMonto, setNewAdicionalMonto] = useState("");
 
-  const [descuentoPorcentaje, setDescuentoPorcentaje] = useState(0);
-  const [descuentoMonto, setDescuentoMonto] = useState(0);
+  const [descuentoProductosPorcentaje, setDescuentoProductosPorcentaje] = useState(0);
+  const [descuentoProductosMonto, setDescuentoProductosMonto] = useState(0);
+  const [descuentoManoObraPorcentaje, setDescuentoManoObraPorcentaje] = useState(0);
+  const [descuentoManoObraMonto, setDescuentoManoObraMonto] = useState(0);
+  const [descuentoAdicionalesPorcentaje, setDescuentoAdicionalesPorcentaje] = useState(0);
+  const [descuentoAdicionalesMonto, setDescuentoAdicionalesMonto] = useState(0);
 
   const [monedas, setMonedas] = useState([]);
   const [impuestos, setImpuestos] = useState([]);
@@ -244,8 +248,9 @@ export default function CotizacionForm({
       setTarifaId(d.tarifa_id ? String(d.tarifa_id) : "");
       setTarifaHora(Number(d.tarifa_hora || 0));
       setHorasTrabajo(Number(d.horas_trabajo || 0));
-      setDescuentoPorcentaje(Number(d.descuento_porcentaje || 0));
-      setDescuentoMonto(Number(d.descuento_monto || 0));
+      // Compatibilidad: si viene descuento global histórico, lo dejamos en productos.
+      setDescuentoProductosPorcentaje(Number(d.descuento_porcentaje || 0));
+      setDescuentoProductosMonto(Number(d.descuento_monto || 0));
 
       if (d.moneda_id) setMonedaId(String(d.moneda_id));
       if (d.impuesto_id) setImpuestoId(String(d.impuesto_id));
@@ -388,12 +393,19 @@ export default function CotizacionForm({
   const subtotalManoObra = Number(horasTrabajo || 0) * Number(tarifaHora || 0);
   const subtotalAdicionales = adicionales.reduce((s, e) => s + Number(e.monto || 0), 0);
   const bruto = subtotalProductos + subtotalManoObra + subtotalAdicionales;
-  const descuentoFijoAplicado = Math.min(Number(descuentoMonto || 0), bruto);
-  const totalDescuento = bruto * (Number(descuentoPorcentaje || 0) / 100) + descuentoFijoAplicado;
-  const factorReparto = bruto > 0 ? descuentoFijoAplicado / bruto : 0;
-  const descuentoProductos = subtotalProductos * (Number(descuentoPorcentaje || 0) / 100 + factorReparto);
-  const descuentoManoObra = subtotalManoObra * (Number(descuentoPorcentaje || 0) / 100 + factorReparto);
-  const descuentoAdicionales = subtotalAdicionales * (Number(descuentoPorcentaje || 0) / 100 + factorReparto);
+  const descuentoProductos = Math.min(
+    subtotalProductos,
+    subtotalProductos * (Number(descuentoProductosPorcentaje || 0) / 100) + Number(descuentoProductosMonto || 0)
+  );
+  const descuentoManoObra = Math.min(
+    subtotalManoObra,
+    subtotalManoObra * (Number(descuentoManoObraPorcentaje || 0) / 100) + Number(descuentoManoObraMonto || 0)
+  );
+  const descuentoAdicionales = Math.min(
+    subtotalAdicionales,
+    subtotalAdicionales * (Number(descuentoAdicionalesPorcentaje || 0) / 100) + Number(descuentoAdicionalesMonto || 0)
+  );
+  const totalDescuento = descuentoProductos + descuentoManoObra + descuentoAdicionales;
   const netoProductos = Math.max(0, subtotalProductos - descuentoProductos);
   const netoManoObra = Math.max(0, subtotalManoObra - descuentoManoObra);
   const netoAdicionales = Math.max(0, subtotalAdicionales - descuentoAdicionales);
@@ -426,8 +438,15 @@ export default function CotizacionForm({
         horas_trabajo: Number(horasTrabajo || 0),
         tarifa_id: tarifaId ? Number(tarifaId) : null,
         tarifa_hora: Number(tarifaHora || 0),
-        descuento_porcentaje: Number(descuentoPorcentaje || 0),
-        descuento_monto: Number(descuentoMonto || 0),
+        // Persistimos como descuento global para compatibilidad con el esquema actual.
+        descuento_porcentaje: 0,
+        descuento_monto: Number(totalDescuento || 0),
+        descuento_productos_porcentaje: Number(descuentoProductosPorcentaje || 0),
+        descuento_productos_monto: Number(descuentoProductosMonto || 0),
+        descuento_mano_obra_porcentaje: Number(descuentoManoObraPorcentaje || 0),
+        descuento_mano_obra_monto: Number(descuentoManoObraMonto || 0),
+        descuento_adicionales_porcentaje: Number(descuentoAdicionalesPorcentaje || 0),
+        descuento_adicionales_monto: Number(descuentoAdicionalesMonto || 0),
         moneda_id: monedaId ? Number(monedaId) : null,
         impuesto_id: impuestoId ? Number(impuestoId) : null,
         incluir_igv: incluirIgv ? 1 : 0,
@@ -940,28 +959,88 @@ export default function CotizacionForm({
 
               <div className="space-y-3 border rounded-md p-3 bg-white">
                 <div className="flex items-center gap-2 text-sm font-medium">
-                  <BadgePercent className="w-4 h-4" /> Descuento global
+                  <BadgePercent className="w-4 h-4" /> Descuentos por bloque
                 </div>
-                <div className="space-y-2">
-                  <Label>Porcentaje (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={descuentoPorcentaje || ""}
-                    onChange={(e) =>
-                      setDescuentoPorcentaje(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
-                    }
-                  />
+
+                <div className="border rounded-md p-2 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Productos</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">%</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={descuentoProductosPorcentaje || ""}
+                        onChange={(e) =>
+                          setDescuentoProductosPorcentaje(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Monto</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={descuentoProductosMonto || ""}
+                        onChange={(e) => setDescuentoProductosMonto(Math.max(0, Number(e.target.value) || 0))}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Monto fijo</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={descuentoMonto || ""}
-                    onChange={(e) => setDescuentoMonto(Math.max(0, Number(e.target.value) || 0))}
-                  />
+
+                <div className="border rounded-md p-2 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">{manoObraLabel}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">%</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={descuentoManoObraPorcentaje || ""}
+                        onChange={(e) =>
+                          setDescuentoManoObraPorcentaje(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Monto</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={descuentoManoObraMonto || ""}
+                        onChange={(e) => setDescuentoManoObraMonto(Math.max(0, Number(e.target.value) || 0))}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border rounded-md p-2 space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Adicionales</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">%</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={descuentoAdicionalesPorcentaje || ""}
+                        onChange={(e) =>
+                          setDescuentoAdicionalesPorcentaje(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Monto</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        value={descuentoAdicionalesMonto || ""}
+                        onChange={(e) => setDescuentoAdicionalesMonto(Math.max(0, Number(e.target.value) || 0))}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 

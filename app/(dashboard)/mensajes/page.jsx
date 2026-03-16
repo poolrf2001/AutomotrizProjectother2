@@ -181,17 +181,6 @@ export default function ConversationsPage() {
     return String(session?.ultimomensaje || "Sin resumen disponible.");
   }
 
-  const scopedSessions = useMemo(() => {
-    if (!selectedSession?.session_id) return filteredSessions;
-
-    const scoped = filteredSessions.filter(
-      (s) => Number(s?.session_id) === Number(selectedSession.session_id)
-    );
-
-    if (scoped.length > 0) return scoped;
-    return [selectedSession];
-  }, [filteredSessions, selectedSession]);
-
   const metricsCards = useMemo(() => {
     const total = scopedSessions.length;
     const active = scopedSessions.filter((s) => {
@@ -327,6 +316,17 @@ export default function ConversationsPage() {
       return bySearch && byChannel && byStatus && byOwner && byAssignment && byPriority;
     });
   }, [sessions, search, channelFilter, statusFilter, ownerFilter, assignmentFilter, priorityFilter, user]);
+
+  const scopedSessions = useMemo(() => {
+    if (!selectedSession?.session_id) return filteredSessions;
+
+    const scoped = filteredSessions.filter(
+      (s) => Number(s?.session_id) === Number(selectedSession.session_id)
+    );
+
+    if (scoped.length > 0) return scoped;
+    return [selectedSession];
+  }, [filteredSessions, selectedSession]);
 
   useEffect(() => {
     const filteredIdSet = new Set(filteredSessions.map((s) => Number(s.session_id)));

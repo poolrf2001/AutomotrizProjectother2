@@ -19,6 +19,14 @@ function normalizePhoneForOptOut(rawPhone) {
   return `+${digits}`;
 }
 
+function normalizePhoneDigits(rawPhone) {
+  return String(rawPhone || "").replace(/\D/g, "").trim();
+}
+
+function getPhoneDigitsSql(columnName) {
+  return `REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(${columnName}, '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '')`;
+}
+
 function isMissingColumnError(error) {
   return error?.code === "ER_BAD_FIELD_ERROR" || error?.errno === 1054;
 }
@@ -600,22 +608,48 @@ async function syncCampaignRecipientStatus({
   }
 }
 
-async function markCampaignResponseWithinWindow({ sessionId, inboundMessageId }) {
-  if (!sessionId || !inboundMessageId) return { matched: false };
+async function markCampaignResponseWithinWindow({
+  sessionId,
+  inboundMessageId,
+  phone,
+  clientId,
+}) {
+  if (!inboundMessageId) return { matched: false };
 
   try {
+    const whereClauses = [];
+    const whereParams = [];
+
+    if (sessionId) {
+      whereClauses.push("session_id = ?");
+      whereParams.push(sessionId);
+    }
+
+    if (clientId) {
+      whereClauses.push("client_id = ?");
+      whereParams.push(clientId);
+    }
+
+    const phoneDigits = normalizePhoneDigits(phone);
+    if (phoneDigits) {
+      whereClauses.push(`${getPhoneDigitsSql("phone_normalized")} = ?`);
+      whereParams.push(phoneDigits);
+    }
+
+    if (!whereClauses.length) return { matched: false };
+
     const [rows] = await db.query(
       `
       SELECT id, campaign_id
       FROM campaign_recipients
-      WHERE session_id = ?
+      WHERE (${whereClauses.join(" OR ")})
         AND sent_at IS NOT NULL
         AND sent_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
         AND status IN ('queued', 'sent', 'delivered', 'read')
       ORDER BY sent_at DESC, id DESC
       LIMIT 1
       `,
-      [sessionId]
+      whereParams
     );
 
     const recipient = rows?.[0];
@@ -892,6 +926,8 @@ export async function POST(req) {
     const campaignResponse = await markCampaignResponseWithinWindow({
       sessionId,
       inboundMessageId: inserted.id,
+      phone,
+      clientId,
     });
 
     const actionType = getMessageActionType(body);
