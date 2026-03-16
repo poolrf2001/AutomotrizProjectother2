@@ -8,7 +8,7 @@ import {
   getPaginationRowModel,
   flexRender,
 } from "@tanstack/react-table";
-import { ArrowUpDown, Pencil, UserPlus } from "lucide-react";
+import { ArrowUpDown, Pencil, UserPlus, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -18,6 +18,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { format, startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
+import { useRouter } from "next/navigation";
 
 export default function OportunidadesTable({
   rows,
@@ -27,11 +28,11 @@ export default function OportunidadesTable({
   canEdit,
   canAssign,
 }) {
+  const router = useRouter();
   const [sorting, setSorting] = useState([]);
   const [estadosTiempo, setEstadosTiempo] = useState([]);
-  const [filtroRango, setFiltroRango] = useState("dia"); // "dia", "semana", "mes"
+  const [filtroRango, setFiltroRango] = useState("dia");
 
-  // Cargar configuración de estados de tiempo
   useEffect(() => {
     fetch("/api/configuracion-estados-tiempo", { cache: "no-store" })
       .then((r) => r.json())
@@ -42,7 +43,6 @@ export default function OportunidadesTable({
       .catch(() => setEstadosTiempo([]));
   }, []);
 
-  // Función para calcular minutos restantes
   function getMinutosRestantes(fechaAgenda, horaAgenda) {
     if (!fechaAgenda || !horaAgenda) return null;
 
@@ -55,7 +55,6 @@ export default function OportunidadesTable({
         .join(":");
 
       const fechaHoraString = `${fechaStr}T${horaStr}:00`;
-
       const ahora = new Date();
       const agendaDateTime = new Date(fechaHoraString);
 
@@ -73,9 +72,7 @@ export default function OportunidadesTable({
     }
   }
 
-  // Función para obtener color del estado de tiempo desde la API
   function getColorEstadoTiempo(minutosRestantes, etapasconversion_id) {
-    // Solo lógica dinámica si es "Nuevo" (etapasconversion_id === 1)
     if (etapasconversion_id !== 1 && etapasconversion_id !== 2) {
       return {
         bg: "transparent",
@@ -90,7 +87,6 @@ export default function OportunidadesTable({
       };
     }
 
-    // Buscar el estado que coincida con los minutos
     const estadoActivo = estadosTiempo.find(
       (e) =>
         e.activo &&
@@ -111,7 +107,6 @@ export default function OportunidadesTable({
     };
   }
 
-  // Función para determinar si el color es oscuro
   function esColorOscuro(color) {
     const hex = color.replace("#", "");
     const r = parseInt(hex.substr(0, 2), 16);
@@ -121,7 +116,6 @@ export default function OportunidadesTable({
     return brightness < 128;
   }
 
-  // Función para filtrar filas por rango de fechas
   function getRangoFechas() {
     const ahora = new Date();
     
@@ -149,7 +143,6 @@ export default function OportunidadesTable({
     }
   }
 
-  // Filtrar filas según el rango seleccionado
   const rowsFiltrados = useMemo(() => {
     const { inicio, fin } = getRangoFechas();
 
@@ -164,6 +157,10 @@ export default function OportunidadesTable({
       }
     });
   }, [rows, filtroRango]);
+
+  const handleVerOportunidad = (oportunidad) => {
+    router.push(`/oportunidades/${oportunidad.id}`);
+  };
 
   const columns = useMemo(
     () => [
@@ -247,6 +244,15 @@ export default function OportunidadesTable({
         header: "Acciones",
         cell: ({ row }) => (
           <div className="flex gap-2">
+            <Button
+              className="text-white bg-blue-600 hover:bg-blue-700"
+              size="sm"
+              onClick={() => handleVerOportunidad(row.original)}
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              Ver
+            </Button>
+
             {canEdit && (
               <Button className="text-black" variant="outline" size="sm" onClick={() => onEdit(row.original)}>
                 <Pencil className="h-4 w-4 mr-1" />
@@ -316,13 +322,13 @@ export default function OportunidadesTable({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
                     Cargando...
                   </td>
                 </tr>
               ) : table.getRowModel().rows.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-muted-foreground">
+                  <td colSpan={11} className="px-4 py-6 text-center text-muted-foreground">
                     No hay oportunidades registradas
                   </td>
                 </tr>

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ChevronsUpDown } from "lucide-react";
+import { format, startOfWeek, addDays } from "date-fns";
+import { es } from "date-fns/locale";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -24,16 +26,6 @@ function getUserLabel(u) {
 function getHoraLabel(hora) {
   if (!hora) return "";
   return String(hora).slice(0, 5);
-}
-
-function generateHours() {
-  const hours = [];
-  for (let h = 0; h <= 24; h++) {
-    const hh = String(h).padStart(2, "0");
-    hours.push(`${hh}:00`);
-    if (h !== 24) hours.push(`${hh}:30`);
-  }
-  return hours;
 }
 
 function renderTooltipContent(card) {
@@ -138,7 +130,11 @@ export default function VistaPorUsuarios({
     );
   }, [usuariosActivos, canViewAll, currentUserId]);
 
-  const horas = useMemo(() => generateHours(), []);
+  // Obtener días de la semana actual
+  const diasSemana = useMemo(() => {
+    const inicio = startOfWeek(new Date(), { weekStartsOn: 1 });
+    return Array.from({ length: 7 }, (_, i) => addDays(inicio, i));
+  }, []);
 
   const usuariosFiltrados = useMemo(() => {
     if (!canViewAll) {
@@ -355,24 +351,26 @@ export default function VistaPorUsuarios({
         <div className="rounded-2xl border">
           <div className="overflow-auto max-h-[75vh]">
             <div
-              className="grid min-w-[3200px]"
+              className="grid"
               style={{
-                gridTemplateColumns: `220px repeat(${horas.length}, minmax(120px, 1fr))`,
+                gridTemplateColumns: `220px repeat(7, 1fr)`,
               }}
             >
               <div className="sticky left-0 top-0 z-30 bg-background border-b border-r p-4 font-semibold text-xl">
                 Asesores
               </div>
 
-              {horas.map((hora) => (
+              {/* Encabezados de días de la semana */}
+              {diasSemana.map((dia) => (
                 <div
-                  key={hora}
-                  className="sticky top-0 z-20 bg-background border-b p-3 text-center text-sm font-medium"
+                  key={dia.toISOString()}
+                  className="sticky top-0 z-20 bg-background border-b p-3 text-center text-sm font-medium capitalize"
                 >
-                  {hora}
+                  {format(dia, "EEEE", { locale: es })}
                 </div>
               ))}
 
+              {/* Filas de usuarios */}
               {usuariosFiltrados.map((usuario, idx) => {
                 const colorDot =
                   idx % 3 === 0
@@ -383,66 +381,73 @@ export default function VistaPorUsuarios({
 
                 return (
                   <div key={usuario.id} className="contents">
-                    <div className="sticky left-0 z-10 bg-background border-r border-b p-4 flex items-center gap-3 min-h-[92px]">
+                    {/* Nombre del usuario */}
+                    <div className="sticky left-0 z-10 bg-background border-r border-b p-4 flex items-center gap-3 min-h-[120px]">
                       <span className={cn("h-2.5 w-2.5 rounded-full", colorDot)} />
                       <span className="text-sm leading-5">
                         {getUserLabel(usuario)}
                       </span>
                     </div>
 
-                    {horas.map((hora) => {
-                      const card = oportunidadesAsignadas.find(
+                    {/* Celdas por día de la semana */}
+                    {diasSemana.map((dia) => {
+                      const diaStr = format(dia, "yyyy-MM-dd");
+
+                      // Obtener todas las oportunidades del usuario en este día
+                      const dayOportunidades = oportunidadesAsignadas.filter(
                         (r) =>
                           String(r?.asignado_a ?? "") === String(usuario.id) &&
-                          getHoraLabel(r?.hora_agenda) === hora
+                          String(r?.fecha_agenda || "").startsWith(diaStr)
                       );
-
-                      if (!card) {
-                        return (
-                          <div
-                            key={`${usuario.id}-${hora}`}
-                            className="border-b border-r min-h-[92px] p-1"
-                          />
-                        );
-                      }
-
-                      const colorEstado = getColorEstado(
-                        getMinutosRestantes(card.fecha_agenda, card.hora_agenda),
-                        card.etapasconversion_id
-                      );
-                      const textOscuro = esColorOscuro(colorEstado);
-                      const textColor = textOscuro ? "#ffffff" : "#000000";
 
                       return (
                         <div
-                          key={`${usuario.id}-${hora}`}
-                          className="border-b border-r min-h-[92px] p-1"
+                          key={`${usuario.id}-${diaStr}`}
+                          className="border-b border-r min-h-[120px] p-2 bg-slate-50"
                         >
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <button
-                                type="button"
-                                onClick={() => onOpenOportunidad?.(card)}
-                                className="rounded-md border p-2 text-xs shadow-sm h-full w-full text-left transition hover:opacity-80"
-                                style={{
-                                  backgroundColor: colorEstado,
-                                  color: textColor,
-                                  borderColor: colorEstado,
-                                }}
-                              >
-                                <div className="font-bold truncate">
-                                  {card.oportunidad_id}
-                                </div>
-                                <div className="truncate">
-                                  {card.cliente_name || ""}
-                                </div>
-                                <div>{getHoraLabel(card.hora_agenda) || "-"}</div>
-                              </button>
-                            </TooltipTrigger>
-                            <TooltipContent side="top" className="max-w-[320px]">
-                              {renderTooltipContent(card)}
-                            </TooltipContent>
-                          </Tooltip>
+                          <div className="space-y-2">
+                            {dayOportunidades.map((card) => {
+                              const colorEstado = getColorEstado(
+                                getMinutosRestantes(
+                                  card.fecha_agenda,
+                                  card.hora_agenda
+                                ),
+                                card.etapasconversion_id
+                              );
+                              const textOscuro = esColorOscuro(colorEstado);
+                              const textColor = textOscuro ? "#ffffff" : "#000000";
+
+                              return (
+                                <Tooltip key={card.id}>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() => onOpenOportunidad?.(card)}
+                                      className="rounded-md border p-2 text-xs shadow-sm w-full text-left transition hover:opacity-80"
+                                      style={{
+                                        backgroundColor: colorEstado,
+                                        color: textColor,
+                                        borderColor: colorEstado,
+                                      }}
+                                    >
+                                      <div className="font-bold truncate">
+                                        {card.oportunidad_id}
+                                      </div>
+                                      <div className="truncate text-[10px]">
+                                        {card.cliente_name || ""}
+                                      </div>
+                                      <div className="text-[10px]">
+                                        {getHoraLabel(card.hora_agenda) || "-"}
+                                      </div>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" className="max-w-[320px]">
+                                    {renderTooltipContent(card)}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}

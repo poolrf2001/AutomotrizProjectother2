@@ -11,7 +11,8 @@ export async function PUT(req, { params }) {
     await conn.beginTransaction();
 
     const body = await req.json();
-    const id = Number(params.id);
+    const { id: paramId } = await params;
+    const id = Number(paramId);
 
     if (!id) {
       await conn.rollback();
@@ -157,7 +158,8 @@ export async function DELETE(req, { params }) {
   try {
     await conn.beginTransaction();
 
-    const id = Number(params.id);
+    const { id: paramId } = await params;
+    const id = Number(paramId);
 
     if (!id) {
       await conn.rollback();
