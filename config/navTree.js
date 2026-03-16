@@ -2,7 +2,7 @@ import {
   Users, Milestone, ListChecks, UserRound, Blinds, Boxes, Settings,
   CalendarCheck, ClipboardList, Receipt, SquareDashedMousePointer, FileText, Home, CarFront, Columns2, Columns3, Coins, Calendar, MessageCircle
 } from "lucide-react";
-export const HOME_ITEM = { to: "/home", label: "Home", icon: Home, perm: ["home", "view"] };
+export const HOME_ITEM = { to: "/home", label: "Panel de Control", icon: Home, perm: ["home", "view"] };
 export const NAV_TREE = [
   {
     key: "admin",

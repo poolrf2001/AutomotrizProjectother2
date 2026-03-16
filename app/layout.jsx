@@ -15,8 +15,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata = {
-  title: "Post Venta Automotriz",
-  description: "Sistema de Post Venta Automotriz",
+  title: "One Solution - CRM Automotriz",
+  description: "One Solution - CRM Automotriz",
   icons: {
     icon: "/logoarriba.png",
     shortcut: "/logoarriba.png",

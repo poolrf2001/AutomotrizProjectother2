@@ -34,7 +34,8 @@ export default function SidebarContent({ onNavigate }) {
     <aside className="h-full w-72 bg-slate-900 text-slate-100 flex flex-col min-h-0">
       <div className="p-5 border-b border-white/10">
         <h2 className="font-bold text-lg">Dashboard</h2>
-        <p className="text-xs text-slate-400">Menú por permisos</p>
+        <p className="text-xs text-slate-400">Hub CRM</p>
+        <p className="text-xs text-slate-400">Panel administrativo</p>
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto">
