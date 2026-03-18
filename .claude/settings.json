@@ -49,7 +49,13 @@
       "Bash(ls -la /d/Proyectos/ultimo/AutomotrizProjectother/app/\\\\\\(dashboard\\\\\\)/mensajes/)",
       "Bash(ls -la /d/Proyectos/ultimo/AutomotrizProjectother/app/\\\\\\(dashboard\\\\\\)/enviosmasivos/)",
       "Bash(curl -s -X POST \"https://n8n.app20.tech/api/v1/workflows/zY7IprRjgHhBDaKe/activate\" -H \"X-N8N-API-KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjYjE5NzUxMi1kZWQ1LTQ5YTAtYTA3Mi0yMDY4ZjI2NjVmODgiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiODE4ODJkZTUtYTBiNC00ZmE1LTgyMzQtZDNhNmI0Nzc2YTIwIiwiaWF0IjoxNzczNTE1NTY0LCJleHAiOjE3ODEyNDA0MDB9._lNjIWiGlxVcnBp5TGFQ8hdTGOtjYEc27nTfZztv9vI\")",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(ssh -o StrictHostKeyChecking=no root@161.35.57.52 \"cd /var/www/myprototipe && git pull origin main && npm ci && npm run build && pm2 restart automotriz-crm --update-env\")",
+      "Bash(python -c \"import sys,json; data=json.load\\(sys.stdin\\); text=data[0][''''text'''']; wf=json.loads\\(text\\); nodes={n[''''name'''']:n.get\\(''''parameters'''',{}\\) for n in wf[''''nodes''''] if n[''''name''''] in [''''MySQL Guardar Link'''',''''Registrar en CRM'''',''''Ventas Router'''',''''Check Routing Ventas'''']}; print\\(json.dumps\\(nodes, indent=2\\)\\)\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(node -e \"console.log\\(require\\(''crypto''\\).randomBytes\\(32\\).toString\\(''base64url''\\)\\)\")"
     ]
   }
 }
