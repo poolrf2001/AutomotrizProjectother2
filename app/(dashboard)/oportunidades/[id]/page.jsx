@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import CotizacionAgendaSection from "@/app/components/agenda/CotizacionAgendaSection";
 
 export default function OportunidadDetailPage() {
   const router = useRouter();
@@ -911,6 +912,14 @@ export default function OportunidadDetailPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <div className="bg-white rounded-lg border p-6">
+  <CotizacionAgendaSection 
+    oportunidadId={oportunidadId}
+    clienteId={oportunidad.cliente_id}
+    oportunidadData={oportunidad}
+  />
+</div>
     </div>
+    
   );
 }
