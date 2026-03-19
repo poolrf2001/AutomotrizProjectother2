@@ -3,8 +3,24 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Save, X, Edit2, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, X, Edit2, Loader2, Plus, Trash2, Pencil } from "lucide-react";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 export default function OportunidadDetailPage() {
   const router = useRouter();
@@ -18,6 +34,21 @@ export default function OportunidadDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
+
+  // Vehículos de interés
+  const [vehiculosInteres, setVehiculosInteres] = useState([]);
+  const [marcas, setMarcas] = useState([]);
+  const [modelos, setModelos] = useState([]);
+  const [dialogVehiculoOpen, setDialogVehiculoOpen] = useState(false);
+  const [deleteVehiculoDialog, setDeleteVehiculoDialog] = useState(false);
+  const [editingVehiculo, setEditingVehiculo] = useState(null);
+  const [deleteVehiculoTarget, setDeleteVehiculoTarget] = useState(null);
+  const [vehiculoFormData, setVehiculoFormData] = useState({
+    marca_id: "",
+    modelo_id: "",
+    anio_interes: new Date().getFullYear(),
+    source: "manual",
+  });
 
   // Etapas disponibles (sin "Reprogramado")
   const etapas = [
@@ -60,7 +91,7 @@ export default function OportunidadDetailPage() {
           { cache: "no-store" }
         );
         const dataResp = await resResp.json();
-        
+
         if (Array.isArray(dataResp)) {
           const respuestasMap = {};
           dataResp.forEach((r) => {
@@ -68,6 +99,23 @@ export default function OportunidadDetailPage() {
           });
           setRespuestas(respuestasMap);
         }
+
+        // Cargar vehículos de interés
+        const resVeh = await fetch(
+          `/api/client-interest-vehicles?client_id=${dataOp.cliente_id}`,
+          { cache: "no-store" }
+        );
+        const dataVeh = await resVeh.json();
+        setVehiculosInteres(Array.isArray(dataVeh) ? dataVeh : []);
+
+        // Cargar marcas y modelos
+        const [m, mo] = await Promise.all([
+          fetch("/api/marcas", { cache: "no-store" }).then((r) => r.json()),
+          fetch("/api/modelos", { cache: "no-store" }).then((r) => r.json()),
+        ]);
+
+        setMarcas(Array.isArray(m) ? m : []);
+        setModelos(Array.isArray(mo) ? mo : []);
 
         // Cambiar a "En Atención" automáticamente (id: 4)
         setEtapaActual(4);
@@ -86,7 +134,7 @@ export default function OportunidadDetailPage() {
     setSaving(true);
     try {
       const etapaSeleccionada = etapas.find((e) => e.id === etapaActual);
-      
+
       // Guardar cambios de la oportunidad
       await fetch(`/api/oportunidades/${oportunidadId}`, {
         method: "PUT",
@@ -99,8 +147,8 @@ export default function OportunidadDetailPage() {
       });
 
       // Guardar respuestas de preguntas
-      const usuarioId = localStorage.getItem("usuario_id"); // Obtener usuario logueado
-      
+      const usuarioId = localStorage.getItem("usuario_id");
+
       for (const pregunta of preguntas) {
         if (respuestas[pregunta.id] !== undefined) {
           await fetch("/api/respuestas-atencion", {
@@ -155,6 +203,109 @@ export default function OportunidadDetailPage() {
       [preguntaId]: valor,
     }));
   };
+
+  // Vehículos de Interés
+  function openCreateVehiculo() {
+    setEditingVehiculo(null);
+    setVehiculoFormData({
+      marca_id: "",
+      modelo_id: "",
+      anio_interes: new Date().getFullYear(),
+      source: "manual",
+    });
+    setDialogVehiculoOpen(true);
+  }
+
+  function openEditVehiculo(vehiculo) {
+    setEditingVehiculo(vehiculo);
+    setVehiculoFormData({
+      marca_id: vehiculo.marca_id || "",
+      modelo_id: vehiculo.modelo_id || "",
+      anio_interes: vehiculo.anio_interes || new Date().getFullYear(),
+      source: vehiculo.source || "manual",
+    });
+    setDialogVehiculoOpen(true);
+  }
+
+  async function saveVehiculo() {
+    if (!vehiculoFormData.marca_id && !vehiculoFormData.modelo_id) {
+      return toast.warning("Selecciona al menos una marca o modelo");
+    }
+
+    try {
+      const url = editingVehiculo
+        ? `/api/client-interest-vehicles/${editingVehiculo.id}`
+        : "/api/client-interest-vehicles";
+
+      const method = editingVehiculo ? "PUT" : "POST";
+
+      const body = editingVehiculo
+        ? vehiculoFormData
+        : {
+            ...vehiculoFormData,
+            client_id: oportunidad.cliente_id,
+          };
+
+      const response = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) {
+        toast.success(
+          editingVehiculo ? "Vehículo actualizado" : "Vehículo añadido"
+        );
+        setDialogVehiculoOpen(false);
+        
+        // Recargar vehículos
+        const resVeh = await fetch(
+          `/api/client-interest-vehicles?client_id=${oportunidad.cliente_id}`,
+          { cache: "no-store" }
+        );
+        const dataVeh = await resVeh.json();
+        setVehiculosInteres(Array.isArray(dataVeh) ? dataVeh : []);
+      } else {
+        const data = await response.json();
+        toast.error(data.message);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error guardando vehículo");
+    }
+  }
+
+  function openDeleteVehiculo(vehiculo) {
+    setDeleteVehiculoTarget(vehiculo);
+    setDeleteVehiculoDialog(true);
+  }
+
+  async function confirmDeleteVehiculo() {
+    try {
+      const response = await fetch(
+        `/api/client-interest-vehicles/${deleteVehiculoTarget.id}`,
+        { method: "DELETE" }
+      );
+
+      if (response.ok) {
+        toast.success("Vehículo eliminado");
+        setDeleteVehiculoDialog(false);
+        
+        // Recargar vehículos
+        const resVeh = await fetch(
+          `/api/client-interest-vehicles?client_id=${oportunidad.cliente_id}`,
+          { cache: "no-store" }
+        );
+        const dataVeh = await resVeh.json();
+        setVehiculosInteres(Array.isArray(dataVeh) ? dataVeh : []);
+      } else {
+        toast.error("Error eliminando vehículo");
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error("Error eliminando vehículo");
+    }
+  }
 
   const renderCampoPregunta = (pregunta) => {
     const valor = respuestas[pregunta.id] || "";
@@ -269,6 +420,9 @@ export default function OportunidadDetailPage() {
   }
 
   const etapaActualObj = etapas.find((e) => e.id === etapaActual);
+  const modelosFiltrados = vehiculoFormData.marca_id
+    ? modelos.filter((m) => m.marca_id === parseInt(vehiculoFormData.marca_id))
+    : [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -348,6 +502,54 @@ export default function OportunidadDetailPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Vehículos de Interés */}
+            <div className="bg-white rounded-lg border p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-lg font-semibold">Vehículos de Interés</h2>
+                <Button onClick={openCreateVehiculo} size="sm">
+                  <Plus className="h-4 w-4 mr-2" /> Agregar
+                </Button>
+              </div>
+
+              {vehiculosInteres.length === 0 ? (
+                <p className="text-gray-500 text-sm py-4">No hay vehículos de interés registrados</p>
+              ) : (
+                <div className="space-y-2">
+                  {vehiculosInteres.map((vehiculo) => (
+                    <div
+                      key={vehiculo.id}
+                      className="flex items-center justify-between p-3 bg-gray-50 rounded border"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {vehiculo.marca || "Sin marca"} {vehiculo.modelo || ""}
+                        </p>
+                        <p className="text-sm text-gray-600">
+                          {vehiculo.anio_interes || "Sin año"} • {vehiculo.source}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          onClick={() => openEditVehiculo(vehiculo)}
+                        >
+                          <Pencil size={16} />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          onClick={() => openDeleteVehiculo(vehiculo)}
+                        >
+                          <Trash2 size={16} />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Información de la Etapa */}
@@ -555,6 +757,160 @@ export default function OportunidadDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* DIALOG VEHÍCULO */}
+      <Dialog open={dialogVehiculoOpen} onOpenChange={setDialogVehiculoOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingVehiculo ? "Editar Vehículo" : "Agregar Vehículo de Interés"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Marca */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Marca
+              </label>
+              <Select
+                value={vehiculoFormData.marca_id.toString()}
+                onValueChange={(value) =>
+                  setVehiculoFormData((prev) => ({
+                    ...prev,
+                    marca_id: value,
+                    modelo_id: "",
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona una marca" />
+                </SelectTrigger>
+                <SelectContent>
+                  {marcas.map((m) => (
+                    <SelectItem key={m.id} value={m.id.toString()}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Modelo */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Modelo
+              </label>
+              <Select
+                value={vehiculoFormData.modelo_id.toString()}
+                onValueChange={(value) =>
+                  setVehiculoFormData((prev) => ({
+                    ...prev,
+                    modelo_id: value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona un modelo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelosFiltrados.map((m) => (
+                    <SelectItem key={m.id} value={m.id.toString()}>
+                      {m.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Año */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Año de Interés
+              </label>
+              <Input
+                type="number"
+                value={vehiculoFormData.anio_interes}
+                onChange={(e) =>
+                  setVehiculoFormData((prev) => ({
+                    ...prev,
+                    anio_interes: parseInt(e.target.value),
+                  }))
+                }
+                placeholder="Ej: 2024"
+                min={2000}
+                max={new Date().getFullYear() + 1}
+              />
+            </div>
+
+            {/* Origen */}
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">
+                Origen
+              </label>
+              <Select
+                value={vehiculoFormData.source}
+                onValueChange={(value) =>
+                  setVehiculoFormData((prev) => ({
+                    ...prev,
+                    source: value,
+                  }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Manual</SelectItem>
+                  <SelectItem value="lead">Lead</SelectItem>
+                  <SelectItem value="oportunidad">Oportunidad</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDialogVehiculoOpen(false)}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={saveVehiculo}>
+              {editingVehiculo ? "Actualizar" : "Agregar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DELETE VEHÍCULO DIALOG */}
+      <Dialog open={deleteVehiculoDialog} onOpenChange={setDeleteVehiculoDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmar eliminación</DialogTitle>
+          </DialogHeader>
+
+          <p>
+            ¿Eliminar el interés en{" "}
+            <b>
+              {deleteVehiculoTarget?.marca} {deleteVehiculoTarget?.modelo}
+            </b>
+            ?
+          </p>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteVehiculoDialog(false)}
+            >
+              Cancelar
+            </Button>
+            <Button variant="destructive" onClick={confirmDeleteVehiculo}>
+              Eliminar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,113 +1,82 @@
 // ============================================
-// API DE ESPECIFICACIONES - GET, POST, PUT, DELETE
-// ============================================
-
+// API DE ESPECIFICACIONES - CORREGIDA
 // archivo: app/api/especificaciones/route.js
+// ============================================
 
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-// ============================================
-// GET: Listar todas las especificaciones
-// ============================================
 export async function GET(req) {
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search");
-    const limit = searchParams.get("limit") || 10;
-    const page = searchParams.get("page") || 1;
 
     let query = "SELECT * FROM especificaciones WHERE 1=1";
     const params = [];
 
     if (search) {
-      query += " AND (nombre LIKE ? OR descripcion LIKE ?)";
-      params.push(`%${search}%`, `%${search}%`);
+      query += " AND nombre LIKE ?";
+      params.push(`%${search}%`);
     }
 
-    query += " ORDER BY nombre ASC LIMIT ? OFFSET ?";
-    params.push(parseInt(limit), (parseInt(page) - 1) * parseInt(limit));
+    query += " ORDER BY nombre ASC";
 
     const [rows] = await db.query(query, params);
 
-    // Obtener total de registros
-    let countQuery = "SELECT COUNT(*) as total FROM especificaciones WHERE 1=1";
-    const countParams = [];
+    // Parsear opciones JSON
+    const especificacionesFormateadas = rows.map((row) => ({
+      ...row,
+      opciones: row.opciones ? JSON.parse(row.opciones) : null,
+    }));
 
-    if (search) {
-      countQuery += " AND (nombre LIKE ? OR descripcion LIKE ?)";
-      countParams.push(`%${search}%`, `%${search}%`);
-    }
-
-    const [countResult] = await db.query(countQuery, countParams);
-    const total = countResult[0]?.total || 0;
-
-    return NextResponse.json({
-      data: rows,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / parseInt(limit)),
-      },
-    });
-  } catch (error) {
-    console.error("GET /api/especificaciones error:", error);
-    return NextResponse.json(
-      { message: "Error al listar especificaciones", error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json(especificacionesFormateadas);
+  } catch (e) {
+    console.log("Error en GET especificaciones:", e);
+    return NextResponse.json({ message: "Error", error: e.message }, { status: 500 });
   }
 }
 
-// ============================================
-// POST: Crear nueva especificación
-// ============================================
 export async function POST(req) {
   try {
     const body = await req.json();
+    console.log("Body recibido:", body);
 
-    const { nombre, descripcion } = body;
+    const { nombre, tipo_dato, opciones } = body;
 
-    // Validaciones
-    if (!nombre || nombre.trim() === "") {
+    if (!nombre || !nombre.trim()) {
       return NextResponse.json(
-        { message: "El nombre de la especificación es obligatorio" },
+        { message: "Nombre es requerido" },
         { status: 400 }
       );
     }
 
-    // Verificar si ya existe
-    const [existing] = await db.query(
-      "SELECT id FROM especificaciones WHERE nombre = ?",
-      [nombre.trim()]
-    );
-
-    if (existing.length > 0) {
-      return NextResponse.json(
-        { message: "Ya existe una especificación con este nombre" },
-        { status: 409 }
-      );
+    let opcionesJSON = null;
+    if (tipo_dato === "lista" && Array.isArray(opciones) && opciones.length > 0) {
+      opcionesJSON = JSON.stringify(opciones);
     }
 
+    console.log("Insertando:", {
+      nombre: nombre.trim(),
+      tipo_dato: tipo_dato || "texto",
+      opcionesJSON,
+    });
+
     const [result] = await db.query(
-      "INSERT INTO especificaciones (nombre, descripcion) VALUES (?, ?)",
-      [nombre.trim(), descripcion || null]
+      `INSERT INTO especificaciones (nombre, tipo_dato, opciones)
+       VALUES(?, ?, ?)`,
+      [nombre.trim(), tipo_dato || "texto", opcionesJSON]
     );
 
+    console.log("Resultado de inserción:", result);
+
     return NextResponse.json(
-      {
-        message: "Especificación creada exitosamente",
-        id: result.insertId,
-        nombre,
-        descripcion,
-      },
+      { message: "Especificación creada", id: result.insertId },
       { status: 201 }
     );
-  } catch (error) {
-    console.error("POST /api/especificaciones error:", error);
+  } catch (e) {
+    console.log("Error en POST especificaciones:", e);
     return NextResponse.json(
-      { message: "Error al crear especificación", error: error.message },
+      { message: "Error creando especificación", error: e.message },
       { status: 500 }
     );
   }

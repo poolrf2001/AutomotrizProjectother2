@@ -1,6 +1,6 @@
 // ============================================
-// API DE ESPECIFICACIONES - ID
-// archivo: app/api/especificaciones/[id]/route.js
+// API DE ESPECIFICACIONES DE MODELO - ID
+// archivo: app/api/modelo-especificaciones/[id]/route.js
 // ============================================
 
 import { NextResponse } from "next/server";
@@ -11,7 +11,18 @@ export async function GET(req, { params }) {
     const { id } = params;
 
     const [rows] = await db.query(
-      "SELECT * FROM especificaciones WHERE id = ?",
+      `SELECT 
+        me.*,
+        m.name as marca,
+        mo.name as modelo,
+        e.nombre as especificacion_nombre,
+        e.tipo_dato,
+        e.opciones
+      FROM modelo_especificaciones me
+      INNER JOIN marcas m ON m.id = me.marca_id
+      INNER JOIN modelos mo ON mo.id = me.modelo_id
+      INNER JOIN especificaciones e ON e.id = me.especificacion_id
+      WHERE me.id = ?`,
       [id]
     );
 
@@ -37,25 +48,11 @@ export async function GET(req, { params }) {
 export async function PUT(req, { params }) {
   try {
     const { id } = params;
-    const { nombre, tipo_dato, opciones } = await req.json();
-
-    if (!nombre) {
-      return NextResponse.json(
-        { message: "Nombre es requerido" },
-        { status: 400 }
-      );
-    }
-
-    const opcionesJSON =
-      tipo_dato === "lista" && opciones
-        ? JSON.stringify(opciones)
-        : null;
+    const { valor } = await req.json();
 
     const [result] = await db.query(
-      `UPDATE especificaciones 
-       SET nombre = ?, tipo_dato = ?, opciones = ?
-       WHERE id = ?`,
-      [nombre, tipo_dato || "texto", opcionesJSON, id]
+      "UPDATE modelo_especificaciones SET valor = ? WHERE id = ?",
+      [valor || null, id]
     );
 
     if (result.affectedRows === 0) {
@@ -76,21 +73,8 @@ export async function DELETE(req, { params }) {
   try {
     const { id } = params;
 
-    // Verificar si está siendo usada
-    const [uso] = await db.query(
-      "SELECT COUNT(*) as count FROM modelo_especificaciones WHERE especificacion_id = ?",
-      [id]
-    );
-
-    if (uso[0].count > 0) {
-      return NextResponse.json(
-        { message: `No se puede eliminar. Está siendo usada en ${uso[0].count} modelo(s)` },
-        { status: 400 }
-      );
-    }
-
     const [result] = await db.query(
-      "DELETE FROM especificaciones WHERE id = ?",
+      "DELETE FROM modelo_especificaciones WHERE id = ?",
       [id]
     );
 
