@@ -7,7 +7,7 @@ import { useRequirePerm } from "@/hooks/useRequirePerm";
 import ConversionTab from "@/app/components/configuracion/ConversionTab";
 import ConfiguracionEstadosTiempoTab from "@/app/components/configuracion/ConfiguracionEstadosTiempoTab";
 import AgendaCentroTab from "@/app/components/configuracion/AgendaCentroTab";
-
+import PreguntasAgendaTab from "@/app/components/configuracion/PreguntasAgendaTab";
 export default function ConfiguracionAgendaPage() {
 
   useRequirePerm("configagenda", "view");
@@ -24,7 +24,7 @@ export default function ConfiguracionAgendaPage() {
           <TabsTrigger value="horarios">Horarios Agenda</TabsTrigger>
           <TabsTrigger value="conversion">Etapas de Conversión</TabsTrigger>
 <TabsTrigger value="tiempos">Tiempos</TabsTrigger>
-
+<TabsTrigger value="preguntas">Preguntas</TabsTrigger>
         </TabsList>
         <TabsContent value="horarios">
           <Card>
@@ -44,6 +44,13 @@ export default function ConfiguracionAgendaPage() {
           <Card>
             <CardContent className="pt-6">
               <ConfiguracionEstadosTiempoTab />
+            </CardContent>
+          </Card>
+        </TabsContent>
+        <TabsContent value="preguntas">
+          <Card>
+            <CardContent className="pt-6">
+              <PreguntasAgendaTab />
             </CardContent>
           </Card>
         </TabsContent>

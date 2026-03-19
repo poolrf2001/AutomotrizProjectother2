@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Save, X, Edit2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, X, Edit2, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function OportunidadDetailPage() {
   const router = useRouter();
@@ -12,6 +13,8 @@ export default function OportunidadDetailPage() {
 
   const [oportunidad, setOportunidad] = useState(null);
   const [etapaActual, setEtapaActual] = useState(null);
+  const [preguntas, setPreguntas] = useState([]);
+  const [respuestas, setRespuestas] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({});
@@ -34,32 +37,58 @@ export default function OportunidadDetailPage() {
   useEffect(() => {
     if (!oportunidadId) return;
 
-    const cargarOportunidad = async () => {
+    const cargarDatos = async () => {
       try {
-        const res = await fetch(`/api/oportunidades/${oportunidadId}`, {
+        // Cargar oportunidad
+        const resOp = await fetch(`/api/oportunidades/${oportunidadId}`, {
           cache: "no-store",
         });
-        const data = await res.json();
-        setOportunidad(data);
-        setFormData(data);
+        const dataOp = await resOp.json();
+        setOportunidad(dataOp);
+        setFormData(dataOp);
+
+        // Cargar preguntas
+        const resPreg = await fetch("/api/preguntas-atencion?activa=true", {
+          cache: "no-store",
+        });
+        const dataPreg = await resPreg.json();
+        setPreguntas(Array.isArray(dataPreg) ? dataPreg : []);
+
+        // Cargar respuestas existentes
+        const resResp = await fetch(
+          `/api/respuestas-atencion?oportunidad_id=${oportunidadId}`,
+          { cache: "no-store" }
+        );
+        const dataResp = await resResp.json();
+        
+        if (Array.isArray(dataResp)) {
+          const respuestasMap = {};
+          dataResp.forEach((r) => {
+            respuestasMap[r.pregunta_id] = r.respuesta;
+          });
+          setRespuestas(respuestasMap);
+        }
 
         // Cambiar a "En Atención" automáticamente (id: 4)
         setEtapaActual(4);
       } catch (error) {
-        console.error("Error cargando oportunidad:", error);
+        console.error("Error cargando datos:", error);
+        toast.error("Error cargando datos");
       } finally {
         setLoading(false);
       }
     };
 
-    cargarOportunidad();
+    cargarDatos();
   }, [oportunidadId]);
 
   const handleGuardar = async () => {
     setSaving(true);
     try {
       const etapaSeleccionada = etapas.find((e) => e.id === etapaActual);
-      const res = await fetch(`/api/oportunidades/${oportunidadId}`, {
+      
+      // Guardar cambios de la oportunidad
+      await fetch(`/api/oportunidades/${oportunidadId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -69,12 +98,28 @@ export default function OportunidadDetailPage() {
         }),
       });
 
-      if (res.ok) {
-        alert("Cambios guardados exitosamente");
+      // Guardar respuestas de preguntas
+      const usuarioId = localStorage.getItem("usuario_id"); // Obtener usuario logueado
+      
+      for (const pregunta of preguntas) {
+        if (respuestas[pregunta.id] !== undefined) {
+          await fetch("/api/respuestas-atencion", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              oportunidad_id: oportunidadId,
+              pregunta_id: pregunta.id,
+              respuesta: respuestas[pregunta.id],
+              created_by: usuarioId,
+            }),
+          });
+        }
       }
+
+      toast.success("Cambios guardados exitosamente");
     } catch (error) {
       console.error("Error guardando:", error);
-      alert("Error al guardar los cambios");
+      toast.error("Error al guardar los cambios");
     } finally {
       setSaving(false);
     }
@@ -104,10 +149,113 @@ export default function OportunidadDetailPage() {
     }));
   };
 
+  const handleRespuestaChange = (preguntaId, valor) => {
+    setRespuestas((prev) => ({
+      ...prev,
+      [preguntaId]: valor,
+    }));
+  };
+
+  const renderCampoPregunta = (pregunta) => {
+    const valor = respuestas[pregunta.id] || "";
+
+    switch (pregunta.tipo_respuesta) {
+      case "texto":
+        return (
+          <textarea
+            value={valor}
+            onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+            placeholder="Ingresa tu respuesta"
+            className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            rows="3"
+          />
+        );
+
+      case "numero":
+        return (
+          <input
+            type="number"
+            value={valor}
+            onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+            placeholder="Ingresa un número"
+            className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+          />
+        );
+
+      case "si_no":
+        return (
+          <div className="flex gap-4 mt-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`pregunta_${pregunta.id}`}
+                value="si"
+                checked={valor === "si"}
+                onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm">Sí</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name={`pregunta_${pregunta.id}`}
+                value="no"
+                checked={valor === "no"}
+                onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm">No</span>
+            </label>
+          </div>
+        );
+
+      case "opcion_multiple":
+        return (
+          <select
+            value={valor}
+            onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+            className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">Selecciona una opción</option>
+            {pregunta.opciones &&
+              pregunta.opciones.map((opcion, idx) => (
+                <option key={idx} value={opcion}>
+                  {opcion}
+                </option>
+              ))}
+          </select>
+        );
+
+      case "fecha":
+        return (
+          <input
+            type="date"
+            value={valor}
+            onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+            className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+          />
+        );
+
+      case "hora":
+        return (
+          <input
+            type="time"
+            value={valor}
+            onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
+            className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-600">Cargando...</p>
+        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -212,7 +360,7 @@ export default function OportunidadDetailPage() {
               </div>
 
               <div className="space-y-4">
-                {/* Campos editable por etapa */}
+                {/* Notas */}
                 <div>
                   <label className="text-sm font-medium text-gray-600">Notas</label>
                   <textarea
@@ -221,25 +369,36 @@ export default function OportunidadDetailPage() {
                     onChange={handleInputChange}
                     placeholder="Añade notas sobre esta etapa"
                     className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    rows="4"
+                    rows="3"
                   />
                 </div>
 
-                <div>
-                  <label className="text-sm font-medium text-gray-600">Temperatura</label>
-                  <input
-                    type="number"
-                    name="temperatura"
-                    value={formData.temperatura || 0}
-                    onChange={handleInputChange}
-                    className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
+                {/* Preguntas del Formulario */}
+                {preguntas.length > 0 && (
+                  <div className="space-y-4 mt-6 pt-6 border-t">
+                    <h3 className="font-semibold text-gray-900">
+                      Preguntas de Atención
+                    </h3>
 
-                {/* Aquí irán campos específicos por etapa que puedas agregar */}
-                <div className="p-4 bg-blue-50 rounded text-blue-700 text-sm">
-                  Puedes editar los campos anteriores y guardar los cambios de la etapa actual.
-                </div>
+                    {preguntas.map((pregunta) => (
+                      <div key={pregunta.id}>
+                        <label className="text-sm font-medium text-gray-700 flex items-center gap-1">
+                          {pregunta.pregunta}
+                          {pregunta.es_obligatoria && (
+                            <span className="text-red-500">*</span>
+                          )}
+                        </label>
+                        {renderCampoPregunta(pregunta)}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {preguntas.length === 0 && (
+                  <div className="p-4 bg-yellow-50 rounded text-yellow-700 text-sm">
+                    No hay preguntas configuradas para esta etapa.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -321,8 +480,17 @@ export default function OportunidadDetailPage() {
                   disabled={saving}
                   className="w-full bg-green-600 hover:bg-green-700 text-white"
                 >
-                  <Save className="w-4 h-4 mr-2" />
-                  {saving ? "Guardando..." : "Guardar"}
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Guardar
+                    </>
+                  )}
                 </Button>
 
                 <Button
