@@ -130,21 +130,52 @@ export async function POST(req) {
 
   const leadUuid = randomUUID();
   const now = new Date().toISOString().slice(0, 19).replace("T", " ");
+  const telefonoClean = telefono.trim();
+
+  // ── Buscar cliente existente por teléfono ──────────────────────────────────
+  let clienteId = null;
+  const [[clienteExistente]] = await db.query(
+    "SELECT id, email FROM clientes WHERE celular = ? LIMIT 1",
+    [telefonoClean]
+  );
+
+  if (clienteExistente) {
+    clienteId = clienteExistente.id;
+    // Actualizar email si el cliente no lo tenía y el bot lo capturó
+    if (!clienteExistente.email && email?.trim()) {
+      await db.query("UPDATE clientes SET email = ? WHERE id = ?", [
+        email.trim(),
+        clienteId,
+      ]);
+    }
+  } else if (nombre_cliente?.trim()) {
+    // Crear cliente nuevo con los datos capturados por el bot
+    const partes = nombre_cliente.trim().split(" ");
+    const nombre = partes[0] || null;
+    const apellido = partes.slice(1).join(" ") || null;
+    const [ins] = await db.query(
+      `INSERT INTO clientes (nombre, apellido, email, celular, created_at)
+       VALUES (?, ?, ?, ?, CURDATE())`,
+      [nombre, apellido, email?.trim() || null, telefonoClean]
+    );
+    clienteId = ins.insertId;
+  }
 
   const [result] = await db.query(
     `INSERT INTO ventas_leads
-       (lead_uuid, session_id, nombre_cliente, telefono, email,
+       (lead_uuid, session_id, cliente_id, nombre_cliente, telefono, email,
         modelo_id, version_id, modelo_nombre, version_nombre,
         precio_final, moneda, forma_pago, plazo_meses, cuota_inicial,
         tiempo_entrega_dias, uso_vehiculo, personas_habituales,
         presupuesto_rango, equipamiento_requerido, tiene_historial_crediticio,
         notas_agente, cotizacion_enviada_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       leadUuid,
       session_id ? Number(session_id) : null,
+      clienteId,
       nombre_cliente?.trim() || null,
-      telefono.trim(),
+      telefonoClean,
       email?.trim() || null,
       modelo_id ? Number(modelo_id) : null,
       version_id ? Number(version_id) : null,
@@ -162,12 +193,18 @@ export async function POST(req) {
       equipamiento_requerido?.trim() || null,
       tiene_historial_crediticio != null ? (tiene_historial_crediticio ? 1 : 0) : null,
       notas_agente?.trim() || null,
-      now, // cotizacion_enviada_at = ahora porque el agente envía el resumen al guardar
+      now,
     ]
   );
 
   return NextResponse.json(
-    { id: result.insertId, lead_uuid: leadUuid, message: "Lead guardado" },
+    {
+      id: result.insertId,
+      lead_uuid: leadUuid,
+      cliente_id: clienteId,
+      cliente_nuevo: !clienteExistente && clienteId !== null,
+      message: "Lead guardado",
+    },
     { status: 201 }
   );
 }

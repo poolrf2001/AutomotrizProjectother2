@@ -17,15 +17,17 @@ export async function GET(req) {
     return NextResponse.json({ message: "No autorizado" }, { status: 401 });
   }
 
-  // Modelos activos con sus versiones activas
+  // Modelos del sistema principal (marcas + modelos) con versiones de ventas
   const [modelos] = await db.query(
-    `SELECT id, nombre, tipo, motor, transmision, consumo, capacidad_personas,
-            caracteristicas_seguridad, caracteristicas_tecnologia
-     FROM ventas_modelos
-     WHERE is_active = 1
-     ORDER BY nombre ASC`
+    `SELECT m.id, m.name AS nombre, ma.name AS marca_nombre,
+            m.anios, c.name AS clase_nombre
+     FROM modelos m
+     JOIN marcas ma ON ma.id = m.marca_id
+     LEFT JOIN clases c ON c.id = m.clase_id
+     ORDER BY ma.name ASC, m.name ASC`
   );
 
+  // Versiones/precios de ventas — modelo_id referencia modelos.id del sistema
   const [versiones] = await db.query(
     `SELECT id, modelo_id, nombre_version, precio_lista, moneda,
             descripcion_equipamiento, descuento_porcentaje,
@@ -59,6 +61,7 @@ export async function GET(req) {
   for (const m of modelos) {
     modelosMap[m.id] = {
       ...m,
+      nombre_completo: `${m.marca_nombre} ${m.nombre}`,
       versiones: [],
       promociones: [],
     };
