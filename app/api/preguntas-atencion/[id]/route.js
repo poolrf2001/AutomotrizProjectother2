@@ -1,5 +1,5 @@
 // ============================================
-// API DE PREGUNTAS - ID
+// API DE PREGUNTAS DE ATENCIÓN - ID - CORREGIDA
 // archivo: app/api/preguntas-atencion/[id]/route.js
 // ============================================
 
@@ -8,10 +8,16 @@ import { db } from "@/lib/db";
 
 export async function GET(req, { params }) {
   try {
-    const { id } = params;
+    // Esperar a que params se resuelva
+    const { id } = await params;
+
+    console.log("Obteniendo pregunta:", id);
 
     const [rows] = await db.query(
-      "SELECT * FROM preguntas_atencion WHERE id = ?",
+      `SELECT 
+        pa.*
+      FROM preguntas_atencion pa
+      WHERE pa.id = ?`,
       [id]
     );
 
@@ -22,74 +28,123 @@ export async function GET(req, { params }) {
       );
     }
 
-    const pregunta = rows[0];
-    pregunta.opciones = pregunta.opciones ? JSON.parse(pregunta.opciones) : null;
+    // Parsear JSON de opciones
+    const pregunta = {
+      ...rows[0],
+      opciones: rows[0].opciones ? JSON.parse(rows[0].opciones) : null,
+    };
 
     return NextResponse.json(pregunta);
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en GET preguntas-atencion por ID:", e);
+    return NextResponse.json(
+      { message: "Error obteniendo pregunta", error: e.message },
+      { status: 500 }
+    );
   }
 }
 
 export async function PUT(req, { params }) {
   try {
-    const { id } = params;
-    const { pregunta, tipo_respuesta, opciones, es_obligatoria, orden, es_activa } =
-      await req.json();
+    // Esperar a que params se resuelva
+    const { id } = await params;
+
+    console.log("Actualizando pregunta:", id);
+
+    const {
+      pregunta,
+      tipo_respuesta,
+      opciones,
+      es_obligatoria,
+      orden,
+      es_activa,
+    } = await req.json();
 
     if (!pregunta || !tipo_respuesta) {
       return NextResponse.json(
-        { message: "Pregunta y tipo de respuesta son requeridos" },
+        { message: "Pregunta y tipo_respuesta son requeridos" },
         { status: 400 }
       );
     }
 
-    const opcionesJSON =
-      tipo_respuesta === "opcion_multiple" && opciones
-        ? JSON.stringify(opciones)
-        : null;
-
-    const [result] = await db.query(
-      `UPDATE preguntas_atencion 
-       SET pregunta = ?, tipo_respuesta = ?, opciones = ?, es_obligatoria = ?, orden = ?, es_activa = ?
-       WHERE id = ?`,
-      [pregunta, tipo_respuesta, opcionesJSON, es_obligatoria, orden, es_activa, id]
+    // Verificar que exista la pregunta
+    const [existing] = await db.query(
+      "SELECT id FROM preguntas_atencion WHERE id = ?",
+      [id]
     );
 
-    if (result.affectedRows === 0) {
+    if (existing.length === 0) {
       return NextResponse.json(
         { message: "Pregunta no encontrada" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json({ message: "Pregunta actualizada" });
+    // Preparar opciones como JSON si es necesario
+    let opcionesJson = null;
+    if (opciones) {
+      opcionesJson = typeof opciones === "string" ? opciones : JSON.stringify(opciones);
+    }
+
+    // Actualizar pregunta
+    const [result] = await db.query(
+      `UPDATE preguntas_atencion 
+       SET pregunta = ?, tipo_respuesta = ?, opciones = ?, es_obligatoria = ?, orden = ?, es_activa = ?, updated_at = NOW()
+       WHERE id = ?`,
+      [
+        pregunta,
+        tipo_respuesta,
+        opcionesJson,
+        es_obligatoria !== undefined ? es_obligatoria : 0,
+        orden || null,
+        es_activa !== undefined ? es_activa : 1,
+        id,
+      ]
+    );
+
+    if (result.affectedRows === 0) {
+      return NextResponse.json(
+        { message: "No se pudo actualizar la pregunta" },
+        { status: 400 }
+      );
+    }
+
+    console.log("Pregunta actualizada");
+
+    return NextResponse.json({
+      message: "Pregunta actualizada",
+      id: id,
+    });
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en PUT preguntas-atencion:", e);
+    return NextResponse.json(
+      { message: "Error actualizando pregunta", error: e.message },
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE(req, { params }) {
   try {
-    const { id } = params;
+    // Esperar a que params se resuelva
+    const { id } = await params;
 
-    // Verificar si la pregunta está siendo usada
-    const [respuestas] = await db.query(
-      "SELECT COUNT(*) as count FROM respuestas_atencion WHERE pregunta_id = ?",
+    console.log("Eliminando pregunta:", id);
+
+    // Verificar que exista la pregunta
+    const [existing] = await db.query(
+      "SELECT id FROM preguntas_atencion WHERE id = ?",
       [id]
     );
 
-    if (respuestas[0].count > 0) {
+    if (existing.length === 0) {
       return NextResponse.json(
-        {
-          message: `No se puede eliminar. La pregunta está siendo usada en ${respuestas[0].count} respuesta(s)`,
-        },
-        { status: 400 }
+        { message: "Pregunta no encontrada" },
+        { status: 404 }
       );
     }
 
+    // Eliminar pregunta
     const [result] = await db.query(
       "DELETE FROM preguntas_atencion WHERE id = ?",
       [id]
@@ -97,14 +152,19 @@ export async function DELETE(req, { params }) {
 
     if (result.affectedRows === 0) {
       return NextResponse.json(
-        { message: "Pregunta no encontrada" },
-        { status: 404 }
+        { message: "No se pudo eliminar la pregunta" },
+        { status: 400 }
       );
     }
 
+    console.log("Pregunta eliminada");
+
     return NextResponse.json({ message: "Pregunta eliminada" });
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en DELETE preguntas-atencion:", e);
+    return NextResponse.json(
+      { message: "Error eliminando pregunta", error: e.message },
+      { status: 500 }
+    );
   }
 }

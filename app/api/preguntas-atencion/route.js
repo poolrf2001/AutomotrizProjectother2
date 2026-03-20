@@ -1,5 +1,5 @@
 // ============================================
-// API DE PREGUNTAS DE ATENCIÓN
+// API DE PREGUNTAS DE ATENCIÓN - CORREGIDA
 // archivo: app/api/preguntas-atencion/route.js
 // ============================================
 
@@ -29,25 +29,58 @@ export async function GET(req) {
 
     query += " ORDER BY orden ASC";
 
+    console.log("Query:", query);
+    console.log("Params:", params);
+
     const [rows] = await db.query(query, params);
 
-    // Parsear JSON de opciones
-    const preguntasFormateadas = rows.map((row) => ({
-      ...row,
-      opciones: row.opciones ? JSON.parse(row.opciones) : null,
-    }));
+    console.log("Preguntas obtenidas:", rows.length);
+
+    // Parsear JSON de opciones con validación
+    const preguntasFormateadas = rows.map((row) => {
+      let opcionesParseadas = null;
+      
+      if (row.opciones) {
+        try {
+          // Validar que no sea string vacío o inválido
+          const trimmed = row.opciones.trim();
+          if (trimmed && trimmed !== "" && trimmed !== "null") {
+            opcionesParseadas = JSON.parse(trimmed);
+          }
+        } catch (err) {
+          console.warn(`Error parseando opciones para pregunta ${row.id}:`, err.message);
+          opcionesParseadas = null;
+        }
+      }
+
+      return {
+        ...row,
+        opciones: opcionesParseadas,
+      };
+    });
 
     return NextResponse.json(preguntasFormateadas);
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en GET preguntas-atencion:", e);
+    return NextResponse.json(
+      { message: "Error obteniendo preguntas", error: e.message },
+      { status: 500 }
+    );
   }
 }
 
 export async function POST(req) {
   try {
-    const { pregunta, tipo_respuesta, opciones, es_obligatoria, orden, es_activa } =
-      await req.json();
+    const {
+      pregunta,
+      tipo_respuesta,
+      opciones,
+      es_obligatoria,
+      orden,
+      es_activa,
+    } = await req.json();
+
+    console.log("Creando pregunta:", { pregunta, tipo_respuesta, opciones });
 
     if (!pregunta || !tipo_respuesta) {
       return NextResponse.json(
@@ -56,10 +89,28 @@ export async function POST(req) {
       );
     }
 
-    const opcionesJSON =
-      tipo_respuesta === "opcion_multiple" && opciones
-        ? JSON.stringify(opciones)
-        : null;
+    // Validar opciones para múltiple opción
+    let opcionesJSON = null;
+    if (tipo_respuesta === "opcion_multiple") {
+      if (opciones) {
+        try {
+          // Si ya es array, convertir a JSON
+          if (Array.isArray(opciones)) {
+            opcionesJSON = JSON.stringify(opciones);
+          } else if (typeof opciones === "string") {
+            // Validar que sea JSON válido
+            const parsed = JSON.parse(opciones);
+            opcionesJSON = JSON.stringify(parsed);
+          }
+        } catch (err) {
+          console.warn("Error validando opciones:", err.message);
+          return NextResponse.json(
+            { message: "Las opciones deben ser un array JSON válido" },
+            { status: 400 }
+          );
+        }
+      }
+    }
 
     const [result] = await db.query(
       `INSERT INTO preguntas_atencion 
@@ -75,12 +126,17 @@ export async function POST(req) {
       ]
     );
 
+    console.log("Pregunta creada con ID:", result.insertId);
+
     return NextResponse.json(
       { message: "Pregunta creada", id: result.insertId },
       { status: 201 }
     );
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en POST preguntas-atencion:", e);
+    return NextResponse.json(
+      { message: "Error creando pregunta", error: e.message },
+      { status: 500 }
+    );
   }
 }

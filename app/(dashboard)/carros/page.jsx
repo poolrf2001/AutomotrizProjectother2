@@ -1,15 +1,16 @@
-// ============================================
-// COMPONENTE DE PRECIOS CON GUARDADO AUTOMÁTICO (FINAL)
-// archivo: components/PreciosPage.jsx
-// ============================================
-
 "use client";
 import React from "react";
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { toast } from "sonner";
-import { Download, Upload, Loader2 } from "lucide-react";
+import { Download, Upload, Loader2, AlertCircle, DollarSign, FileUp } from "lucide-react";
 
 export default function PreciosPage() {
   const [precios, setPrecios] = useState([]);
@@ -23,10 +24,8 @@ export default function PreciosPage() {
 
   const [loading, setLoading] = useState(true);
 
-  // Estado para precios por marca-modelo-versión
   const [preciosPorMarcaModeloVersion, setPreciosPorMarcaModeloVersion] = useState({});
 
-  // Estado para tracking de guardado
   const [isSaving, setIsSaving] = useState(false);
   const saveTimers = useRef({});
 
@@ -168,15 +167,12 @@ export default function PreciosPage() {
       },
     }));
 
-    // Marcar como guardando
     setIsSaving(true);
 
-    // Limpiar timer anterior si existe
     if (saveTimers.current[key]) {
       clearTimeout(saveTimers.current[key]);
     }
 
-    // Guardar después de 500ms de inactividad
     saveTimers.current[key] = setTimeout(() => {
       savePrice(marcaId, modeloId, versionId, parseFloat(value) || 0, key);
     }, 500);
@@ -221,9 +217,12 @@ export default function PreciosPage() {
   if (loading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Precios por Versión</h1>
-        <div className="border rounded-lg p-12 text-center">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+        <div className="flex items-center gap-3">
+          <DollarSign size={28} className="text-blue-600" />
+          <h1 className="text-2xl font-bold text-slate-900">Precios por Versión</h1>
+        </div>
+        <div className="border rounded-lg p-12 text-center bg-slate-50">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
           <p className="text-gray-600">Cargando datos...</p>
         </div>
       </div>
@@ -233,12 +232,17 @@ export default function PreciosPage() {
   if (marcas.length === 0 || modelos.length === 0 || versiones.length === 0) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-semibold">Precios por Versión</h1>
-        <div className="border rounded-lg p-12 text-center bg-yellow-50 border-yellow-200">
-          <p className="text-yellow-800 font-semibold mb-2">
+        <div className="flex items-center gap-3">
+          <DollarSign size={28} className="text-blue-600" />
+          <h1 className="text-2xl font-bold text-slate-900">Precios por Versión</h1>
+        </div>
+        <div className="border rounded-lg p-12 text-center bg-amber-50 border-amber-200">
+          <AlertCircle className="w-8 h-8 mx-auto mb-3 text-amber-600" />
+          <p className="text-amber-900 font-semibold mb-2">
             No se encontraron datos necesarios
           </p>
-          <Button onClick={loadData} className="mt-4">
+          <p className="text-amber-700 text-sm mb-4">Verifica que existan marcas, modelos y versiones configurados</p>
+          <Button onClick={loadData} className="bg-amber-600 hover:bg-amber-700">
             Reintentar carga
           </Button>
         </div>
@@ -247,156 +251,255 @@ export default function PreciosPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-semibold">Precios por Versión</h1>
-        <div className="flex gap-2">
-          <Button onClick={handleDownloadTemplate} variant="outline" size="sm">
-            <Download className="w-4 h-4 mr-2" />
-            Plantilla
-          </Button>
-          <Button 
-            onClick={loadData} 
-            variant="outline" 
-            size="sm"
-            className="relative"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Guardando...
-              </>
-            ) : (
-              <>
-                <Loader2 className="w-4 h-4 mr-2" />
-                Recargar
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+    <TooltipProvider>
+      <div className="space-y-6">
 
-      {/* Importar */}
-      <div className="border rounded-lg p-4 bg-blue-50 border-blue-200">
-        <h2 className="font-semibold mb-3 text-blue-900">Importar Precios</h2>
-        <div className="flex gap-2">
-          <Input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-            placeholder="Selecciona archivo Excel"
-            className="flex-1"
-          />
-          <Button
-            onClick={handleImport}
-            disabled={!importFile || importLoading}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            {importLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Importando...
-              </>
-            ) : (
-              <>
-                <Upload className="w-4 h-4 mr-2" />
-                Importar
-              </>
-            )}
-          </Button>
-        </div>
-      </div>
+        {/* HEADER */}
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="flex items-center gap-3">
+            <DollarSign size={28} className="text-blue-600" />
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900">Precios por Versión</h1>
+              <p className="text-sm text-gray-600 mt-1">Gestiona precios de mantenimiento por versión de vehículo</p>
+            </div>
+          </div>
 
-      {/* Tabla Principal */}
-      <div className="overflow-x-auto border rounded-lg bg-white">
-        <table className="w-full text-sm border-collapse">
-          {/* Header Fijo */}
-          <thead>
-            <tr className="bg-gray-50 border-b-2">
-              <th className="border p-3 text-left font-bold bg-gray-100 sticky left-0 z-10">
-                Marca
-              </th>
-              <th className="border p-3 text-left font-bold bg-gray-100 sticky left-24 z-10">
-                Modelo
-              </th>
-              {/* Columnas de versiones */}
-              {versiones.map((version) => (
-                <th
-                  key={version.id}
-                  className="border p-3 text-center font-bold bg-blue-100 min-w-32"
+          <div className="flex gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  onClick={handleDownloadTemplate} 
+                  variant="outline" 
+                  size="sm"
+                  className="gap-2"
                 >
-                  {version.nombre}
-                </th>
-              ))}
-            </tr>
-          </thead>
+                  <Download size={16} />
+                  Plantilla
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                Descarga la plantilla de Excel para importar precios
+              </TooltipContent>
+            </Tooltip>
 
-          {/* Body */}
-          <tbody>
-            {Object.entries(modelosPorMarca).map(([marcaId, modelosList]) => {
-              const marca = marcas.find((m) => m.id === parseInt(marcaId));
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button 
+                  onClick={loadData} 
+                  variant="outline" 
+                  size="sm"
+                  className="gap-2"
+                  disabled={loading}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span className="hidden sm:inline">Guardando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Loader2 size={16} />
+                      <span className="hidden sm:inline">Recargar</span>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {isSaving ? "Guardando cambios..." : "Recargar todos los precios"}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
 
-              return (
-                <React.Fragment key={marcaId}>
-                  {modelosList.map((modelo, idx) => {
-                    const key = `${modelo.marca_id}_${modelo.id}`;
-                    const preciosData = preciosPorMarcaModeloVersion[key] || {};
+        {/* IMPORTAR SECCIÓN */}
+        <div className="border rounded-lg p-5 bg-blue-50 border-blue-200">
+          <div className="flex items-center gap-2 mb-4">
+            <FileUp size={20} className="text-blue-600" />
+            <h2 className="font-semibold text-blue-900 text-lg">Importar Precios desde Excel</h2>
+          </div>
 
-                    return (
-                      <tr
-                        key={modelo.id}
-                        className="border-b hover:bg-gray-50 transition-colors"
-                      >
-                        {/* Marca (solo en la primera fila del grupo) */}
-                        {idx === 0 && (
-                          <td
-                            rowSpan={modelosList.length}
-                            className="border p-3 font-bold bg-gray-50 sticky left-0 z-5 align-top"
+          <div className="flex gap-3 flex-col sm:flex-row">
+            <Input
+              ref={fileInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+              placeholder="Selecciona archivo Excel"
+              className="flex-1 h-9 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+            />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={handleImport}
+                  disabled={!importFile || importLoading}
+                  className="bg-blue-600 hover:bg-blue-700 text-white gap-2 min-w-fit"
+                >
+                  {importLoading ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Importando...
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={16} />
+                      Importar
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                Importa precios desde el archivo Excel seleccionado
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          <p className="text-xs text-blue-700 mt-3">
+            <AlertCircle size={12} className="inline mr-1" />
+            Descarga la plantilla primero para asegurar el formato correcto
+          </p>
+        </div>
+
+        {/* TABLA PRINCIPAL */}
+        <div className="border rounded-lg overflow-hidden bg-white shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              
+              {/* HEADER */}
+              <thead>
+                <tr className="bg-slate-50 border-b-2 border-slate-300">
+                  <th className="border-r border-slate-300 p-3 text-left font-bold bg-slate-100 sticky left-0 z-10 min-w-max">
+                    Marca
+                  </th>
+                  <th className="border-r border-slate-300 p-3 text-left font-bold bg-slate-100 sticky left-32 z-10 min-w-max">
+                    Modelo
+                  </th>
+
+                  {/* Columnas de versiones */}
+                  {versiones.map((version) => (
+                    <Tooltip key={version.id}>
+                      <TooltipTrigger asChild>
+                        <th
+                          className="border-r border-slate-300 p-3 text-center font-bold bg-blue-100 text-blue-900 min-w-[140px] cursor-help"
+                        >
+                          {version.nombre}
+                        </th>
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Ingresa el precio base para {version.nombre}
+                      </TooltipContent>
+                    </Tooltip>
+                  ))}
+                </tr>
+              </thead>
+
+              {/* BODY */}
+              <tbody>
+                {Object.entries(modelosPorMarca).map(([marcaId, modelosList]) => {
+                  const marca = marcas.find((m) => m.id === parseInt(marcaId));
+
+                  return (
+                    <React.Fragment key={marcaId}>
+                      {modelosList.map((modelo, idx) => {
+                        const key = `${modelo.marca_id}_${modelo.id}`;
+                        const preciosData = preciosPorMarcaModeloVersion[key] || {};
+
+                        return (
+                          <tr
+                            key={modelo.id}
+                            className={`border-b border-slate-200 hover:bg-blue-50 transition-colors ${
+                              idx % 2 === 0 ? "bg-white" : "bg-slate-50/30"
+                            }`}
                           >
-                            {marca?.name}
-                          </td>
-                        )}
+                            {/* Marca (solo en la primera fila del grupo) */}
+                            {idx === 0 && (
+                              <td
+                                rowSpan={modelosList.length}
+                                className="border-r border-slate-300 p-3 font-bold bg-slate-100 sticky left-0 z-5 align-top min-w-max"
+                              >
+                                {marca?.name}
+                              </td>
+                            )}
 
-                        {/* Modelo */}
-                        <td className="border p-3 font-semibold sticky left-24 z-5 bg-white">
-                          {modelo.name}
-                        </td>
+                            {/* Modelo */}
+                            <td className="border-r border-slate-300 p-3 font-semibold text-slate-900 sticky left-32 z-5 min-w-max">
+                              {modelo.name}
+                            </td>
 
-                        {/* Precios por versión */}
-                        {versiones.map((version) => (
-                          <td key={version.id} className="border p-2 text-center">
-                            <input
-                              type="number"
-                              placeholder="-"
-                              value={preciosData[version.id] || ""}
-                              onChange={(e) =>
-                                handlePriceChange(
-                                  modelo.marca_id,
-                                  modelo.id,
-                                  version.id,
-                                  e.target.value
-                                )
-                              }
-                              className="w-full h-9 border rounded px-2 py-1 text-center text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </React.Fragment>
-              );
-            })}
-          </tbody>
-        </table>
+                            {/* Precios por versión */}
+                            {versiones.map((version) => (
+                              <td 
+                                key={version.id} 
+                                className="border-r border-slate-300 p-2 text-center"
+                              >
+                                <input
+                                  type="number"
+                                  placeholder="—"
+                                  value={preciosData[version.id] || ""}
+                                  onChange={(e) =>
+                                    handlePriceChange(
+                                      modelo.marca_id,
+                                      modelo.id,
+                                      version.id,
+                                      e.target.value
+                                    )
+                                  }
+                                  className="w-full h-9 border border-slate-300 rounded-md px-2 py-1 text-center text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* STATUS Y LEYENDA */}
+        <div className="space-y-3">
+          
+          {/* Estado de guardado */}
+          {isSaving && (
+            <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 border border-blue-200 px-4 py-3 rounded-lg">
+              <Loader2 size={16} className="animate-spin" />
+              Guardando cambios automáticamente...
+            </div>
+          )}
+
+          {/* Leyenda */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+            
+            <div className="flex items-start gap-3">
+              <DollarSign size={16} className="text-green-600 flex-shrink-0 mt-1" />
+              <div>
+                <p className="font-medium text-sm text-slate-900">Guardado Automático</p>
+                <p className="text-xs text-gray-600">Los precios se guardan 500ms después de escribir</p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <Upload size={16} className="text-blue-600 flex-shrink-0 mt-1" />
+              <div>
+                <p className="font-medium text-sm text-slate-900">Importación</p>
+                <p className="text-xs text-gray-600">Usa Excel para importar múltiples precios rápidamente</p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3">
+              <AlertCircle size={16} className="text-amber-600 flex-shrink-0 mt-1" />
+              <div>
+                <p className="font-medium text-sm text-slate-900">Validación</p>
+                <p className="text-xs text-gray-600">Verifica que todos los campos requeridos estén completos</p>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
-
-      {/* Leyenda */}
-      <div className="text-xs text-gray-600 space-y-1">
-        <p>💡 <strong>Guardado automático:</strong> Los precios se guardan automáticamente 500ms después de dejar de escribir.</p>
-        <p>🔄 <strong>Estado de guardado:</strong> Observa el botón Recargar para ver el estado de guardado.</p>
-      </div>
-    </div>
+    </TooltipProvider>
   );
 }

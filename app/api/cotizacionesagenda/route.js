@@ -1,5 +1,5 @@
 // ============================================
-// API DE COTIZACIONES AGENDA - CORREGIDA
+// API DE COTIZACIONES AGENDA - PRINCIPAL
 // archivo: app/api/cotizacionesagenda/route.js
 // ============================================
 
@@ -18,14 +18,10 @@ export async function GET(req) {
       SELECT 
         ca.*,
         m.name as marca,
-        mo.name as modelo,
-        o.oportunidad_id as numero_oportunidad,
-        u.nombre as created_by_name
+        mo.name as modelo
       FROM cotizacionesagenda ca
       INNER JOIN marcas m ON m.id = ca.marca_id
       INNER JOIN modelos mo ON mo.id = ca.modelo_id
-      INNER JOIN oportunidades o ON o.id = ca.oportunidad_id
-      LEFT JOIN usuarios u ON u.id = ca.created_by
       WHERE 1=1
     `;
     const params = [];
@@ -52,12 +48,18 @@ export async function GET(req) {
 
     query += " ORDER BY ca.created_at DESC";
 
+    console.log("Query:", query);
+    console.log("Params:", params);
+
     const [rows] = await db.query(query, params);
+
+    console.log("Resultados:", rows);
+
     return NextResponse.json(rows);
   } catch (e) {
     console.log("Error en GET cotizacionesagenda:", e);
     return NextResponse.json(
-      { message: "Error", error: e.message },
+      { message: "Error obteniendo cotizaciones", error: e.message },
       { status: 500 }
     );
   }
@@ -71,6 +73,7 @@ export async function POST(req) {
       marca_id,
       modelo_id,
       version_id,
+      anio,
       sku,
       color_externo,
       color_interno,
@@ -78,9 +81,19 @@ export async function POST(req) {
       created_by,
     } = body;
 
-    if (!oportunidad_id || !marca_id || !modelo_id || !created_by) {
+    console.log("Datos recibidos:", body);
+
+    // Validar campos requeridos
+    if (!oportunidad_id || !marca_id || !modelo_id) {
       return NextResponse.json(
-        { message: "Campos requeridos faltantes" },
+        { message: "Campos requeridos: oportunidad_id, marca_id, modelo_id" },
+        { status: 400 }
+      );
+    }
+
+    if (!created_by) {
+      return NextResponse.json(
+        { message: "Campos requeridos: created_by" },
         { status: 400 }
       );
     }
@@ -98,16 +111,56 @@ export async function POST(req) {
       );
     }
 
+    // Verificar que la marca existe
+    const [marca] = await db.query(
+      "SELECT id FROM marcas WHERE id = ?",
+      [marca_id]
+    );
+
+    if (marca.length === 0) {
+      return NextResponse.json(
+        { message: "Marca no encontrada" },
+        { status: 404 }
+      );
+    }
+
+    // Verificar que el modelo existe
+    const [modelo] = await db.query(
+      "SELECT id FROM modelos WHERE id = ?",
+      [modelo_id]
+    );
+
+    if (modelo.length === 0) {
+      return NextResponse.json(
+        { message: "Modelo no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    // Verificar que el usuario existe
+    const [usuario] = await db.query(
+      "SELECT id FROM usuarios WHERE id = ?",
+      [created_by]
+    );
+
+    if (usuario.length === 0) {
+      return NextResponse.json(
+        { message: "Usuario no encontrado" },
+        { status: 404 }
+      );
+    }
+
     // Insertar cotización de agenda
     const [result] = await db.query(
       `INSERT INTO cotizacionesagenda 
-       (oportunidad_id, marca_id, modelo_id, version_id, sku, color_externo, color_interno, estado, created_by)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (oportunidad_id, marca_id, modelo_id, version_id, anio, sku, color_externo, color_interno, estado, created_by)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         oportunidad_id,
         marca_id,
         modelo_id,
         version_id || null,
+        anio || null,
         sku || null,
         color_externo || null,
         color_interno || null,
@@ -115,6 +168,8 @@ export async function POST(req) {
         created_by,
       ]
     );
+
+    console.log("Cotización insertada con ID:", result.insertId);
 
     return NextResponse.json(
       { message: "Cotización de agenda creada", id: result.insertId },

@@ -1,5 +1,5 @@
 // ============================================
-// API DE RESPUESTAS DE ATENCIÓN
+// API DE RESPUESTAS DE ATENCIÓN - CORREGIDA
 // archivo: app/api/respuestas-atencion/route.js
 // ============================================
 
@@ -19,7 +19,7 @@ export async function GET(req) {
         pa.tipo_respuesta,
         pa.opciones,
         pa.es_obligatoria,
-        u.name as creado_por_nombre,
+        u.fullname as creado_por_nombre,
         o.oportunidad_id,
         c.nombre as cliente_nombre,
         m.name as marca,
@@ -47,7 +47,12 @@ export async function GET(req) {
 
     query += " ORDER BY pa.orden ASC, ra.created_at DESC";
 
+    console.log("Query:", query);
+    console.log("Params:", params);
+
     const [rows] = await db.query(query, params);
+
+    console.log("Respuestas obtenidas:", rows.length);
 
     // Parsear JSON de opciones
     const respuestasFormateadas = rows.map((row) => ({
@@ -57,8 +62,11 @@ export async function GET(req) {
 
     return NextResponse.json(respuestasFormateadas);
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en GET respuestas-atencion:", e);
+    return NextResponse.json(
+      { message: "Error obteniendo respuestas", error: e.message },
+      { status: 500 }
+    );
   }
 }
 
@@ -66,6 +74,13 @@ export async function POST(req) {
   try {
     const { oportunidad_id, pregunta_id, respuesta, created_by } =
       await req.json();
+
+    console.log("Guardando respuesta:", {
+      oportunidad_id,
+      pregunta_id,
+      respuesta,
+      created_by,
+    });
 
     if (!oportunidad_id || !pregunta_id || !created_by) {
       return NextResponse.json(
@@ -121,12 +136,17 @@ export async function POST(req) {
       [oportunidad_id, pregunta_id, respuesta, created_by, respuesta]
     );
 
+    console.log("Respuesta guardada con ID:", result.insertId);
+
     return NextResponse.json(
       { message: "Respuesta guardada", id: result.insertId },
       { status: 201 }
     );
   } catch (e) {
-    console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    console.log("Error en POST respuestas-atencion:", e);
+    return NextResponse.json(
+      { message: "Error guardando respuesta", error: e.message },
+      { status: 500 }
+    );
   }
 }
