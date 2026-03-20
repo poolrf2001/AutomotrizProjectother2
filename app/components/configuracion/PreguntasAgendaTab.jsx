@@ -11,9 +11,17 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
 
 import {
   Card,
@@ -29,6 +37,10 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  MessageSquare,
+  Info,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 
 export default function PreguntasAtenciónTab() {
@@ -67,7 +79,7 @@ export default function PreguntasAtenciónTab() {
     setLoading(true);
     try {
       console.log("Cargando preguntas...");
-      
+
       const response = await fetch("/api/preguntas-atencion", {
         method: "GET",
         cache: "no-store",
@@ -86,7 +98,7 @@ export default function PreguntasAtenciónTab() {
       console.log("Datos recibidos:", data);
 
       setPreguntas(Array.isArray(data) ? data : []);
-      
+
       if (Array.isArray(data) && data.length === 0) {
         toast.info("No hay preguntas configuradas");
       }
@@ -114,7 +126,8 @@ export default function PreguntasAtenciónTab() {
       tipo_respuesta: "texto",
       opciones: [],
       es_obligatoria: true,
-      orden: preguntas.length > 0 ? Math.max(...preguntas.map(p => p.orden)) + 1 : 0,
+      orden:
+        preguntas.length > 0 ? Math.max(...preguntas.map((p) => p.orden)) + 1 : 0,
       es_activa: true,
     });
     setNuevoOpcion("");
@@ -163,7 +176,9 @@ export default function PreguntasAtenciónTab() {
       });
 
       if (response.ok) {
-        toast.success(editingPregunta ? "Pregunta actualizada" : "Pregunta creada");
+        toast.success(
+          editingPregunta ? "Pregunta actualizada" : "Pregunta creada"
+        );
         setDialogOpen(false);
         load();
       } else {
@@ -243,308 +258,617 @@ export default function PreguntasAtenciónTab() {
 
   // ================= UI =================
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold">Preguntas de Atención</h2>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4 mr-2" /> Nueva Pregunta
-        </Button>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">
-            Lista de Preguntas ({preguntas.length})
-          </CardTitle>
-        </CardHeader>
-
-        <CardContent className="space-y-2 min-h-64">
-          {loading ? (
-            <div className="flex justify-center items-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+    <TooltipProvider>
+      <div className="space-y-6 pb-8">
+        {/* HEADER */}
+        <div className="border-b border-slate-200 pb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg">
+                <MessageSquare className="h-6 w-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-slate-900">
+                  Preguntas de Atención
+                </h1>
+                <p className="text-sm text-slate-500 mt-1">
+                  Configura las preguntas que se mostrarán en los formularios
+                </p>
+              </div>
             </div>
-          ) : preguntas.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              No hay preguntas configuradas
-            </div>
-          ) : (
-            preguntas.map((p) => (
-              <div key={p.id} className="border rounded-md">
-                {/* HEADER */}
-                <div className="flex justify-between items-center p-3 bg-muted">
-                  <div
-                    className="flex items-center gap-2 cursor-pointer flex-1"
-                    onClick={() => toggleExpand(p.id)}
-                  >
-                    {expanded[p.id] ? (
-                      <ChevronDown size={18} />
-                    ) : (
-                      <ChevronRight size={18} />
-                    )}
-                    <span className="font-medium">{p.pregunta}</span>
-                    <div className="ml-auto flex gap-2 items-center text-xs">
-                      <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                        {p.tipo_respuesta}
-                      </span>
-                      {p.es_obligatoria && (
-                        <span className="bg-red-100 text-red-700 px-2 py-0.5 rounded">
-                          Obligatoria
-                        </span>
-                      )}
-                      {!p.es_activa && (
-                        <span className="bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                          Inactiva
-                        </span>
-                      )}
-                    </div>
-                  </div>
 
-                  <div
-                    className="flex gap-2 ml-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      onClick={() => openEdit(p)}
-                    >
-                      <Pencil size={16} />
-                    </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={openCreate}
+                  className="gap-2 bg-purple-600 hover:bg-purple-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Nueva Pregunta
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Crear una nueva pregunta</TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
 
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      onClick={() => openDelete(p)}
-                    >
-                      <Trash2 size={16} />
-                    </Button>
-                  </div>
+        {/* ESTADÍSTICAS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-purple-600 font-medium">
+                    Total de Preguntas
+                  </p>
+                  <p className="text-3xl font-bold text-purple-900 mt-2">
+                    {preguntas.length}
+                  </p>
                 </div>
+                <MessageSquare className="h-12 w-12 text-purple-200" />
+              </div>
+            </CardContent>
+          </Card>
 
-                {/* DETALLES */}
-                {expanded[p.id] && (
-                  <div className="p-3 space-y-3 border-t bg-gray-50">
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Pregunta</p>
-                      <p className="text-sm">{p.pregunta}</p>
-                    </div>
+          <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-green-600 font-medium">
+                    Activas
+                  </p>
+                  <p className="text-3xl font-bold text-green-900 mt-2">
+                    {preguntas.filter((p) => p.es_activa).length}
+                  </p>
+                </div>
+                <CheckCircle2 className="h-12 w-12 text-green-200" />
+              </div>
+            </CardContent>
+          </Card>
 
-                    <div className="grid grid-cols-2 gap-2 text-sm">
-                      <div>
-                        <p className="font-medium text-gray-600">Tipo</p>
-                        <p>{p.tipo_respuesta}</p>
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-600">Orden</p>
-                        <p>{p.orden}</p>
-                      </div>
-                    </div>
+          <Card className="bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-red-600 font-medium">
+                    Obligatorias
+                  </p>
+                  <p className="text-3xl font-bold text-red-900 mt-2">
+                    {preguntas.filter((p) => p.es_obligatoria).length}
+                  </p>
+                </div>
+                <AlertCircle className="h-12 w-12 text-red-200" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-                    {p.opciones && p.opciones.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium text-gray-600 mb-2">
-                          Opciones
-                        </p>
-                        <div className="space-y-1">
-                          {p.opciones.map((opcion, idx) => (
-                            <div
-                              key={idx}
-                              className="text-sm bg-white px-2 py-1 rounded border"
-                            >
-                              • {opcion}
+        {/* LISTA DE PREGUNTAS */}
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-4 border-b border-slate-100">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-purple-600" />
+                Listado de Preguntas
+              </CardTitle>
+              <Badge variant="secondary" className="text-xs">
+                {preguntas.length} preguntas
+              </Badge>
+            </div>
+          </CardHeader>
+
+          <CardContent className="pt-6">
+            {loading ? (
+              <div className="flex justify-center items-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+              </div>
+            ) : preguntas.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 space-y-3">
+                <div className="p-3 bg-slate-100 rounded-lg">
+                  <MessageSquare className="h-6 w-6 text-slate-400" />
+                </div>
+                <p className="text-sm text-slate-500 font-medium">
+                  No hay preguntas configuradas
+                </p>
+                <p className="text-xs text-slate-400">
+                  Crea la primera pregunta para comenzar
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {preguntas
+                  .sort((a, b) => a.orden - b.orden)
+                  .map((p) => (
+                    <div
+                      key={p.id}
+                      className={`border-2 rounded-lg overflow-hidden transition-all ${
+                        expanded[p.id]
+                          ? "border-purple-300 bg-purple-50"
+                          : "border-slate-200 bg-white hover:border-purple-200"
+                      }`}
+                    >
+                      {/* HEADER */}
+                      <div
+                        className="flex justify-between items-center p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                        onClick={() => toggleExpand(p.id)}
+                      >
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          {expanded[p.id] ? (
+                            <ChevronDown className="h-5 w-5 text-purple-600 flex-shrink-0" />
+                          ) : (
+                            <ChevronRight className="h-5 w-5 text-slate-400 flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-slate-900 truncate">
+                              #{p.orden} - {p.pregunta}
+                            </p>
+                            <div className="flex gap-2 mt-1.5 flex-wrap">
+                              <Badge
+                                variant="secondary"
+                                className="text-xs"
+                              >
+                                {tiposRespuesta.find(
+                                  (t) => t.value === p.tipo_respuesta
+                                )?.label || p.tipo_respuesta}
+                              </Badge>
+
+                              {p.es_obligatoria && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge
+                                      className="text-xs bg-red-100 text-red-700 border border-red-300 cursor-help"
+                                    >
+                                      Obligatoria
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Este campo debe ser completado
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+
+                              {!p.es_activa && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Badge
+                                      className="text-xs bg-slate-200 text-slate-700 border border-slate-300 cursor-help"
+                                    >
+                                      Inactiva
+                                    </Badge>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Esta pregunta no se mostrará
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
                             </div>
-                          ))}
+                          </div>
+                        </div>
+
+                        <div
+                          className="flex gap-1 flex-shrink-0 ml-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openEdit(p)}
+                                className="border-slate-300 hover:bg-amber-50 hover:border-amber-300"
+                              >
+                                <Pencil size={16} className="text-amber-600" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Editar pregunta</TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => openDelete(p)}
+                                className="border-slate-300 hover:bg-red-50 hover:border-red-300"
+                              >
+                                <Trash2 size={16} className="text-red-600" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Eliminar pregunta</TooltipContent>
+                          </Tooltip>
                         </div>
                       </div>
-                    )}
 
-                    <div className="flex gap-4 text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">Obligatoria:</span>
-                        <span className="font-medium">
-                          {p.es_obligatoria ? "Sí" : "No"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-gray-600">Activa:</span>
-                        <span className="font-medium">
-                          {p.es_activa ? "Sí" : "No"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-        </CardContent>
-      </Card>
+                      {/* DETALLES EXPANDIDOS */}
+                      {expanded[p.id] && (
+                        <div className="p-4 bg-white border-t border-slate-200 space-y-4">
+                          <div>
+                            <p className="text-xs font-semibold text-slate-600 uppercase mb-1">
+                              Pregunta Completa
+                            </p>
+                            <p className="text-sm text-slate-900">
+                              {p.pregunta}
+                            </p>
+                          </div>
 
-      {/* DIALOG PREGUNTA */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-screen overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {editingPregunta ? "Editar Pregunta" : "Nueva Pregunta"}
-            </DialogTitle>
-          </DialogHeader>
+                          <div className="grid grid-cols-3 gap-2 text-xs">
+                            <div className="bg-blue-50 p-2 rounded border border-blue-200">
+                              <p className="text-blue-600 font-semibold">Tipo</p>
+                              <p className="text-blue-900 mt-1">
+                                {tiposRespuesta.find(
+                                  (t) => t.value === p.tipo_respuesta
+                                )?.label || p.tipo_respuesta}
+                              </p>
+                            </div>
 
-          <div className="space-y-4">
-            {/* Pregunta */}
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Pregunta *
-              </label>
-              <textarea
-                name="pregunta"
-                value={formData.pregunta}
-                onChange={handleInputChange}
-                placeholder="Ingresa la pregunta"
-                className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                rows="3"
-              />
-            </div>
+                            <div className="bg-purple-50 p-2 rounded border border-purple-200">
+                              <p className="text-purple-600 font-semibold">
+                                Orden
+                              </p>
+                              <p className="text-purple-900 mt-1">#{p.orden}</p>
+                            </div>
 
-            {/* Tipo de Respuesta */}
-            <div>
-              <label className="text-sm font-medium text-gray-700">
-                Tipo de Respuesta
-              </label>
-              <select
-                name="tipo_respuesta"
-                value={formData.tipo_respuesta}
-                onChange={handleInputChange}
-                className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              >
-                {tiposRespuesta.map((tipo) => (
-                  <option key={tipo.value} value={tipo.value}>
-                    {tipo.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                            <div className="bg-slate-50 p-2 rounded border border-slate-200">
+                              <p className="text-slate-600 font-semibold">
+                                Estado
+                              </p>
+                              <p className="text-slate-900 mt-1">
+                                {p.es_activa ? "Activa" : "Inactiva"}
+                              </p>
+                            </div>
+                          </div>
 
-            {/* Opciones (si es opción múltiple) */}
-            {formData.tipo_respuesta === "opcion_multiple" && (
-              <div>
-                <label className="text-sm font-medium text-gray-700">
-                  Opciones
-                </label>
-                <div className="space-y-2 mt-1">
-                  {formData.opciones.map((opcion, idx) => (
-                    <div
-                      key={idx}
-                      className="flex justify-between items-center bg-gray-50 p-2 rounded border"
-                    >
-                      <span className="text-sm">{opcion}</span>
-                      <Button
-                        type="button"
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => eliminarOpcion(idx)}
-                      >
-                        <Trash2 size={16} className="text-red-600" />
-                      </Button>
+                          {p.opciones && p.opciones.length > 0 && (
+                            <div>
+                              <p className="text-xs font-semibold text-slate-600 uppercase mb-2">
+                                Opciones Disponibles
+                              </p>
+                              <div className="space-y-1">
+                                {p.opciones.map((opcion, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="text-sm bg-slate-50 px-3 py-2 rounded border border-slate-200 flex items-center gap-2"
+                                  >
+                                    <span className="text-slate-400">
+                                      {idx + 1}.
+                                    </span>
+                                    <span className="text-slate-900">
+                                      {opcion}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-600">
+                                Obligatoria:
+                              </span>
+                              <Badge
+                                className={`text-xs ${
+                                  p.es_obligatoria
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {p.es_obligatoria ? "Sí" : "No"}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-semibold text-slate-600">
+                                Activa:
+                              </span>
+                              <Badge
+                                className={`text-xs ${
+                                  p.es_activa
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-slate-100 text-slate-700"
+                                }`}
+                              >
+                                {p.es_activa ? "Sí" : "No"}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* INFO BOX */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+          <div className="flex gap-3">
+            <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-700">
+              <p className="font-semibold mb-1">Información:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>Las preguntas se mostrarán en orden ascendente</li>
+                <li>
+                  Las preguntas obligatorias deben ser completadas en los
+                  formularios
+                </li>
+                <li>Las preguntas inactivas no aparecerán en los formularios</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        {/* DIALOG PREGUNTA */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageSquare className="h-5 w-5 text-purple-600" />
+                {editingPregunta ? "Editar Pregunta" : "Nueva Pregunta"}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Pregunta */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Pregunta
+                  </label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-slate-400 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Redacta la pregunta que se mostrará al usuario
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <textarea
+                  name="pregunta"
+                  value={formData.pregunta}
+                  onChange={handleInputChange}
+                  placeholder="Ingresa la pregunta"
+                  className="w-full p-3 border border-slate-300 rounded-lg text-sm focus:ring-purple-500 focus:border-purple-500"
+                  rows="3"
+                />
+              </div>
+
+              {/* Tipo de Respuesta */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Tipo de Respuesta
+                  </label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-slate-400 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Selecciona el formato de respuesta esperado
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <select
+                  name="tipo_respuesta"
+                  value={formData.tipo_respuesta}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border border-slate-300 rounded-lg text-sm focus:ring-purple-500 focus:border-purple-500"
+                >
+                  {tiposRespuesta.map((tipo) => (
+                    <option key={tipo.value} value={tipo.value}>
+                      {tipo.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Opciones (si es opción múltiple) */}
+              {formData.tipo_respuesta === "opcion_multiple" && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-semibold text-slate-700">
+                      Opciones
+                    </label>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Info className="h-4 w-4 text-slate-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        Añade las opciones disponibles
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {formData.opciones.map((opcion, idx) => (
+                      <div
+                        key={idx}
+                        className="flex justify-between items-center bg-slate-50 p-3 rounded border border-slate-200"
+                      >
+                        <span className="text-sm text-slate-900">
+                          {idx + 1}. {opcion}
+                        </span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => eliminarOpcion(idx)}
+                              className="h-8 w-8"
+                            >
+                              <Trash2 size={16} className="text-red-600" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Eliminar opción</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    ))}
+                  </div>
 
                   <div className="flex gap-2">
                     <Input
                       value={nuevoOpcion}
                       onChange={(e) => setNuevoOpcion(e.target.value)}
                       placeholder="Nueva opción"
-                      className="text-sm"
+                      className="text-sm border-slate-300"
                       onKeyPress={(e) => {
                         if (e.key === "Enter") {
                           agregarOpcion();
                         }
                       }}
                     />
-                    <Button
-                      type="button"
-                      onClick={agregarOpcion}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Plus size={16} />
-                    </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          onClick={agregarOpcion}
+                          variant="outline"
+                          size="sm"
+                          className="border-slate-300"
+                        >
+                          <Plus size={16} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Agregar opción (Enter)</TooltipContent>
+                    </Tooltip>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Orden */}
-            <div>
-              <label className="text-sm font-medium text-gray-700">Orden</label>
-              <Input
-                type="number"
-                name="orden"
-                value={formData.orden}
-                onChange={handleInputChange}
-                className="text-sm"
-              />
-            </div>
-
-            {/* Switches */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
-                <span className="text-sm font-medium">Obligatoria</span>
-                <Switch
-                  checked={formData.es_obligatoria}
-                  onCheckedChange={(value) =>
-                    handleSwitchChange("es_obligatoria", value)
-                  }
+              {/* Orden */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    Orden
+                  </label>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="h-4 w-4 text-slate-400 cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Posición en la que aparecerá la pregunta
+                    </TooltipContent>
+                  </Tooltip>
+                </div>
+                <Input
+                  type="number"
+                  name="orden"
+                  value={formData.orden}
+                  onChange={handleInputChange}
+                  className="text-sm border-slate-300"
                 />
               </div>
 
-              <div className="flex items-center justify-between p-3 bg-gray-50 rounded border">
-                <span className="text-sm font-medium">Activa</span>
-                <Switch
-                  checked={formData.es_activa}
-                  onCheckedChange={(value) =>
-                    handleSwitchChange("es_activa", value)
-                  }
-                />
+              {/* Switches */}
+              <div className="space-y-3 pt-4 border-t border-slate-200">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded border border-slate-200 cursor-help">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Obligatoria
+                      </span>
+                      <Switch
+                        checked={formData.es_obligatoria}
+                        onCheckedChange={(value) =>
+                          handleSwitchChange("es_obligatoria", value)
+                        }
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Indica si este campo debe ser completado obligatoriamente
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded border border-slate-200 cursor-help">
+                      <span className="text-sm font-semibold text-slate-700">
+                        Activa
+                      </span>
+                      <Switch
+                        checked={formData.es_activa}
+                        onCheckedChange={(value) =>
+                          handleSwitchChange("es_activa", value)
+                        }
+                      />
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Si está desactivada, la pregunta no aparecerá
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
-          </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDialogOpen(false)}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={savePregunta}>Guardar</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+                className="border-slate-300"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={savePregunta}
+                className="bg-purple-600 hover:bg-purple-700"
+              >
+                Guardar
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
-      {/* DELETE DIALOG */}
-      <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Confirmar eliminación</DialogTitle>
-          </DialogHeader>
+        {/* DELETE DIALOG */}
+        <Dialog open={deleteDialog} onOpenChange={setDeleteDialog}>
+          <DialogContent className="sm:max-w-md">
+            <div className="flex flex-col items-center text-center space-y-4">
+              <div className="bg-red-100 p-4 rounded-full">
+                <AlertCircle className="h-6 w-6 text-red-600" />
+              </div>
 
-          <p>
-            ¿Eliminar la pregunta <b>{deleteTarget?.pregunta}</b>?
-          </p>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">
+                  ¿Eliminar pregunta?
+                </h3>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setDeleteDialog(false)}
-            >
-              Cancelar
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Eliminar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+                <p className="text-sm text-slate-600 mt-2">
+                  Se eliminará permanentemente:
+                </p>
+
+                <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="font-semibold text-red-900">
+                    {deleteTarget?.pregunta}
+                  </p>
+                </div>
+
+                <p className="text-xs text-slate-500 mt-3 font-medium">
+                  ⚠️ Esta acción no se puede deshacer
+                </p>
+              </div>
+
+              <div className="flex gap-3 w-full pt-4">
+                <Button
+                  variant="outline"
+                  onClick={() => setDeleteDialog(false)}
+                  className="flex-1 border-slate-300"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={confirmDelete}
+                  className="flex-1"
+                >
+                  Eliminar
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </TooltipProvider>
   );
 }
