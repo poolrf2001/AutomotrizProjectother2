@@ -69,16 +69,22 @@ export async function POST(req) {
   const body = await req.json();
   const channel = body?.channel || "whatsapp";
 
-  // Ventas IA y menú solo aplican para WhatsApp
-  if (channel !== "whatsapp") {
-    return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
-  }
-
   const rawPhone = body?.phone || "";
   const phone = rawPhone.replace(/\D/g, "").trim();
 
   if (!phone) {
     return NextResponse.json({ route: "default", reason: "no_phone" });
+  }
+
+  // ── Forzar sesión ventas_ia (llamado desde bot taller tras redirect_ventas) ──
+  if (body?.force_ventas === true) {
+    await createVentasSession(phone);
+    return NextResponse.json({ ok: true, route: "ventas_ia", forced: true });
+  }
+
+  // Ventas IA y menú solo aplican para WhatsApp
+  if (channel !== "whatsapp") {
+    return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
   }
 
   // ── Cliente nuevo (sin sesión previa) ────────────────────────────────────
