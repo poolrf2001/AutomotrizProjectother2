@@ -36,7 +36,7 @@ export async function PATCH(req) {
   try {
     await db.query(
       `UPDATE conversation_sessions
-       SET source = 'taller', updated_at = NOW()
+       SET source = 'manual', updated_at = NOW()
        WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
          AND source = 'ventas_ia'`,
       [phone]
