@@ -2,33 +2,47 @@ import {
   Users, Milestone, ListChecks, UserRound, Blinds, Boxes, Settings,
   CalendarCheck, ClipboardList, Receipt, SquareDashedMousePointer, FileText, Home, CarFront, Columns2, Columns3, Coins, Calendar, MessageCircle, ShoppingCart, BookOpen, SlidersHorizontal
 } from "lucide-react";
-export const HOME_ITEM = { to: "/home", label: "Home", icon: Home, perm: ["home", "view"] };
+export const HOME_ITEM = { to: "/home", label: "Panel de Control", icon: Home, perm: ["home", "view"] };
 export const NAV_TREE = [
   {
     key: "admin",
-    label: "Administración",
+    label: "Administración General",
     items: [
       { to: "/usuarios", label: "Usuarios", icon: Users, perm: ["usuarios", "view"] },
-      { to: "/etapas", label: "Etapas", icon: Milestone, perm: ["etapas", "view"] },
-      { to: "/tiposactividades", label: "Actividades", icon: ListChecks, perm: ["tiposactividades", "view"] },
       { to: "/clientes", label: "Clientes", icon: UserRound, perm: ["clientes", "view"] },
       { to: "/marcas", label: "Marcas", icon: Blinds, perm: ["marcas", "view"] },
+    ],
+  },
+  {
+    key: "ppventa",
+    label: "Inventario PostVenta",
+    items: [
       { to: "/combomantenimiento", label: "Mantenimiento", icon: Columns3, perm: ["combomantenimiento", "view"] },
       { to: "/precios", label: "Precios", icon: Coins, perm: ["precios", "view"] },
 
     ],
   },
   {
+    key: "pventa",
+    label: "Inventario Venta",
+    items: [
+      { to: "/carros", label: "Precios de Carros", icon: Boxes, perm: ["inventariocarros", "view"] },
+    ],
+  },
+  {
     key: "citas",
-    label: "Citas",
+    label: "PostVenta",
     items: [
       { to: "/citas", label: "Citas", icon: Calendar, perm: ["citas", "view"] },
       { to: "/recepcion", label: "Recepción", icon: CalendarCheck, perm: ["recepcion", "view"] },
+      { to: "/oportunidadespv", label: "Oportunidades", icon: Calendar, perm: ["oportunidadespv", "view"] },
+      { to: "/leadspv", label: "Leads", icon: Calendar, perm: ["leadspv", "view"] },
+      
     ],
   },
   {
     key: "agenda",
-    label: "Agenda",
+    label: "Ventas",
     items: [
       { to: "/agenda", label: "Agenda", icon: Calendar, perm: ["agenda", "view"] },
       { to: "/oportunidades", label: "Oportunidades", icon: Calendar, perm: ["oportunidades", "view"] },
@@ -42,7 +56,7 @@ export const NAV_TREE = [
   },
   {
     key: "cotizacion",
-    label: "Cotizacion",
+    label: "Cotizacion Postventa",
     items: [{ to: "/cotizacion", label: "Cotizacion", icon: Receipt, perm: ["cotizacion", "view"] }],
   },
   {
@@ -92,9 +106,10 @@ export const NAV_TREE = [
       { to: "/configuracion", label: "Configuración del sistema", icon: Settings, perm: ["configuracion", "view"] },
       { to: "/prospeccion", label: "Auto prospección", icon: Settings, perm: ["prospeccion", "view"] },
       { to: "/configagenda", label: "Configuración de Agenda", icon: Settings, perm: ["configagenda", "view"] },
+      { to: "/configcotizacion", label: "Configuración de Citas", icon: Settings, perm: ["configcotizacion", "view"] },
       { to: "/configinventario", label: "Configuración de Inventario", icon: Settings, perm: ["configinventario", "view"] },
       { to: "/configpicaje", label: "Configuración de Picaje", icon: Settings, perm: ["configpicaje", "view"] },
-      { to: "/configcotizacion", label: "Configuración de Cotización", icon: Settings, perm: ["configcotizacion", "view"] },
+      
     ],
   }
 ];
