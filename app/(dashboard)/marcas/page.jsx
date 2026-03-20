@@ -3,8 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { useRequirePerm } from "@/hooks/useRequirePerm";
 import { useAuth } from "@/context/AuthContext";
@@ -15,9 +28,16 @@ import MarcaDialog from "@/app/components/marcas/MarcaDialog";
 import ModeloDialog from "@/app/components/marcas/ModeloDialog";
 import ConfirmDeleteDialog from "@/app/components/marcas/ConfirmDeleteDialog";
 
-
-
-import { Plus } from "lucide-react";
+import {
+  Plus,
+  RefreshCw,
+  Layers,
+  Wrench,
+  Info,
+  Car,
+  CheckCircle,
+  Loader2,
+} from "lucide-react";
 import ClasesSheet from "@/app/components/marcas/ClasesSheet";
 import AlgoritmoVisitaSheet from "@/app/components/marcas/AlgoritmoVisitaSheet";
 
@@ -101,6 +121,12 @@ export default function MarcasPage() {
     }
     return map;
   }, [modelos]);
+
+  const stats = {
+    totalMarcas: marcas.length,
+    totalModelos: modelos.length,
+    totalClases: clases.length,
+  };
 
   // ----------------- MARCAS -----------------
   function onNewMarca() {
@@ -216,7 +242,9 @@ export default function MarcasPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.message || "Error");
 
-      toast.success(deleteKind === "marca" ? "Marca eliminada" : "Modelo eliminado");
+      toast.success(
+        deleteKind === "marca" ? "Marca eliminada" : "Modelo eliminado"
+      );
       setDeleteOpen(false);
       loadAll();
     } catch {
@@ -225,71 +253,266 @@ export default function MarcasPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Marcas & Modelos</h1>
-          <p className="text-sm text-muted-foreground">
-            CRUD con subtabla de modelos por marca.
-          </p>
+    <TooltipProvider delayDuration={200}>
+      <div className="space-y-6 pb-8">
+        {/* HEADER */}
+        <div className="border-b border-gray-200 pb-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-3 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-md">
+              <Car className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">
+                Marcas & Modelos
+              </h1>
+              <p className="text-sm text-gray-600 mt-1">
+                Gestiona marcas, modelos, clases y algoritmos de mantenimiento
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={loadAll} disabled={loading}>
-            Recargar
-          </Button>
-          {permCreate && (
-            <Button
-              variant="secondary"
-              onClick={() => setClasesSheetOpen(true)}
-              disabled={loading}
-            >
-              Clases
-            </Button>
-          )}
-          {permCreate && (
-            <Button
-              variant="secondary"
-              onClick={() => setAlgoritmoSheetOpen(true)}
-              disabled={loading}
-            >
-              F. de mantenimiento
-            </Button>
-          )}
-          {permCreate && (
-            <Button onClick={onNewMarca} disabled={loading}>
-              <Plus size={16} /> Nueva marca
-            </Button>
-          )}
+        {/* ESTADÍSTICAS */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-600 font-medium">
+                        Total de Marcas
+                      </p>
+                      <p className="text-3xl font-bold text-blue-900 mt-2">
+                        {stats.totalMarcas}
+                      </p>
+                    </div>
+                    <Car className="h-12 w-12 text-blue-200" />
+                  </div>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              Cantidad total de marcas registradas
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-purple-600 font-medium">
+                        Total de Modelos
+                      </p>
+                      <p className="text-3xl font-bold text-purple-900 mt-2">
+                        {stats.totalModelos}
+                      </p>
+                    </div>
+                    <Layers className="h-12 w-12 text-purple-200" />
+                  </div>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              Cantidad total de modelos registrados
+            </TooltipContent>
+          </Tooltip>
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-green-600 font-medium">
+                        Total de Clases
+                      </p>
+                      <p className="text-3xl font-bold text-green-900 mt-2">
+                        {stats.totalClases}
+                      </p>
+                    </div>
+                    <CheckCircle className="h-12 w-12 text-green-200" />
+                  </div>
+                </CardContent>
+              </Card>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              Cantidad total de clases registradas
+            </TooltipContent>
+          </Tooltip>
         </div>
+
+        {/* BOTONES DE ACCIÓN */}
+        <Card className="border-l-4 border-l-blue-500 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 border-b">
+            <CardTitle className="text-lg font-bold text-gray-900">
+              Herramientas
+            </CardTitle>
+          </CardHeader>
+
+          <CardContent className="pt-6">
+            <div className="flex flex-wrap gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    onClick={loadAll}
+                    disabled={loading}
+                    className="border-gray-300 gap-2"
+                  >
+                    <RefreshCw
+                      size={16}
+                      className={loading ? "animate-spin" : ""}
+                    />
+                    Recargar
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Recargar datos de marcas, modelos y clases
+                </TooltipContent>
+              </Tooltip>
+
+              {permCreate && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => setClasesSheetOpen(true)}
+                      disabled={loading}
+                      className="border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400 gap-2"
+                    >
+                      <Layers size={16} />
+                      Clases
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Gestionar clases de vehículos
+                  </TooltipContent>
+                </Tooltip>
+              )}
+
+              {permCreate && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      onClick={() => setAlgoritmoSheetOpen(true)}
+                      disabled={loading}
+                      className="border-orange-300 text-orange-700 hover:bg-orange-50 hover:border-orange-400 gap-2"
+                    >
+                      <Wrench size={16} />
+                      F. de mantenimiento
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Configurar frecuencia de visitas de mantenimiento
+                  </TooltipContent>
+                </Tooltip>
+              )}
+
+              {permCreate && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={onNewMarca}
+                      disabled={loading}
+                      className="bg-blue-600 hover:bg-blue-700 text-white shadow-md gap-2"
+                    >
+                      <Plus size={16} />
+                      Nueva Marca
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Crear nueva marca de vehículos
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* TABLA PRINCIPAL */}
+        <Card className="border-l-4 border-l-blue-500 shadow-lg overflow-hidden">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 border-b space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 bg-blue-600 rounded-lg">
+                <Car className="h-5 w-5 text-white" />
+              </div>
+              <div className="flex-1">
+                <CardTitle className="text-lg font-bold text-gray-900">
+                  Listado de Marcas y Modelos
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-1">
+                  Administra todas las marcas con sus modelos asociados
+                </p>
+              </div>
+            </div>
+
+            <Badge
+              variant="secondary"
+              className="w-fit bg-blue-100 text-blue-900 border-blue-300"
+            >
+              <CheckCircle className="h-3 w-3 mr-1" />
+              {stats.totalMarcas} marca{stats.totalMarcas !== 1 ? "s" : ""}
+            </Badge>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                <p className="text-sm text-gray-600">
+                  Cargando marcas y modelos...
+                </p>
+              </div>
+            ) : (
+              <MarcasTable
+                loading={loading}
+                marcas={marcas}
+                modelosByMarca={modelosByMarca}
+                canEditMarca={permEdit}
+                canDeleteMarca={permDelete}
+                canCreateModelo={permCreateModel}
+                canEditModelo={permEditModel}
+                canDeleteModelo={permDeleteModel}
+                clases={clases}
+                onViewMarca={onViewMarca}
+                onEditMarca={onEditMarca}
+                onDeleteMarca={askDeleteMarca}
+                onNewModelo={onNewModelo}
+                onEditModelo={onEditModelo}
+                onDeleteModelo={askDeleteModelo}
+              />
+            )}
+          </CardContent>
+        </Card>
+
+        {/* INFO BOX */}
+        {!loading && (stats.totalMarcas > 0 || stats.totalModelos > 0) && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex gap-3">
+            <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <div className="text-sm text-blue-700 space-y-1">
+              <p className="font-semibold">Información importante:</p>
+              <ul className="list-disc list-inside space-y-1 text-xs">
+                <li>Cada marca puede tener múltiples modelos asociados</li>
+                <li>
+                  Los modelos pueden estar clasificados por clase de vehículo
+                </li>
+                <li>
+                  Configura algoritmos de mantenimiento para cada modelo
+                </li>
+                <li>
+                  Usa la opción de ver marca para consultar detalles sin editar
+                </li>
+              </ul>
+            </div>
+          </div>
+        )}
       </div>
 
-      <Card className="border-border shadow-sm">
-        <CardHeader className="pb-2">
-          <div className="font-semibold">Listado</div>
-        </CardHeader>
-
-        <CardContent className="p-0">
-          <MarcasTable
-            loading={loading}
-            marcas={marcas}
-            modelosByMarca={modelosByMarca}
-            canEditMarca={permEdit}
-            canDeleteMarca={permDelete}
-            canCreateModelo={permCreateModel}
-            canEditModelo={permEditModel}
-            canDeleteModelo={permDeleteModel}
-            clases={clases}
-            onViewMarca={onViewMarca}
-            onEditMarca={onEditMarca}
-            onDeleteMarca={askDeleteMarca}
-            onNewModelo={onNewModelo}
-            onEditModelo={onEditModelo}
-            onDeleteModelo={askDeleteModelo}
-          />
-        </CardContent>
-      </Card>
-
+      {/* DIALOGS Y SHEETS */}
       <MarcaDialog
         open={marcaOpen}
         onOpenChange={setMarcaOpen}
@@ -334,6 +557,6 @@ export default function MarcasPage() {
         canEdit={true}
         canDelete={true}
       />
-    </div>
+    </TooltipProvider>
   );
 }
