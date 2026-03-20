@@ -24,15 +24,17 @@ export async function GET(req) {
   const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
 
   const [rows] = await db.query(
-    `SELECT v.id, v.modelo_id, m.nombre AS modelo_nombre,
+    `SELECT v.id, v.modelo_id,
+            CONCAT(ma.name, ' ', m.name) AS modelo_nombre,
             v.nombre_version, v.precio_lista, v.moneda,
             v.descripcion_equipamiento, v.descuento_porcentaje,
             v.en_stock, v.tiempo_entrega_dias, v.colores_disponibles,
             v.is_active, v.created_at, v.updated_at
      FROM ventas_versiones v
-     LEFT JOIN ventas_modelos m ON m.id = v.modelo_id
+     LEFT JOIN modelos m ON m.id = v.modelo_id
+     LEFT JOIN marcas ma ON ma.id = m.marca_id
      ${where}
-     ORDER BY m.nombre ASC, v.nombre_version ASC`,
+     ORDER BY ma.name ASC, m.name ASC, v.nombre_version ASC`,
     params
   );
 

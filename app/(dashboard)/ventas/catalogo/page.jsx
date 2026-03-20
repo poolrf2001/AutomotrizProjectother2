@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  Car, ChevronDown, ChevronUp, Edit2, Plus, Save, Tag, Trash2, X,
+  Car, Edit2, ExternalLink, Plus, Save, Tag, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -57,187 +57,7 @@ function Badge({ text, color = "gray" }) {
   );
 }
 
-const TIPOS_VEHICULO = ["sedan", "suv", "hatchback", "pickup", "van", "otro"];
-const TRANSMISIONES = ["manual", "automatica", "cvt", "otro"];
 const TIPOS_PROMO = ["descuento", "financiamiento_preferencial", "regalo", "otro"];
-
-// ─── Modal de Modelo ──────────────────────────────────────────────────────────
-
-function ModeloModal({ modelo, onClose, onSaved }) {
-  const isNew = !modelo?.id;
-  const [form, setForm] = useState({
-    nombre: modelo?.nombre || "",
-    tipo: modelo?.tipo || "suv",
-    motor: modelo?.motor || "",
-    transmision: modelo?.transmision || "",
-    consumo: modelo?.consumo || "",
-    capacidad_personas: modelo?.capacidad_personas || "",
-    caracteristicas_seguridad: Array.isArray(modelo?.caracteristicas_seguridad)
-      ? modelo.caracteristicas_seguridad.join(", ")
-      : "",
-    caracteristicas_tecnologia: Array.isArray(modelo?.caracteristicas_tecnologia)
-      ? modelo.caracteristicas_tecnologia.join(", ")
-      : "",
-    is_active: modelo?.is_active !== 0,
-  });
-  const [saving, setSaving] = useState(false);
-
-  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
-
-  async function handleSave() {
-    if (!form.nombre.trim()) {
-      toast.error("El nombre es requerido");
-      return;
-    }
-
-    setSaving(true);
-    const payload = {
-      nombre: form.nombre.trim(),
-      tipo: form.tipo,
-      motor: form.motor.trim() || null,
-      transmision: form.transmision || null,
-      consumo: form.consumo.trim() || null,
-      capacidad_personas: form.capacidad_personas ? Number(form.capacidad_personas) : null,
-      caracteristicas_seguridad: form.caracteristicas_seguridad
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      caracteristicas_tecnologia: form.caracteristicas_tecnologia
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      is_active: form.is_active ? 1 : 0,
-    };
-
-    try {
-      const url = isNew ? "/api/ventas/modelos" : `/api/ventas/modelos/${modelo.id}`;
-      const method = isNew ? "POST" : "PATCH";
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || "Error al guardar");
-      toast.success(isNew ? "Modelo creado" : "Modelo actualizado");
-      onSaved();
-    } catch (err) {
-      toast.error(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>{isNew ? "Nuevo modelo" : "Editar modelo"}</DialogTitle>
-        </DialogHeader>
-
-        <div className="grid grid-cols-2 gap-3 mt-2">
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">Nombre *</label>
-            <Input value={form.nombre} onChange={(e) => set("nombre", e.target.value)} placeholder="Ej: Toyota RAV4" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tipo</label>
-            <select
-              value={form.tipo}
-              onChange={(e) => set("tipo", e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-            >
-              {TIPOS_VEHICULO.map((t) => (
-                <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Transmisión</label>
-            <select
-              value={form.transmision}
-              onChange={(e) => set("transmision", e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-            >
-              <option value="">— Sin especificar —</option>
-              {TRANSMISIONES.map((t) => (
-                <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Motor</label>
-            <Input value={form.motor} onChange={(e) => set("motor", e.target.value)} placeholder="Ej: 2.0L Turbo" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Consumo</label>
-            <Input value={form.consumo} onChange={(e) => set("consumo", e.target.value)} placeholder="Ej: 12 km/L" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Capacidad (personas)</label>
-            <Input
-              type="number"
-              min={1}
-              max={15}
-              value={form.capacidad_personas}
-              onChange={(e) => set("capacidad_personas", e.target.value)}
-              placeholder="5"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
-            <select
-              value={form.is_active ? "1" : "0"}
-              onChange={(e) => set("is_active", e.target.value === "1")}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-            >
-              <option value="1">Activo</option>
-              <option value="0">Inactivo</option>
-            </select>
-          </div>
-
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Características de seguridad <span className="text-gray-400">(separadas por coma)</span>
-            </label>
-            <Textarea
-              value={form.caracteristicas_seguridad}
-              onChange={(e) => set("caracteristicas_seguridad", e.target.value)}
-              placeholder="Ej: ABS, airbags x6, control de estabilidad"
-              rows={2}
-            />
-          </div>
-
-          <div className="col-span-2">
-            <label className="block text-xs font-medium text-gray-600 mb-1">
-              Características de tecnología <span className="text-gray-400">(separadas por coma)</span>
-            </label>
-            <Textarea
-              value={form.caracteristicas_tecnologia}
-              onChange={(e) => set("caracteristicas_tecnologia", e.target.value)}
-              placeholder="Ej: Pantalla táctil 10', Apple CarPlay, cámara 360°"
-              rows={2}
-            />
-          </div>
-        </div>
-
-        <DialogFooter className="mt-4">
-          <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            <Save className="w-4 h-4 mr-2" />
-            {saving ? "Guardando…" : "Guardar"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
 
 // ─── Modal de Versión ─────────────────────────────────────────────────────────
 
@@ -319,7 +139,7 @@ function VersionModal({ version, modelos, onClose, onSaved }) {
               className="w-full border rounded-md px-3 py-2 text-sm bg-white"
             >
               {modelos.map((m) => (
-                <option key={m.id} value={m.id}>{m.nombre}</option>
+                <option key={m.id} value={m.id}>{m.nombre_completo || m.nombre}</option>
               ))}
             </select>
           </div>
@@ -516,7 +336,7 @@ function PromoModal({ promo, modelos, onClose, onSaved }) {
             >
               <option value="">— General (todos los modelos) —</option>
               {modelos.map((m) => (
-                <option key={m.id} value={m.id}>{m.nombre}</option>
+                <option key={m.id} value={m.id}>{m.nombre_completo || m.nombre}</option>
               ))}
             </select>
           </div>
@@ -602,11 +422,8 @@ export default function VentasCatalogoPage() {
   const [promociones, setPromociones] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  const [modeloModal, setModeloModal] = useState(null); // null | {} | {id,...}
   const [versionModal, setVersionModal] = useState(null);
   const [promoModal, setPromoModal] = useState(null);
-
-  const [expandedModelo, setExpandedModelo] = useState(null);
 
   const fetchModelos = useCallback(async () => {
     setLoading(true);
@@ -647,30 +464,18 @@ export default function VentasCatalogoPage() {
     else if (tab === "promociones") { fetchModelos(); fetchPromociones(); }
   }, [tab, fetchModelos, fetchVersiones, fetchPromociones]);
 
-  async function toggleModeloActivo(modelo) {
-    try {
-      const res = await fetch(`/api/ventas/modelos/${modelo.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ is_active: modelo.is_active ? 0 : 1 }),
-      });
-      if (!res.ok) throw new Error("Error al actualizar");
-      toast.success(modelo.is_active ? "Modelo desactivado" : "Modelo activado");
-      fetchModelos();
-    } catch {
-      toast.error("No se pudo actualizar el modelo");
-    }
-  }
-
   // ─── Tab: Modelos ─────────────────────────────────────────────────────────
 
   function renderModelos() {
     return (
       <div>
-        <div className="flex justify-end mb-4">
-          <Button size="sm" onClick={() => setModeloModal({})}>
-            <Plus className="w-4 h-4 mr-2" /> Nuevo modelo
-          </Button>
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm text-gray-500">
+            Los modelos se gestionan en{" "}
+            <a href="/marcas" className="text-blue-600 hover:underline inline-flex items-center gap-1">
+              Administración → Marcas <ExternalLink className="w-3 h-3" />
+            </a>. Aquí se muestran solo como referencia.
+          </p>
         </div>
 
         {loading && <p className="text-sm text-gray-500">Cargando…</p>}
@@ -682,67 +487,22 @@ export default function VentasCatalogoPage() {
                 <div className="flex items-center gap-3">
                   <Car className="w-5 h-5 text-gray-400 shrink-0" />
                   <div>
-                    <p className="font-medium text-sm">{m.nombre}</p>
-                    <p className="text-xs text-gray-500 capitalize">
-                      {m.tipo} · {m.motor || "motor no especificado"} · {m.capacidad_personas ? `${m.capacidad_personas} personas` : ""}
+                    <p className="font-medium text-sm">{m.nombre_completo || m.nombre}</p>
+                    <p className="text-xs text-gray-500">
+                      {m.clase_nombre || "—"} · Años: {m.anios || "—"}
                     </p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <Badge
-                    text={m.is_active ? "Activo" : "Inactivo"}
-                    color={m.is_active ? "green" : "gray"}
-                  />
-                  <button
-                    onClick={() => setExpandedModelo(expandedModelo === m.id ? null : m.id)}
-                    className="p-1 text-gray-400 hover:text-gray-600"
-                    title="Ver detalles"
-                  >
-                    {expandedModelo === m.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => setModeloModal(m)}
-                    className="p-1 text-blue-500 hover:text-blue-700"
-                    title="Editar"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => toggleModeloActivo(m)}
-                    className={`p-1 ${m.is_active ? "text-red-400 hover:text-red-600" : "text-green-500 hover:text-green-700"}`}
-                    title={m.is_active ? "Desactivar" : "Activar"}
-                  >
-                    {m.is_active ? <Trash2 className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  </button>
-                </div>
+                <Badge text={m.marca_nombre} color="blue" />
               </div>
-
-              {expandedModelo === m.id && (
-                <div className="px-4 py-3 bg-gray-50 border-t text-xs text-gray-600 grid grid-cols-2 gap-2">
-                  <div><span className="font-medium">Transmisión:</span> {m.transmision || "—"}</div>
-                  <div><span className="font-medium">Consumo:</span> {m.consumo || "—"}</div>
-                  <div className="col-span-2">
-                    <span className="font-medium">Seguridad:</span>{" "}
-                    {Array.isArray(m.caracteristicas_seguridad) && m.caracteristicas_seguridad.length
-                      ? m.caracteristicas_seguridad.join(", ")
-                      : "—"}
-                  </div>
-                  <div className="col-span-2">
-                    <span className="font-medium">Tecnología:</span>{" "}
-                    {Array.isArray(m.caracteristicas_tecnologia) && m.caracteristicas_tecnologia.length
-                      ? m.caracteristicas_tecnologia.join(", ")
-                      : "—"}
-                  </div>
-                </div>
-              )}
             </div>
           ))}
 
           {!loading && modelos.length === 0 && (
             <div className="text-center py-12 text-gray-400">
               <Car className="w-10 h-10 mx-auto mb-2" />
-              <p className="text-sm">No hay modelos registrados</p>
+              <p className="text-sm">No hay modelos en el sistema</p>
+              <p className="text-xs mt-1">Ve a Administración → Marcas para agregar marcas y modelos</p>
             </div>
           )}
         </div>
@@ -917,13 +677,6 @@ export default function VentasCatalogoPage() {
       {tab === "promociones" && renderPromociones()}
 
       {/* Modals */}
-      {modeloModal !== null && (
-        <ModeloModal
-          modelo={modeloModal}
-          onClose={() => setModeloModal(null)}
-          onSaved={() => { setModeloModal(null); fetchModelos(); }}
-        />
-      )}
       {versionModal !== null && (
         <VersionModal
           version={versionModal}
