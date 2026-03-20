@@ -407,7 +407,7 @@ export default function MarcasPage() {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="top">
-                    Configurar algoritmo de visitas de mantenimiento
+                    Configurar frecuencia de visitas de mantenimiento
                   </TooltipContent>
                 </Tooltip>
               )}

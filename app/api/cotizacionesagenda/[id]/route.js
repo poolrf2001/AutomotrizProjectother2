@@ -1,8 +1,3 @@
-// ============================================
-// API DE COTIZACIONES AGENDA - ID
-// archivo: app/api/cotizacionesagenda/[id]/route.js
-// ============================================
-
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -10,32 +5,27 @@ export async function GET(req, { params }) {
   try {
     const { id } = await params;
 
-    console.log("Obteniendo cotización:", id);
-
-    const [rows] = await db.query(
-      `SELECT 
-        ca.*,
-        m.name as marca,
-        mo.name as modelo
-      FROM cotizacionesagenda ca
-      INNER JOIN marcas m ON m.id = ca.marca_id
-      INNER JOIN modelos mo ON mo.id = ca.modelo_id
-      WHERE ca.id = ?`,
+    const [cotizaciones] = await db.query(
+      `SELECT c.*, m.name as marca, mo.name as modelo 
+       FROM cotizacionesagenda c
+       LEFT JOIN marcas m ON c.marca_id = m.id
+       LEFT JOIN modelos mo ON c.modelo_id = mo.id
+       WHERE c.id = ?`,
       [id]
     );
 
-    if (rows.length === 0) {
+    if (cotizaciones.length === 0) {
       return NextResponse.json(
-        { message: "Cotización de agenda no encontrada" },
+        { message: "Cotización no encontrada" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(rows[0]);
-  } catch (e) {
-    console.log("Error en GET cotizacionesagenda por ID:", e);
+    return NextResponse.json(cotizaciones[0]);
+  } catch (error) {
+    console.error("Error fetching cotización:", error);
     return NextResponse.json(
-      { message: "Error", error: e.message },
+      { message: "Error al cargar cotización" },
       { status: 500 }
     );
   }
@@ -44,72 +34,40 @@ export async function GET(req, { params }) {
 export async function PUT(req, { params }) {
   try {
     const { id } = await params;
-
-    console.log("Actualizando cotización:", id);
-
-    const body = await req.json();
     const {
       sku,
       color_externo,
       color_interno,
-      estado,
-      marca_id,
-      modelo_id,
       version_id,
       anio,
-    } = body;
+      marca_id,
+      modelo_id,
+      estado,
+    } = await req.json();
 
-    console.log("Datos recibidos:", body);
-
-    // Verificar que existe
-    const [existing] = await db.query(
-      "SELECT id FROM cotizacionesagenda WHERE id = ?",
-      [id]
-    );
-
-    if (existing.length === 0) {
-      return NextResponse.json(
-        { message: "Cotización de agenda no encontrada" },
-        { status: 404 }
-      );
-    }
-
-    // Actualizar
-    const [result] = await db.query(
+    await db.query(
       `UPDATE cotizacionesagenda 
-       SET sku = ?, color_externo = ?, color_interno = ?, estado = ?, 
-           marca_id = ?, modelo_id = ?, version_id = ?, anio = ?, updated_at = NOW()
+       SET sku = ?, color_externo = ?, color_interno = ?, version_id = ?, 
+           anio = ?, marca_id = ?, modelo_id = ?, estado = ?, updated_at = NOW()
        WHERE id = ?`,
       [
-        sku || null,
-        color_externo || null,
-        color_interno || null,
-        estado || "borrador",
+        sku,
+        color_externo,
+        color_interno,
+        version_id,
+        anio,
         marca_id,
         modelo_id,
-        version_id || null,
-        anio || null,
+        estado,
         id,
       ]
     );
 
-    if (result.affectedRows === 0) {
-      return NextResponse.json(
-        { message: "No se pudo actualizar" },
-        { status: 400 }
-      );
-    }
-
-    console.log("Cotización actualizada");
-
-    return NextResponse.json({
-      message: "Cotización de agenda actualizada",
-      id: id,
-    });
-  } catch (e) {
-    console.log("Error en PUT cotizacionesagenda:", e);
+    return NextResponse.json({ message: "Cotización actualizada" });
+  } catch (error) {
+    console.error("Error updating cotización:", error);
     return NextResponse.json(
-      { message: "Error actualizando", error: e.message },
+      { message: "Error actualizando cotización" },
       { status: 500 }
     );
   }
@@ -119,39 +77,13 @@ export async function DELETE(req, { params }) {
   try {
     const { id } = await params;
 
-    console.log("Eliminando cotización:", id);
+    await db.query("DELETE FROM cotizacionesagenda WHERE id = ?", [id]);
 
-    const [existing] = await db.query(
-      "SELECT id FROM cotizacionesagenda WHERE id = ?",
-      [id]
-    );
-
-    if (existing.length === 0) {
-      return NextResponse.json(
-        { message: "Cotización de agenda no encontrada" },
-        { status: 404 }
-      );
-    }
-
-    const [result] = await db.query(
-      "DELETE FROM cotizacionesagenda WHERE id = ?",
-      [id]
-    );
-
-    if (result.affectedRows === 0) {
-      return NextResponse.json(
-        { message: "No se pudo eliminar" },
-        { status: 400 }
-      );
-    }
-
-    console.log("Cotización eliminada");
-
-    return NextResponse.json({ message: "Cotización de agenda eliminada" });
-  } catch (e) {
-    console.log("Error en DELETE cotizacionesagenda:", e);
+    return NextResponse.json({ message: "Cotización eliminada" });
+  } catch (error) {
+    console.error("Error deleting cotización:", error);
     return NextResponse.json(
-      { message: "Error eliminando", error: e.message },
+      { message: "Error eliminando cotización" },
       { status: 500 }
     );
   }
