@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  ChevronDown, ChevronUp, Filter, Phone, RefreshCw, User, X,
+  ChevronDown, ChevronUp, Filter, Phone, RefreshCw, Trash2, User, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -51,10 +51,26 @@ function EstadoBadge({ estado }) {
 
 // ─── Panel de detalle del lead ────────────────────────────────────────────────
 
-function LeadPanel({ lead, onClose, onEstadoChanged }) {
+function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
   const [estado, setEstado] = useState(lead.estado);
   const [notas, setNotas] = useState(lead.notas_agente || "");
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!confirm(`¿Eliminar la cotización de ${lead.nombre_cliente || "este cliente"}? Esta acción no se puede deshacer.`)) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/ventas/leads/${lead.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Error al eliminar");
+      toast.success("Cotización eliminada");
+      onDeleted(lead.id);
+    } catch {
+      toast.error("No se pudo eliminar la cotización");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -91,9 +107,19 @@ function LeadPanel({ lead, onClose, onEstadoChanged }) {
           <p className="font-semibold text-gray-900">{lead.nombre_cliente || "Cliente sin nombre"}</p>
           <p className="text-xs text-gray-500">{lead.telefono}</p>
         </div>
-        <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
-          <X className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-50"
+            title="Eliminar cotización"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -217,6 +243,12 @@ export default function VentasLeadsPage() {
   function handleEstadoChanged(updated) {
     setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
     setSelectedLead(updated);
+  }
+
+  function handleLeadDeleted(id) {
+    setLeads((prev) => prev.filter((l) => l.id !== id));
+    setSelectedLead(null);
+    setPagination((p) => ({ ...p, total: Math.max(0, p.total - 1) }));
   }
 
   const activeFilters = [filters.estado, filters.desde, filters.hasta].filter(Boolean).length;
@@ -408,6 +440,7 @@ export default function VentasLeadsPage() {
           lead={selectedLead}
           onClose={() => setSelectedLead(null)}
           onEstadoChanged={handleEstadoChanged}
+          onDeleted={handleLeadDeleted}
         />
       )}
     </div>

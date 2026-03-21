@@ -62,3 +62,18 @@ export async function PATCH(req, { params }) {
 
   return NextResponse.json({ message: "Lead actualizado" });
 }
+
+export async function DELETE(req, { params }) {
+  const auth = authorizeConversation(req, "edit");
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const numId = isNaN(Number(id)) ? 0 : Number(id);
+
+  await db.query(
+    `DELETE FROM ventas_leads WHERE id = ? OR lead_uuid = ?`,
+    [numId, id]
+  );
+
+  return NextResponse.json({ message: "Lead eliminado" });
+}
