@@ -1,4 +1,3 @@
-// app/api/reservas/route.js
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
@@ -7,22 +6,25 @@ export async function GET(request) {
     const { searchParams } = new URL(request.url);
     const oportunidadId = searchParams.get('oportunidad_id');
 
-    let sql = 'SELECT * FROM reservas WHERE 1=1';
+    let sql = `SELECT r.*, u.fullname as created_by_name
+               FROM reservas r
+               LEFT JOIN usuarios u ON r.created_by = u.id
+               WHERE 1=1`;
     const params = [];
 
     if (oportunidadId) {
-      sql += ' AND oportunidad_id = ?';
+      sql += ' AND r.oportunidad_id = ?';
       params.push(oportunidadId);
     }
 
-    sql += ' ORDER BY created_at DESC';
+    sql += ' ORDER BY r.created_at DESC';
 
     const [rows] = await db.query(sql, params);
     return NextResponse.json(rows);
 
   } catch (e) {
     console.log(e);
-    return NextResponse.json({ message: "Error" }, { status: 500 });
+    return NextResponse.json({ message: "Error: " + e.message }, { status: 500 });
   }
 }
 
@@ -40,12 +42,15 @@ export async function POST(req) {
       );
     }
 
-    await db.query(`
-      INSERT INTO reservas (oportunidad_id, created_by)
-      VALUES (?, ?)
+    const [result] = await db.query(`
+      INSERT INTO reservas (oportunidad_id, created_by, estado)
+      VALUES (?, ?, 'borrador')
     `, [oportunidad_id, created_by]);
 
-    return NextResponse.json({ message: "Reserva creada" });
+    return NextResponse.json({ 
+      message: "Reserva creada",
+      id: result.insertId
+    });
 
   } catch (e) {
     console.log(e);

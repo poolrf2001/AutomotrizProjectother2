@@ -19,6 +19,7 @@ export const NAV_TREE = [
     items: [
       { to: "/combomantenimiento", label: "Mantenimiento", icon: Columns3, perm: ["combomantenimiento", "view"] },
       { to: "/precios", label: "Precios", icon: Coins, perm: ["precios", "view"] },
+      { to: "/inventario", label: "Inventario", icon: Boxes, perm: ["inventario", "view"] },
 
     ],
   },
@@ -27,6 +28,8 @@ export const NAV_TREE = [
     label: "Inventario Venta",
     items: [
       { to: "/carros", label: "Precios de Carros", icon: Boxes, perm: ["inventariocarros", "view"] },
+      { to: "/accesorios", label: "Precios de Accesorios", icon: Boxes, perm: ["inventariocarros", "view"] },
+      { to: "/ventas/catalogo", label: "Catálogo", icon: BookOpen, perm: ["mensajs", "view"] },
     ],
   },
   {
@@ -37,6 +40,7 @@ export const NAV_TREE = [
       { to: "/recepcion", label: "Recepción", icon: CalendarCheck, perm: ["recepcion", "view"] },
       { to: "/oportunidadespv", label: "Oportunidades", icon: Calendar, perm: ["oportunidadespv", "view"] },
       { to: "/leadspv", label: "Leads", icon: Calendar, perm: ["leadspv", "view"] },
+      { to: "/cotizacion", label: "Cotizacion", icon: Receipt, perm: ["cotizacion", "view"] }
       
     ],
   },
@@ -47,17 +51,8 @@ export const NAV_TREE = [
       { to: "/agenda", label: "Agenda", icon: Calendar, perm: ["agenda", "view"] },
       { to: "/oportunidades", label: "Oportunidades", icon: Calendar, perm: ["oportunidades", "view"] },
       { to: "/leads", label: "Leads", icon: Calendar, perm: ["leads", "view"] },
+      { to: "/reservas", label: "Reservas", icon: Calendar, perm: ["reservas", "view"] },
     ],
-  },
-  {
-    key: "inventario",
-    label: "Inventario",
-    items: [{ to: "/inventario", label: "Inventario", icon: Boxes, perm: ["inventario", "view"] },],
-  },
-  {
-    key: "cotizacion",
-    label: "Cotizacion Postventa",
-    items: [{ to: "/cotizacion", label: "Cotizacion", icon: Receipt, perm: ["cotizacion", "view"] }],
   },
   {
     key: "mensajes",
@@ -65,15 +60,7 @@ export const NAV_TREE = [
     items: [
       { to: "/mensajes", label: "Mensajes", icon: MessageCircle, perm: ["mensajes", "view"] },
       { to: "/enviosmasivos", label: "Envíos masivos", icon: MessageCircle, perm: ["mensajes", "view"] },
-    ],
-  },
-  {
-    key: "ventas-ia",
-    label: "Ventas IA",
-    items: [
       { to: "/ventas/leads", label: "Leads / Cotizaciones", icon: ShoppingCart, perm: ["mensajes", "view"] },
-      { to: "/ventas/catalogo", label: "Catálogo", icon: BookOpen, perm: ["mensajes", "view"] },
-      { to: "/ventas/configuracion", label: "Configuración del agente", icon: SlidersHorizontal, perm: ["mensajes", "view"] },
     ],
   },
   {
@@ -108,6 +95,7 @@ export const NAV_TREE = [
       { to: "/configagenda", label: "Configuración de Agenda", icon: Settings, perm: ["configagenda", "view"] },
       { to: "/configcotizacion", label: "Configuración de Citas", icon: Settings, perm: ["configcotizacion", "view"] },
       { to: "/configinventario", label: "Configuración de Inventario", icon: Settings, perm: ["configinventario", "view"] },
+      { to: "/ventas/configuracion", label: "Configuración del agente", icon: SlidersHorizontal, perm: ["mensajes", "view"] },
       
     ],
   }

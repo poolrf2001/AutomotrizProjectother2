@@ -5,6 +5,7 @@ export const ACTIONS = [
   { key: "delete", label: "Eliminar" },
   { key: "viewall", label: "Ver todas" },
   { key: "asignar", label: "Asignar" },
+  { key: "firm", label: "Firmar" },
 ];
 
 export const SECTIONS = [
@@ -35,5 +36,6 @@ export const SECTIONS = [
   { key: "leads", label: "Leads", actions: ["view", "create", "edit", "asignar", "asignar"] },
   { key: "oportunidades", label: "Oportunidades", actions: ["view", "create", "edit", "asignar"] },
   { key: "configinventario", label: "Configuración de Inventario", actions: ["view", "create", "edit", "delete"] },
-  { key: "configcotizacion", label: "Configuración de Cotización", actions: ["view", "create", "edit", "delete"] }
+  { key: "configcotizacion", label: "Configuración de Cotización", actions: ["view", "create", "edit", "delete"] },
+  { key: "reservas", label: "Reservas", actions: ["view", "create", "edit", "firm"] },
 ];
