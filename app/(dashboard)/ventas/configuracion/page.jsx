@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Save, Trash2 } from "lucide-react";
+import { Bot, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -451,19 +451,108 @@ function ServiciosForm({ data, onSave }) {
   );
 }
 
+// ─── Agentes IA ───────────────────────────────────────────────────────────────
+
+function AgentPromptForm({ agente, onSave }) {
+  const [consideraciones, setConsideraciones] = useState(agente?.consideraciones || "");
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/agentes/prompt-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agent_key: agente.agent_key, consideraciones }),
+      });
+      if (!res.ok) throw new Error("Error al guardar");
+      toast.success(`Consideraciones de "${agente.display_name}" guardadas`);
+      onSave(agente.agent_key, consideraciones);
+    } catch {
+      toast.error("No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const updatedAt = agente?.updated_at
+    ? new Date(agente.updated_at).toLocaleString("es-PE")
+    : null;
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Bot className="w-4 h-4 text-blue-600" />
+        <span className="font-medium text-sm text-gray-800">{agente?.display_name}</span>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Consideraciones adicionales
+        </label>
+        <Textarea
+          value={consideraciones}
+          onChange={(e) => setConsideraciones(e.target.value)}
+          placeholder={`Ej: Esta semana hay 20% de descuento en cambio de aceite. Informar a todos los clientes que lo consulten.`}
+          rows={5}
+        />
+        <p className="text-xs text-gray-400 mt-1">
+          Este texto se agrega al final del prompt base del agente. No reemplaza sus reglas existentes.
+        </p>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <Button onClick={handleSave} disabled={saving} size="sm">
+          <Save className="w-4 h-4 mr-2" />
+          {saving ? "Guardando…" : "Guardar"}
+        </Button>
+        {updatedAt && agente?.updated_by && (
+          <span className="text-xs text-gray-400">
+            Actualizado: {updatedAt} por {agente.updated_by}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AgentesIAForm({ agentes, onSave }) {
+  if (!agentes || agentes.length === 0) {
+    return <p className="text-sm text-gray-500">No hay agentes configurados.</p>;
+  }
+
+  return (
+    <div className="max-w-2xl space-y-4">
+      <p className="text-sm text-gray-600">
+        Agrega consideraciones que los agentes IA tendrán en cuenta en sus respuestas.
+        Se inyectan dinámicamente en cada conversación sin modificar la lógica base.
+      </p>
+      {agentes.map((agente) => (
+        <AgentPromptForm key={agente.agent_key} agente={agente} onSave={onSave} />
+      ))}
+    </div>
+  );
+}
+
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function VentasConfiguracionPage() {
   const [tab, setTab] = useState("financiamiento");
   const [config, setConfig] = useState({});
+  const [agentes, setAgentes] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const fetchConfig = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/ventas/configuracion");
-      const data = await res.json();
-      setConfig(data.configuracion || {});
+      const [resConfig, resAgentes] = await Promise.all([
+        fetch("/api/ventas/configuracion"),
+        fetch("/api/agentes/prompt-config"),
+      ]);
+      const dataConfig = await resConfig.json();
+      const dataAgentes = await resAgentes.json();
+      setConfig(dataConfig.configuracion || {});
+      setAgentes(dataAgentes.agentes || []);
     } finally {
       setLoading(false);
     }
@@ -473,6 +562,12 @@ export default function VentasConfiguracionPage() {
 
   function updateSection(seccion, contenido) {
     setConfig((c) => ({ ...c, [seccion]: contenido }));
+  }
+
+  function updateAgente(agentKey, consideraciones) {
+    setAgentes((prev) =>
+      prev.map((a) => (a.agent_key === agentKey ? { ...a, consideraciones } : a))
+    );
   }
 
   return (
@@ -494,6 +589,7 @@ export default function VentasConfiguracionPage() {
             <TabButton label="Docs. Persona Jurídica" active={tab === "doc_juridico"} onClick={() => setTab("doc_juridico")} />
             <TabButton label="Garantías" active={tab === "garantias"} onClick={() => setTab("garantias")} />
             <TabButton label="Servicios adicionales" active={tab === "servicios"} onClick={() => setTab("servicios")} />
+            <TabButton label="Agentes IA" active={tab === "agentes"} onClick={() => setTab("agentes")} />
           </div>
 
           {tab === "financiamiento" && (
@@ -529,6 +625,9 @@ export default function VentasConfiguracionPage() {
               data={config.servicios_adicionales}
               onSave={(c) => updateSection("servicios_adicionales", c)}
             />
+          )}
+          {tab === "agentes" && (
+            <AgentesIAForm agentes={agentes} onSave={updateAgente} />
           )}
         </>
       )}
