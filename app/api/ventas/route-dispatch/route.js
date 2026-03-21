@@ -89,10 +89,11 @@ export async function POST(req) {
   const text = body?.text || "";
 
   // ── Verificar si hay sesión de ventas activa (últimas 24h) ────────────────
+  // IMPORTANTE: solo retornamos la ruta, NO despachamos aquí.
+  // El Taller v14 es quien hace el dispatch a Ventas IA para evitar doble envío.
   const ventasRoute = await resolveVentasRoute(phone);
   if (ventasRoute === "ventas_ia") {
-    dispatchToVentas(body);
-    return NextResponse.json({ route: "ventas_ia", dispatched: true });
+    return NextResponse.json({ route: "ventas_ia", dispatched: false });
   }
 
   // ── Verificar si hay sesión de taller activa reciente (últimas 4h) ────────
@@ -111,11 +112,11 @@ export async function POST(req) {
 
   if (selection === "1") {
     // Opción 1: Comprar vehículo → flujo Ventas IA
+    // Solo creamos la sesión; el Taller v14 hace el dispatch para evitar doble envío.
     await createVentasSession(phone);
-    dispatchToVentas(body);
     return NextResponse.json({
       route: "ventas_ia",
-      dispatched: true,
+      dispatched: false,
       is_new_client: !clienteRow,
     });
   }
@@ -289,15 +290,3 @@ async function createVentasSession(phone) {
   );
 }
 
-// ── Despachar mensaje al webhook de Ventas IA (fire & forget) ─────────────
-function dispatchToVentas(body) {
-  const ventasUrl =
-    process.env.N8N_VENTAS_INBOUND_URL ||
-    "https://n8n.app20.tech/webhook/ventas-ia-inbound";
-  fetch(ventasUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(5000),
-  }).catch(() => {});
-}
