@@ -48,7 +48,7 @@ export async function POST(req) {
     const res = await fetch(outboundUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ phone, message, channel, source: "ventas_ia", session_id: sessionId }),
+      body: JSON.stringify({ phone, text: message, source_channel: channel, source: "ventas_ia", session_id: sessionId }),
       signal: AbortSignal.timeout(8000),
     });
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-
 /**
  * PATCH /api/ventas/route-dispatch
  *
@@ -47,10 +46,16 @@ export async function PATCH(req) {
  * POST /api/ventas/route-dispatch
  *
  * Usado por n8n "Bot Taller v14" para:
- * 1. Verificar si el mensaje pertenece al flujo de ventas IA
- * 2. Si es ventas: disparar el webhook ventas-ia-inbound (fire & forget)
- * 3. Si es cliente nuevo sin selección: devolver menú de bienvenida
- * 4. Devolver { route: "ventas_ia"|"new_client_menu"|"default" }
+ * 1. Verificar si el mensaje pertenece al flujo de ventas IA activo (últimas 24h)
+ * 2. Si está en ventas: disparar el webhook ventas-ia-inbound (fire & forget)
+ * 3. Si está en taller activo (últimas 4h): continuar en taller sin menú
+ * 4. Si no hay sesión activa reciente: mostrar menú de bienvenida
+ * 5. Si el cliente ya seleccionó opción del menú: rutear al flujo correcto
+ *
+ * route responses:
+ *   "ventas_ia"       → el Taller v14 debe saltarse su lógica IA (ya se despachó)
+ *   "new_client_menu" → el Taller v14 debe enviar menu_text al cliente
+ *   "default"         → el Taller v14 continúa con su agente IA normal
  */
 export async function POST(req) {
   const secret = process.env.CONVERSATIONS_WEBHOOK_SECRET;
@@ -81,98 +86,112 @@ export async function POST(req) {
     return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
   }
 
-  // ── Verificar sesión y datos del cliente en paralelo ─────────────────────
-  const [hasSession, clienteRow] = await Promise.all([
-    checkHasSession(phone),
-    lookupCliente(phone),
-  ]);
+  const text = body?.text || "";
 
+  // ── Verificar si hay sesión de ventas activa (últimas 24h) ────────────────
+  const ventasRoute = await resolveVentasRoute(phone);
+  if (ventasRoute === "ventas_ia") {
+    dispatchToVentas(body);
+    return NextResponse.json({ route: "ventas_ia", dispatched: true });
+  }
+
+  // ── Verificar si hay sesión de taller activa reciente (últimas 4h) ────────
+  // Si el cliente lleva menos de 4h en el taller, continuar sin mostrar menú
+  const tallerActivo = await checkTallerActivo(phone);
+  if (tallerActivo) {
+    return NextResponse.json({ route: "default", reason: "taller_activo" });
+  }
+
+  // ── Sin sesión activa reciente → detectar selección o mostrar menú ────────
+  const selection = detectMenuSelection(text);
+  const clienteRow = await lookupCliente(phone);
   const clienteNombre = clienteRow
     ? [clienteRow.nombre, clienteRow.apellido].filter(Boolean).join(" ").trim()
     : null;
 
-  // ── Sin sesión previa en conversation_sessions ────────────────────────────
-  if (!hasSession) {
-    const selection = detectMenuSelection(body?.text || "");
-
-    if (selection === "1") {
-      await createVentasSession(phone);
-      const ventasUrl =
-        process.env.N8N_VENTAS_INBOUND_URL ||
-        "https://n8n.app20.tech/webhook/ventas-ia-inbound";
-      fetch(ventasUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(5000),
-      }).catch(() => {});
-      return NextResponse.json({ route: "ventas_ia", dispatched: true, is_new_client: !clienteRow });
-    }
-
-    if (selection === "taller") {
-      return NextResponse.json({ route: "default", reason: "new_client_taller_selected" });
-    }
-
-    // Primer mensaje sin selección válida → mostrar menú personalizado
-    const saludo = clienteNombre
-      ? `¡Hola, ${clienteNombre}! 👋 Bienvenido/a de nuevo.`
-      : "¡Hola! 👋 Bienvenido/a.";
-    const menuText =
-      `${saludo}\n¿En qué te podemos ayudar hoy?\n\n` +
-      "1️⃣ Quiero comprar un vehículo nuevo\n" +
-      "2️⃣ Mantenimiento, citas o taller\n" +
-      "3️⃣ Hablar con un asesor\n\n" +
-      "Responde con el número de tu opción.";
-
+  if (selection === "1") {
+    // Opción 1: Comprar vehículo → flujo Ventas IA
+    await createVentasSession(phone);
+    dispatchToVentas(body);
     return NextResponse.json({
-      route: "new_client_menu",
-      menu_text: menuText,
-      phone,
-      cliente_nombre: clienteNombre,
+      route: "ventas_ia",
+      dispatched: true,
+      is_new_client: !clienteRow,
     });
   }
 
-  // ── Cliente con sesión → lógica normal de routing ─────────────────────────
-  const route = await resolveRoute(phone);
-
-  // Si la sesión existe pero está en default y el cliente elige ventas → mostrar menú
-  if (route === "default") {
-    const selection = detectMenuSelection(body?.text || "");
-    if (selection === "1") {
-      await createVentasSession(phone);
-      const ventasUrl =
-        process.env.N8N_VENTAS_INBOUND_URL ||
-        "https://n8n.app20.tech/webhook/ventas-ia-inbound";
-      fetch(ventasUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(5000),
-      }).catch(() => {});
-      return NextResponse.json({ route: "ventas_ia", dispatched: true });
-    }
+  if (selection === "taller") {
+    // Opción 2: Taller/mantenimiento → flujo Taller normal
+    return NextResponse.json({ route: "default", reason: "taller_selected" });
   }
 
-  if (route === "ventas_ia") {
-    const ventasUrl =
-      process.env.N8N_VENTAS_INBOUND_URL ||
-      "https://n8n.app20.tech/webhook/ventas-ia-inbound";
-    fetch(ventasUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(5000),
-    }).catch(() => {});
+  if (selection === "asesor") {
+    // Opción 3: Hablar con asesor → taller responde (agente lo puede escalar)
+    return NextResponse.json({ route: "default", reason: "asesor_selected" });
   }
 
-  return NextResponse.json({ route, dispatched: route === "ventas_ia" });
+  // ── Sin selección válida → mostrar menú de bienvenida ────────────────────
+  const saludo = clienteNombre
+    ? `¡Hola, ${clienteNombre}! 👋 Bienvenido/a de nuevo.`
+    : "¡Hola! 👋 Bienvenido/a.";
+  const menuText =
+    `${saludo}\n¿En qué te podemos ayudar hoy?\n\n` +
+    "1️⃣ Quiero comprar un vehículo nuevo\n" +
+    "2️⃣ Mantenimiento, citas o taller\n" +
+    "3️⃣ Hablar con un asesor\n\n" +
+    "Responde con el número de tu opción.";
+
+  return NextResponse.json({
+    route: "new_client_menu",
+    menu_text: menuText,
+    phone,
+    cliente_nombre: clienteNombre,
+  });
 }
 
 // ── Detectar selección del menú ───────────────────────────────────────────
 function detectMenuSelection(text) {
-  const clean = text.trim().toLowerCase();
-  if (clean === "1" || clean.startsWith("1.") || clean.includes("comprar") || clean.includes("vehículo nuevo") || clean.includes("vehiculo nuevo")) return "1";
-  if (clean === "2" || clean === "3" || clean.startsWith("2.") || clean.startsWith("3.") || clean.includes("mantenimiento") || clean.includes("taller") || clean.includes("cita") || clean.includes("asesor")) return "taller";
+  const clean = (text || "").trim().toLowerCase();
+
+  if (
+    clean === "1" ||
+    clean.startsWith("1.") ||
+    clean.startsWith("1 ") ||
+    clean.includes("comprar") ||
+    clean.includes("vehículo nuevo") ||
+    clean.includes("vehiculo nuevo") ||
+    clean.includes("carro nuevo") ||
+    clean.includes("auto nuevo")
+  ) {
+    return "1";
+  }
+
+  if (
+    clean === "2" ||
+    clean.startsWith("2.") ||
+    clean.startsWith("2 ") ||
+    clean.includes("mantenimiento") ||
+    clean.includes("taller") ||
+    clean.includes("cita") ||
+    clean.includes("reparacion") ||
+    clean.includes("reparación") ||
+    clean.includes("servicio")
+  ) {
+    return "taller";
+  }
+
+  if (
+    clean === "3" ||
+    clean.startsWith("3.") ||
+    clean.startsWith("3 ") ||
+    clean.includes("asesor") ||
+    clean.includes("agente") ||
+    clean.includes("persona") ||
+    clean.includes("humano")
+  ) {
+    return "asesor";
+  }
+
   return null;
 }
 
@@ -187,30 +206,8 @@ async function lookupCliente(phone) {
   return rows[0] || null;
 }
 
-// ── Verificar si el teléfono tiene historial de sesión ───────────────────
-async function checkHasSession(phone) {
-  const [rows] = await db.query(
-    `SELECT id FROM conversation_sessions
-     WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
-     LIMIT 1`,
-    [phone]
-  );
-  return rows.length > 0;
-}
-
-// ── Crear sesión ventas_ia para cliente nuevo ─────────────────────────────
-async function createVentasSession(phone) {
-  await db.query(
-    `INSERT INTO conversation_sessions (phone, source, created_at, updated_at)
-     VALUES (?, 'ventas_ia', NOW(), NOW())
-     ON DUPLICATE KEY UPDATE source = 'ventas_ia', updated_at = NOW()`,
-    [phone]
-  );
-}
-
-// ── Routing para clientes existentes ─────────────────────────────────────
-async function resolveRoute(phone) {
-  // 1. Sesión activa de ventas_ia (últimas 24h)
+// ── Verificar si tiene sesión de ventas_ia activa en las últimas 24h ──────
+async function resolveVentasRoute(phone) {
   try {
     const [rows] = await db.query(
       `SELECT id FROM conversation_sessions
@@ -225,7 +222,7 @@ async function resolveRoute(phone) {
     if (e?.code !== "ER_BAD_FIELD_ERROR" && e?.errno !== 1054) throw e;
   }
 
-  // 2. Campaña de tipo 'ventas' enviada en las últimas 72h
+  // Campaña de tipo 'ventas' enviada en las últimas 72h
   try {
     const [rows] = await db.query(
       `SELECT cr.id FROM campaign_recipients cr
@@ -247,4 +244,60 @@ async function resolveRoute(phone) {
   }
 
   return "default";
+}
+
+// ── Verificar si tiene actividad de taller reciente (últimas 4h) ──────────
+// Evita mostrar el menú en medio de una conversación activa del taller
+async function checkTallerActivo(phone) {
+  try {
+    const [rows] = await db.query(
+      `SELECT id FROM conversation_sessions
+       WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+         AND (source IS NULL OR source NOT IN ('ventas_ia'))
+         AND updated_at >= DATE_SUB(NOW(), INTERVAL 4 HOUR)
+       ORDER BY updated_at DESC LIMIT 1`,
+      [phone]
+    );
+    return rows.length > 0;
+  } catch (e) {
+    if (e?.code === "ER_BAD_FIELD_ERROR" || e?.errno === 1054) {
+      // Columna source no existe, fallback: verificar solo updated_at
+      try {
+        const [rows] = await db.query(
+          `SELECT id FROM conversation_sessions
+           WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+             AND updated_at >= DATE_SUB(NOW(), INTERVAL 4 HOUR)
+           ORDER BY updated_at DESC LIMIT 1`,
+          [phone]
+        );
+        return rows.length > 0;
+      } catch (_) {
+        return false;
+      }
+    }
+    throw e;
+  }
+}
+
+// ── Crear/actualizar sesión ventas_ia ─────────────────────────────────────
+async function createVentasSession(phone) {
+  await db.query(
+    `INSERT INTO conversation_sessions (phone, source, created_at, updated_at)
+     VALUES (?, 'ventas_ia', NOW(), NOW())
+     ON DUPLICATE KEY UPDATE source = 'ventas_ia', updated_at = NOW()`,
+    [phone]
+  );
+}
+
+// ── Despachar mensaje al webhook de Ventas IA (fire & forget) ─────────────
+function dispatchToVentas(body) {
+  const ventasUrl =
+    process.env.N8N_VENTAS_INBOUND_URL ||
+    "https://n8n.app20.tech/webhook/ventas-ia-inbound";
+  fetch(ventasUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {});
 }
