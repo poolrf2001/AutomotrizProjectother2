@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 import { db } from "@/lib/db";
-import { enqueueOutbound, processOutboxItem } from "@/lib/conversationsOutbox";
 
 /**
  * POST /api/conversations/send-message
@@ -27,44 +25,40 @@ export async function POST(req) {
     return NextResponse.json({ message: "phone y message son requeridos" }, { status: 400 });
   }
 
-  // Buscar sesión activa para este teléfono
-  const phoneClean = phone.replace(/\D/g, "");
-  const [sessions] = await db.query(
-    `SELECT id FROM conversation_sessions
-     WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
-     ORDER BY updated_at DESC LIMIT 1`,
-    [phoneClean]
-  );
+  const outboundUrl = process.env.N8N_CONVERSATIONS_OUTBOUND_URL;
+  if (!outboundUrl) {
+    return NextResponse.json({ message: "N8N_CONVERSATIONS_OUTBOUND_URL no configurado" }, { status: 500 });
+  }
 
-  let sessionId = sessions[0]?.id || null;
-
-  if (!sessionId) {
-    const [ins] = await db.query(
-      `INSERT INTO conversation_sessions (phone, source, created_at, updated_at)
-       VALUES (?, 'ventas_ia', NOW(), NOW())`,
-      [phone]
+  // Buscar session_id para logging (opcional, no bloquea si no existe)
+  let sessionId = null;
+  try {
+    const phoneClean = phone.replace(/\D/g, "");
+    const [sessions] = await db.query(
+      `SELECT id FROM conversation_sessions
+       WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+       ORDER BY updated_at DESC LIMIT 1`,
+      [phoneClean]
     );
-    sessionId = ins.insertId;
+    sessionId = sessions[0]?.id || null;
+  } catch (_) {}
+
+  // Enviar directamente al webhook de salida de n8n (igual que el resto del CRM)
+  try {
+    const res = await fetch(outboundUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone, message, channel, source: "ventas_ia", session_id: sessionId }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return NextResponse.json({ ok: false, error: `n8n ${res.status}: ${text}` }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true, session_id: sessionId });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: e.message }, { status: 502 });
   }
-
-  const idempotencyKey = randomUUID();
-
-  // Encolar mensaje saliente
-  const { id: outboxId, enabled } = await enqueueOutbound({
-    sessionId,
-    messageLogId: null,
-    phone,
-    source: "ventas_ia",
-    sourceChannel: channel,
-    idempotencyKey,
-    externalMessageId: null,
-    payload: { phone, message, channel, source: "ventas_ia" },
-  });
-
-  // Procesar inmediatamente si el outbox está habilitado
-  if (enabled && outboxId) {
-    await processOutboxItem(outboxId).catch(() => {});
-  }
-
-  return NextResponse.json({ ok: true, session_id: sessionId, queued: true });
 }
