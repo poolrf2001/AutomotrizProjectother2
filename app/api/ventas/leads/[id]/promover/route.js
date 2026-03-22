@@ -123,8 +123,8 @@ export async function POST(req, { params }) {
     `INSERT INTO oportunidades
        (oportunidad_id, cliente_id, marca_id, modelo_id,
         origen_id, etapasconversion_id, detalle, created_by,
-        created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        fecha_agenda, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURDATE(), NOW(), NOW())`,
     [
       oportunidadCodigo,
       clienteId,
