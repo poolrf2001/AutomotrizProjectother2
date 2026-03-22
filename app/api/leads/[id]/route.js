@@ -145,14 +145,12 @@ export async function PUT(req, { params }) {
       !modelo_id ||
       !origen_id ||
       !etapasconversion_id ||
-      !created_by ||
-      !fecha_agenda ||
-      !hora_agenda
+      !created_by
     ) {
       return NextResponse.json(
         {
           message:
-            "cliente_id, marca_id, modelo_id, origen_id, etapasconversion_id, created_by, fecha_agenda y hora_agenda son obligatorios",
+            "cliente_id, marca_id, modelo_id, origen_id, etapasconversion_id y created_by son obligatorios",
         },
         { status: 400 }
       );

@@ -43,8 +43,7 @@ export default function LeadDetailPage() {
         setLead(data);
         setFormData(data);
 
-        // Cambiar a "En Atención" automáticamente (id: 4)
-        setEtapaActual(4);
+        setEtapaActual(data.etapasconversion_id || 2);
       } catch (error) {
         console.error("Error cargando lead:", error);
       } finally {
