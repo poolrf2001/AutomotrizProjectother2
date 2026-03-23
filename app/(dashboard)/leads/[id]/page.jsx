@@ -19,8 +19,8 @@ export default function LeadDetailPage() {
 
   // Etapas disponibles (sin "Reprogramado")
   const etapas = [
-    { id: 2, nombre: "Nuevo", label: "Nuevo" },
-    { id: 3, nombre: "Asignado", label: "Asignado" },
+    { id: 1, nombre: "Nuevo", label: "Nuevo" },
+    { id: 2, nombre: "Asignado", label: "Asignado" },
     { id: 4, nombre: "En Atención", label: "En Atención" },
     { id: 5, nombre: "Test Drive", label: "Test Drive" },
     { id: 6, nombre: "Cotización", label: "Cotización" },
@@ -44,7 +44,7 @@ export default function LeadDetailPage() {
         setLead(data);
         setFormData(data);
 
-        setEtapaActual(data.etapasconversion_id || 2);
+        setEtapaActual(data.etapasconversion_id || 1);
       } catch (error) {
         console.error("Error cargando lead:", error);
       } finally {
