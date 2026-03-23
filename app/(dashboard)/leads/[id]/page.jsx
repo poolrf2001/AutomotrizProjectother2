@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Save, X, Edit2 } from "lucide-react";
+import { toast } from "sonner";
 
 export default function LeadDetailPage() {
   const router = useRouter();
@@ -69,11 +70,14 @@ export default function LeadDetailPage() {
       });
 
       if (res.ok) {
-        alert("Cambios guardados exitosamente");
+        toast.success("Cambios guardados");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        toast.error(data.message || "Error al guardar los cambios");
       }
     } catch (error) {
       console.error("Error guardando:", error);
-      alert("Error al guardar los cambios");
+      toast.error("Error al guardar los cambios");
     } finally {
       setSaving(false);
     }
