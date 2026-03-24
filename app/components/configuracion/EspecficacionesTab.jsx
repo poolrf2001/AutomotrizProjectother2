@@ -72,6 +72,7 @@ export default function EspecificacionesTab() {
   const [expandedEspec, setExpandedEspec] = useState({});
   const [importFile, setImportFile] = useState(null);
   const fileInputRef = useRef(null);
+  const mediaInputRef = useRef(null);
 
   const [formData, setFormData] = useState({
     nombre: "",
@@ -367,7 +368,7 @@ export default function EspecificacionesTab() {
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (!res.ok) throw new Error("Error subiendo archivo");
       const data = await res.json();
-      setModeloEspecFormData((prev) => ({ ...prev, valor: data.static_url }));
+      setModeloEspecFormData((prev) => ({ ...prev, valor: data.url }));
     } catch (e) {
       toast.error("Error subiendo archivo: " + e.message);
     } finally {
@@ -522,13 +523,14 @@ export default function EspecificacionesTab() {
                       Selecciona una imagen o video
                     </p>
                     <input
+                      ref={mediaInputRef}
                       type="file"
                       accept="image/*,video/*"
                       className="hidden"
-                      id="media-upload-input"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) handleMediaUpload(file);
+                        e.target.value = "";
                       }}
                     />
                     <Button
@@ -536,9 +538,7 @@ export default function EspecificacionesTab() {
                       variant="outline"
                       size="sm"
                       className="border-slate-300 text-xs"
-                      onClick={() =>
-                        document.getElementById("media-upload-input")?.click()
-                      }
+                      onClick={() => mediaInputRef.current?.click()}
                     >
                       <Upload className="h-3.5 w-3.5 mr-1" />
                       Seleccionar archivo
