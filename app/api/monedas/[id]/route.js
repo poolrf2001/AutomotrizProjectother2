@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 
 export async function GET(req, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     const [rows] = await db.query(
       `
@@ -26,7 +26,7 @@ export async function GET(req, { params }) {
 
 export async function PUT(req, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
     const { codigo, nombre, simbolo, is_active } = await req.json();
 
     if (!codigo || !nombre || !simbolo) {
@@ -54,7 +54,7 @@ export async function PUT(req, { params }) {
 
 export async function DELETE(req, { params }) {
   try {
-    const { id } = params;
+    const { id } = await params;
 
     await db.query(
       `

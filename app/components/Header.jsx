@@ -46,7 +46,7 @@ export default function Header({
           <Sheet>
             <SheetTrigger asChild>
               <Button variant="ghost" size="icon"
-               className="text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors"
+                className="text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors"
               >
                 <Menu className="h-5 w-5" />
               </Button>
@@ -91,8 +91,8 @@ export default function Header({
         {/* ===== USER MENU ===== */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" 
-                    className="gap-2 text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors">
+            <Button variant="ghost"
+              className="gap-2 text-white hover:bg-white/10 active:bg-white/20 hover:text-white active:text-white transition-colors">
 
               <Avatar className="h-8 w-8">
                 <AvatarFallback>
@@ -108,9 +108,9 @@ export default function Header({
           </DropdownMenuTrigger>
 
           <DropdownMenuContent
-  align="end"
-  className="z-[999]  text-[var(--brand)]"
->
+            align="end"
+            className="z-[999]  text-[var(--brand)]"
+          >
 
             <DropdownMenuLabel>
               {user?.fullname}
@@ -118,8 +118,15 @@ export default function Header({
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuItem>
-              Perfil
+            <DropdownMenuItem asChild>
+              <a
+                href="https://onesolutionhubcrm.atlassian.net/servicedesk/customer/portal/2"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cursor-pointer"
+              >
+                Soporte Técnico
+              </a>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
