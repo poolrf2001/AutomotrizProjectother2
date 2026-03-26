@@ -59,6 +59,7 @@ export default function OportunidadDetailPage() {
   const [guardandoActividad, setGuardandoActividad] = useState(false);
   const [detalleAccion, setDetalleAccion] = useState("");
   const [etapaProxima, setEtapaProxima] = useState("sin-cambio");
+  const [detalles, setDetalles] = useState([]);
 
   // Test Drives
   const [testDrives, setTestDrives] = useState([]);
@@ -109,16 +110,17 @@ export default function OportunidadDetailPage() {
 
   // Etapas disponibles
   const etapas = [
-    { id: 2, nombre: "Nuevo", label: "Nuevo" },
-    { id: 3, nombre: "Asignado", label: "Asignado" },
-    { id: 4, nombre: "En Atención", label: "En Atención" },
-    { id: 5, nombre: "Test Drive", label: "Test Drive" },
-    { id: 6, nombre: "Cotización", label: "Cotización" },
-    { id: 7, nombre: "Evaluación Crédito", label: "Eval. Crédito" },
-    { id: 8, nombre: "Reserva", label: "Reserva" },
-    { id: 9, nombre: "Venta Facturada", label: "Venta" },
-    { id: 10, nombre: "Cerrada", label: "Cerrada" },
-  ];
+  { id: 1, nombre: "Nuevo", label: "Nuevo" },
+  { id: 2, nombre: "Asignado", label: "Asignado" },
+  { id: 4, nombre: "En Atención", label: "En Atención" },
+  { id: 5, nombre: "Test drive", label: "Test drive" },
+  { id: 6, nombre: "Cotización", label: "Cotización" },
+  { id: 7, nombre: "Evaluación crediticia", label: "Eval. crediticia" },
+  { id: 8, nombre: "Reserva", label: "Reserva" },
+  { id: 9, nombre: "Venta facturada", label: "Venta" },
+  { id: 10, nombre: "Cerrada", label: "Cerrada" },
+  { id: 11, nombre: "Reprogramado", label: "Reprogramado" },
+];
 
   const indiceEtapaActual = etapas.findIndex((e) => e.id === etapaActual);
 
@@ -129,7 +131,7 @@ export default function OportunidadDetailPage() {
     try {
       if (!userId) return false;
 
-      const response = await fetch(`/api/oportunidades/${oportunidadId}/cambiar-etapa`, {
+      const response = await fetch(`/api/oportunidades-oportunidades/${oportunidadId}/etapa`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -150,12 +152,31 @@ export default function OportunidadDetailPage() {
     }
   };
 
+  // Cargar detalles de agenda
+  const cargarDetalles = async (opId) => {
+    try {
+      const resDetalles = await fetch(
+        `/api/oportunidades-oportunidades/${opId}/detalles`,
+        { cache: "no-store" }
+      );
+      if (resDetalles.ok) {
+        const dataDetalles = await resDetalles.json();
+        const detallesList = Array.isArray(dataDetalles)
+          ? dataDetalles
+          : dataDetalles?.data || [];
+        setDetalles(detallesList);
+      }
+    } catch (error) {
+      console.error("Error cargando detalles:", error);
+    }
+  };
+
   useEffect(() => {
     if (!oportunidadId || loadingUserScope) return;
 
     const cargarDatos = async () => {
       try {
-        const resOp = await fetch(`/api/oportunidades/${oportunidadId}`, {
+        const resOp = await fetch(`/api/oportunidades-oportunidades/${oportunidadId}`, {
           cache: "no-store",
         });
         if (!resOp.ok) throw new Error("Error cargando oportunidad");
@@ -196,6 +217,7 @@ export default function OportunidadDetailPage() {
           setVehiculosInteres(Array.isArray(dataVeh) ? dataVeh : []);
         }
 
+        await cargarDetalles(oportunidadId);
         await cargarActividades(oportunidadId);
 
         const resTestDrives = await fetch(
@@ -321,7 +343,7 @@ export default function OportunidadDetailPage() {
         return;
       }
 
-      await fetch(`/api/oportunidades/${oportunidadId}`, {
+      await fetch(`/api/oportunidades-oportunidades/${oportunidadId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -475,7 +497,6 @@ export default function OportunidadDetailPage() {
         toast.success(editingTestDrive ? "Test Drive actualizado" : "Test Drive creado");
         setDialogTestDriveOpen(false);
 
-        // Cambiar automáticamente a etapa "Test Drive" (id: 5) si es nueva creación
         if (!editingTestDrive) {
           const cambioExitoso = await cambiarEtapa(5, "Test drive programado");
           if (cambioExitoso) {
@@ -548,7 +569,6 @@ export default function OportunidadDetailPage() {
       if (response.ok) {
         toast.success("Reserva creada");
 
-        // Cambiar automáticamente a etapa "Reserva" (id: 8)
         const cambioExitoso = await cambiarEtapa(8, "Reserva creada");
         if (cambioExitoso) {
           toast.success("Etapa cambiada a Reserva");
@@ -648,7 +668,6 @@ export default function OportunidadDetailPage() {
         setDialogCierreOpen(false);
         setCierreFormData({ detalle: "" });
 
-        // Cambiar automáticamente a etapa "Cerrada" (id: 10) si es nueva creación
         if (!editingCierre) {
           const cambioExitoso = await cambiarEtapa(10, "Oportunidad cerrada: " + cierreFormData.detalle);
           if (cambioExitoso) {
@@ -946,7 +965,7 @@ export default function OportunidadDetailPage() {
         <div className="bg-white border-b border-slate-200 p-6 sticky top-0 z-20 shadow-sm">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">{oportunidad.cliente_name}</h1>
+              <h1 className="text-3xl font-bold text-slate-900">{oportunidad.cliente_nombre}</h1>
               <p className="text-slate-600 text-sm mt-1">{oportunidad.oportunidad_id}</p>
             </div>
             <Tooltip>
@@ -1014,27 +1033,23 @@ export default function OportunidadDetailPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Cliente</p>
-                      <p className="text-slate-900 font-medium">{oportunidad.cliente_name}</p>
+                      <p className="text-slate-900 font-medium">{oportunidad.cliente_nombre}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Código</p>
                       <p className="text-slate-900 font-mono font-medium">{oportunidad.oportunidad_id}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-slate-600 font-semibold uppercase">Vehículo</p>
-                      <p className="text-slate-900">{oportunidad.marca_name} {oportunidad.modelo_name}</p>
-                    </div>
-                    <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Origen</p>
-                      <p className="text-slate-900">{oportunidad.origen_name}</p>
+                      <p className="text-slate-900">{oportunidad.origen_nombre}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Suborigen</p>
-                      <p className="text-slate-900">{oportunidad.suborigen_name}</p>
+                      <p className="text-slate-900">{oportunidad.suborigen_nombre}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Asignado a</p>
-                      <p className="text-slate-900">{oportunidad.asignado_a_name}</p>
+                      <p className="text-slate-900">{oportunidad.asignado_a_nombre || "Sin asignar"}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -1049,11 +1064,11 @@ export default function OportunidadDetailPage() {
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Correo</p>
-                      <p className="text-slate-900">{oportunidad.email || "-"}</p>
+                      <p className="text-slate-900">{oportunidad.cliente_email || "-"}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Teléfono</p>
-                      <p className="text-slate-900">{oportunidad.telefono || "-"}</p>
+                      <p className="text-slate-900">{oportunidad.cliente_telefono || "-"}</p>
                     </div>
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">Celular</p>
@@ -1061,9 +1076,45 @@ export default function OportunidadDetailPage() {
                     </div>
                     <div>
                       <p className="text-xs text-slate-600 font-semibold uppercase">DNI</p>
-                      <p className="text-slate-900">{oportunidad.documento || "-"}</p>
+                      <p className="text-slate-900">{oportunidad.cliente_dni || "-"}</p>
                     </div>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* DETALLES DE AGENDA */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Calendar size={18} />
+                    Detalles de Agenda
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {detalles.length === 0 ? (
+                    <p className="text-slate-500 text-sm py-4">Sin detalles de agenda</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {detalles.map((detalle) => (
+                        <div
+                          key={detalle.id}
+                          className="flex items-start justify-between p-3 bg-blue-50 rounded-lg border border-blue-200 hover:border-blue-300 transition-colors"
+                        >
+                          <div>
+                            <p className="font-medium text-slate-900">
+                              📅 {new Date(detalle.fecha_agenda).toLocaleDateString("es-ES")}
+                            </p>
+                            <p className="text-sm text-slate-700 mt-1">
+                              🕐 {String(detalle.hora_agenda).substring(0, 5)}
+                            </p>
+                            <p className="text-xs text-slate-600 mt-1">
+                              {new Date(detalle.created_at).toLocaleString("es-ES")}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1155,7 +1206,6 @@ export default function OportunidadDetailPage() {
                     />
                   </div>
 
-                  {/* PREGUNTAS */}
                   {preguntas.length > 0 && (
                     <div className="space-y-4 pt-4 border-t border-slate-200">
                       <h3 className="font-semibold text-slate-900 flex items-center gap-2">
@@ -1403,7 +1453,6 @@ export default function OportunidadDetailPage() {
                   clienteId={oportunidad.cliente_id}
                   oportunidadData={oportunidad}
                   onCotizacionCreated={async () => {
-                    // Cambiar automáticamente a etapa "Cotización" (id: 6)
                     const cambioExitoso = await cambiarEtapa(6, "Cotización creada");
                     if (cambioExitoso) {
                       toast.success("Etapa cambiada a Cotización");
