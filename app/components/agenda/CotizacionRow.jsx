@@ -120,14 +120,49 @@ export default function CotizacionRow({
 
       const enlaceUrl = `${window.location.origin}/cotizacion-publica/${data.token}`;
 
-      await navigator.clipboard.writeText(enlaceUrl);
-      toast.success("Enlace copiado al portapapeles");
+      // Copiar al portapapeles de forma segura
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(enlaceUrl);
+          toast.success("Enlace copiado al portapapeles");
+        } catch (clipboardError) {
+          console.warn("Error con clipboard API:", clipboardError);
+          // Fallback: copiar usando método antiguo
+          copyToClipboardFallback(enlaceUrl);
+        }
+      } else {
+        // Fallback para navegadores sin soporte
+        copyToClipboardFallback(enlaceUrl);
+      }
 
+      // Abrir enlace en nueva pestaña
       window.open(enlaceUrl, "_blank", "noopener,noreferrer");
+
+      // Recargar la página después de 1 segundo para mostrar el enlace
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error("Error generando enlace:", error);
       toast.error("Error generando enlace: " + error.message);
     }
+  }
+
+  function copyToClipboardFallback(text) {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+      document.execCommand("copy");
+      toast.success("Enlace copiado al portapapeles");
+    } catch (err) {
+      console.error("Error copiando:", err);
+      toast.error("No se pudo copiar el enlace");
+    }
+    document.body.removeChild(textarea);
   }
 
   async function handleVerHistorial() {
