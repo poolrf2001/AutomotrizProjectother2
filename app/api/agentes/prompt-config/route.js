@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { authorizeConversation } from "@/lib/conversationsAuth";
 
-const AGENT_KEYS_VALIDOS = ["taller", "ventas"];
+const AGENT_KEYS_VALIDOS = ["taller", "ventas", "presales"];
 
 // Columnas que el agente de IA puede leer (devueltas a n8n)
 const AGENT_CONFIG_COLUMNS = "agent_key, agent_name, taller_name, dealer_name, consideraciones, is_active";
@@ -23,38 +23,48 @@ export async function GET(req) {
     if (!agentKey || !AGENT_KEYS_VALIDOS.includes(agentKey)) {
       return NextResponse.json({ consideraciones: null, agent_name: null, taller_name: null, dealer_name: null });
     }
-    const [rows] = await db.query(
-      `SELECT ${AGENT_CONFIG_COLUMNS} FROM agent_prompt_config WHERE agent_key = ? AND is_active = 1 LIMIT 1`,
-      [agentKey]
-    );
-    const row = rows[0] || {};
-    return NextResponse.json({
-      agent_name:     row.agent_name   || null,
-      taller_name:    row.taller_name  || null,
-      dealer_name:    row.dealer_name  || null,
-      consideraciones: row.consideraciones || null,
-    });
+    try {
+      const [rows] = await db.query(
+        "SELECT agent_key, agent_name, taller_name, dealer_name, consideraciones, is_active FROM agent_prompt_config WHERE agent_key = ? AND is_active = 1 LIMIT 1",
+        [agentKey]
+      );
+      const row = rows[0] || {};
+      return NextResponse.json({
+        agent_name:      row.agent_name      || null,
+        taller_name:     row.taller_name     || null,
+        dealer_name:     row.dealer_name     || null,
+        consideraciones: row.consideraciones || null,
+      });
+    } catch (err) {
+      console.error("[GET prompt-config webhook]", err);
+      return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 });
+    }
   }
 
   // Para el CRM: requiere sesión autenticada
   const auth = authorizeConversation(req, "view");
   if (!auth.ok) return auth.response;
 
-  if (agentKey) {
-    if (!AGENT_KEYS_VALIDOS.includes(agentKey)) {
-      return NextResponse.json({ message: "agent_key inválido" }, { status: 400 });
+  try {
+    if (agentKey) {
+      if (!AGENT_KEYS_VALIDOS.includes(agentKey)) {
+        return NextResponse.json({ message: "agent_key inválido" }, { status: 400 });
+      }
+      const [rows] = await db.query(
+        "SELECT agent_key, display_name, agent_name, taller_name, dealer_name, consideraciones, is_active, updated_at, updated_by FROM agent_prompt_config WHERE agent_key = ? LIMIT 1",
+        [agentKey]
+      );
+      return NextResponse.json({ agente: rows[0] || null });
     }
-    const [rows] = await db.query(
-      "SELECT agent_key, display_name, agent_name, taller_name, dealer_name, consideraciones, is_active, updated_at, updated_by FROM agent_prompt_config WHERE agent_key = ? LIMIT 1",
-      [agentKey]
-    );
-    return NextResponse.json({ agente: rows[0] || null });
-  }
 
-  const [rows] = await db.query(
-    "SELECT agent_key, display_name, agent_name, taller_name, dealer_name, consideraciones, is_active, updated_at, updated_by FROM agent_prompt_config ORDER BY id ASC"
-  );
-  return NextResponse.json({ agentes: rows });
+    const [rows] = await db.query(
+      "SELECT agent_key, display_name, agent_name, taller_name, dealer_name, consideraciones, is_active, updated_at, updated_by FROM agent_prompt_config ORDER BY id ASC"
+    );
+    return NextResponse.json({ agentes: rows });
+  } catch (err) {
+    console.error("[GET prompt-config]", err);
+    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 });
+  }
 }
 
 export async function PUT(req) {
@@ -70,23 +80,27 @@ export async function PUT(req) {
 
   const updatedBy = auth.user?.email || auth.user?.username || "crm_user";
 
-  await db.query(
-    `UPDATE agent_prompt_config
-     SET consideraciones = ?,
-         agent_name      = COALESCE(?, agent_name),
-         taller_name     = COALESCE(?, taller_name),
-         dealer_name     = COALESCE(?, dealer_name),
-         updated_by      = ?
-     WHERE agent_key = ?`,
-    [
-      typeof consideraciones === "string" ? consideraciones.trim() || null : null,
-      typeof agent_name   === "string" ? agent_name.trim()   || null : null,
-      typeof taller_name  === "string" ? taller_name.trim()  || null : null,
-      typeof dealer_name  === "string" ? dealer_name.trim()  || null : null,
-      updatedBy,
-      agent_key,
-    ]
-  );
-
-  return NextResponse.json({ message: "Configuración guardada" });
+  try {
+    await db.query(
+      `UPDATE agent_prompt_config
+       SET consideraciones = ?,
+           agent_name      = COALESCE(?, agent_name),
+           taller_name     = COALESCE(?, taller_name),
+           dealer_name     = COALESCE(?, dealer_name),
+           updated_by      = ?
+       WHERE agent_key = ?`,
+      [
+        typeof consideraciones === "string" ? consideraciones.trim() || null : null,
+        typeof agent_name   === "string" ? agent_name.trim()   || null : null,
+        typeof taller_name  === "string" ? taller_name.trim()  || null : null,
+        typeof dealer_name  === "string" ? dealer_name.trim()  || null : null,
+        updatedBy,
+        agent_key,
+      ]
+    );
+    return NextResponse.json({ message: "Configuración guardada" });
+  } catch (err) {
+    console.error("[PUT prompt-config]", err);
+    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 });
+  }
 }

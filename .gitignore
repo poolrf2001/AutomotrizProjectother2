@@ -49,3 +49,6 @@ bd.sql
 .mcp.json
 /claude_code/
 .claude
+
+# embedded repo that must stay outside this project
+/engram/
