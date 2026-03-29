@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Save, X, Edit2, Loader2, Plus, Trash2, Pencil, MessageSquare, Check, Calendar, FileText, Lock, History, ShoppingCart } from "lucide-react";
+import { ChevronLeft, ChevronRight, Save, X, Edit2, Loader2, Plus, Trash2, Pencil, MessageSquare, Check, Calendar, FileText, Lock, History, ShoppingCart, Package, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -42,6 +42,9 @@ import { useUserScope } from "@/hooks/useUserScope";
 import CotizacionDialog from "@/app/components/agenda/CotizacionDialog";
 import CotizacionesTable from "@/app/components/agenda/CotizacionesTable";
 import HistorialDialog from "@/app/components/agenda/HistorialDialog";
+import AgregarAccesoriosDialog from "@/app/components/agenda/AgregarAccesoriosDialog";
+import PreviewCotizacionDialog from "@/app/components/agenda/PreviewCotizacionDialog";
+
 export default function OportunidadDetailPage() {
   const router = useRouter();
   const params = useParams();
@@ -61,16 +64,25 @@ export default function OportunidadDetailPage() {
   const [detalleAccion, setDetalleAccion] = useState("");
   const [etapaProxima, setEtapaProxima] = useState("sin-cambio");
   const [detalles, setDetalles] = useState([]);
-// Agrega estos estados cerca de los otros estados de cotizaciones
-const [historialDialog, setHistorialDialog] = useState(false);
-const [selectedHistorial, setSelectedHistorial] = useState(null);
-const [historialLoading, setHistorialLoading] = useState(false);
+  const [guardandoPregunta, setGuardandoPregunta] = useState(null);
+
+  // Historial Dialog
+  const [historialDialog, setHistorialDialog] = useState(false);
+  const [selectedHistorial, setSelectedHistorial] = useState(null);
+  const [historialLoading, setHistorialLoading] = useState(false);
+
   // Cotizaciones
   const [cotizaciones, setCotizaciones] = useState([]);
   const [dialogCotizacionOpen, setDialogCotizacionOpen] = useState(false);
   const [editingCotizacion, setEditingCotizacion] = useState(null);
   const [deleteCotizacionDialog, setDeleteCotizacionDialog] = useState(false);
   const [deleteCotizacionTarget, setDeleteCotizacionTarget] = useState(null);
+
+  // ✅ ACCESORIOS Y PREVIEW
+  const [dialogAccesoriosOpen, setDialogAccesoriosOpen] = useState(false);
+  const [previewCotizacionOpen, setPreviewCotizacionOpen] = useState(false);
+  const [selectedCotizacionForAccesorios, setSelectedCotizacionForAccesorios] = useState(null);
+  const [selectedCotizacionPreview, setSelectedCotizacionPreview] = useState(null);
 
   // Test Drives
   const [testDrives, setTestDrives] = useState([]);
@@ -124,7 +136,10 @@ const [historialLoading, setHistorialLoading] = useState(false);
   const [cotizacionVehiculoMarcaId, setCotizacionVehiculoMarcaId] = useState(null);
   const [cotizacionVehiculoModeloId, setCotizacionVehiculoModeloId] = useState(null);
 
-  // Etapas disponibles
+  // Etapas
+  const [etapasData, setEtapasData] = useState([]);
+
+  // Etapas locales para mapeo
   const etapas = [
     { id: 1, nombre: "Nuevo", label: "Nuevo" },
     { id: 2, nombre: "Asignado", label: "Asignado" },
@@ -200,6 +215,83 @@ const [historialLoading, setHistorialLoading] = useState(false);
       console.error("Error cargando cotizaciones:", error);
     }
   };
+
+  // Cargar etapas desde API
+  const cargarEtapas = async () => {
+    try {
+      const response = await fetch("/api/etapasconversion", {
+        cache: "no-store",
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setEtapasData(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error("Error cargando etapas:", error);
+    }
+  };
+
+  // ✅ CALCULAR TEMPERATURA
+  const calcularTemperatura = () => {
+    if (!etapaActual || etapasData.length === 0) return "0%";
+
+    const etapaActualData = etapasData.find((e) => e.id === etapaActual);
+    if (!etapaActualData) return "0%";
+
+    const sortOrderActual = etapaActualData.sort_order;
+
+    let temperaturaCalculada = 0;
+    etapasData.forEach((etapa) => {
+      if (etapa.sort_order <= sortOrderActual && etapa.is_active === 1) {
+        temperaturaCalculada += etapa.descripcion;
+      }
+    });
+
+    return `${temperaturaCalculada}%`;
+  };
+
+  // ✅ GUARDAR RESPUESTA DE PREGUNTA INDIVIDUAL
+  const handleGuardarRespuestaPregunta = async (preguntaId) => {
+    if (!userId) {
+      toast.error("Usuario no identificado");
+      return;
+    }
+
+    if (respuestas[preguntaId] === undefined) {
+      toast.warning("Completa la respuesta primero");
+      return;
+    }
+
+    setGuardandoPregunta(preguntaId);
+    try {
+      const response = await fetch("/api/respuestas-atencion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oportunidad_id: Number(oportunidadId),
+          pregunta_id: preguntaId,
+          respuesta: respuestas[preguntaId],
+          created_by: userId,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || "Error al guardar");
+      }
+
+      toast.success("Respuesta guardada");
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error(error.message || "Error al guardar la respuesta");
+    } finally {
+      setGuardandoPregunta(null);
+    }
+  };
+
+  useEffect(() => {
+    cargarEtapas();
+  }, []);
 
   useEffect(() => {
     if (!oportunidadId || loadingUserScope) return;
@@ -324,51 +416,50 @@ const [historialLoading, setHistorialLoading] = useState(false);
   };
 
   const handleGuardarActividad = async () => {
-  if (!detalleAccion.trim()) {
-    toast.warning("El detalle es requerido");
-    return;
-  }
-
-  if (!userId) {
-    toast.error("Usuario no identificado");
-    return;
-  }
-
-  setGuardandoActividad(true);
-  try {
-    // Usa etapaProxima si fue seleccionada, sino usa la etapa actual
-    const etapaParaActividad = etapaProxima !== "sin-cambio" 
-      ? Number(etapaProxima) 
-      : etapaActual;
-
-    const resActividad = await fetch("/api/actividades-oportunidades", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        oportunidad_id: Number(oportunidadId),
-        etapasconversion_id: etapaParaActividad, // Etapa seleccionada o actual
-        detalle: detalleAccion,
-        created_by: userId,
-      }),
-    });
-
-    if (!resActividad.ok) {
-      const data = await resActividad.json();
-      throw new Error(data.message);
+    if (!detalleAccion.trim()) {
+      toast.warning("El detalle es requerido");
+      return;
     }
 
-    toast.success("Actividad guardada");
-    setDetalleAccion("");
-    setEtapaProxima("sin-cambio"); // Reset al Select
+    if (!userId) {
+      toast.error("Usuario no identificado");
+      return;
+    }
 
-    await cargarActividades(oportunidadId);
-  } catch (error) {
-    console.error("Error:", error);
-    toast.error("Error: " + error.message);
-  } finally {
-    setGuardandoActividad(false);
-  }
-};
+    setGuardandoActividad(true);
+    try {
+      const etapaParaActividad = etapaProxima !== "sin-cambio" 
+        ? Number(etapaProxima) 
+        : etapaActual;
+
+      const resActividad = await fetch("/api/actividades-oportunidades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oportunidad_id: Number(oportunidadId),
+          etapasconversion_id: etapaParaActividad,
+          detalle: detalleAccion,
+          created_by: userId,
+        }),
+      });
+
+      if (!resActividad.ok) {
+        const data = await resActividad.json();
+        throw new Error(data.message);
+      }
+
+      toast.success("Actividad guardada");
+      setDetalleAccion("");
+      setEtapaProxima("sin-cambio");
+
+      await cargarActividades(oportunidadId);
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Error: " + error.message);
+    } finally {
+      setGuardandoActividad(false);
+    }
+  };
 
   const handleGuardar = async () => {
     setSaving(true);
@@ -390,21 +481,6 @@ const [historialLoading, setHistorialLoading] = useState(false);
           etapa_name: etapaSeleccionada?.nombre,
         }),
       });
-
-      for (const pregunta of preguntas) {
-        if (respuestas[pregunta.id] !== undefined) {
-          await fetch("/api/respuestas-atencion", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              oportunidad_id: Number(oportunidadId),
-              pregunta_id: pregunta.id,
-              respuesta: respuestas[pregunta.id],
-              created_by: userId,
-            }),
-          });
-        }
-      }
 
       toast.success("Cambios guardados exitosamente");
     } catch (error) {
@@ -931,7 +1007,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
             type="number"
             value={valor}
             onChange={(e) => handleRespuestaChange(pregunta.id, e.target.value)}
-            placeholder="Ingresa un número"
+            placeholder="Ingresa un n��mero"
             className="w-full mt-1 p-2 border rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
           />
         );
@@ -1027,17 +1103,19 @@ const [historialLoading, setHistorialLoading] = useState(false);
     ? modelos.filter((m) => m.marca_id === parseInt(vehiculoFormData.marca_id))
     : [];
 
-  const temperaturaNum = oportunidad.temperatura || 0;
+  const temperaturaNum = calcularTemperatura();
+  const temperaturaNumericValue = parseInt(temperaturaNum.replace("%", ""));
+  
   let temperaturaColor = "bg-slate-400";
   let temperaturaLabel = "Fría";
 
-  if (temperaturaNum >= 75) {
+  if (temperaturaNumericValue >= 75) {
     temperaturaColor = "bg-red-500";
     temperaturaLabel = "Muy caliente";
-  } else if (temperaturaNum >= 50) {
+  } else if (temperaturaNumericValue >= 50) {
     temperaturaColor = "bg-orange-500";
     temperaturaLabel = "Caliente";
-  } else if (temperaturaNum >= 25) {
+  } else if (temperaturaNumericValue >= 25) {
     temperaturaColor = "bg-yellow-500";
     temperaturaLabel = "Templada";
   }
@@ -1281,7 +1359,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
                 </CardContent>
               </Card>
 
-              {/* INFORMACIÓN DE ETAPA */}
+              {/* INFORMACIÓN DE ETAPA - CON BOTONES PARA GUARDAR PREGUNTAS */}
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">
@@ -1311,13 +1389,38 @@ const [historialLoading, setHistorialLoading] = useState(false);
                       </h3>
 
                       {preguntas.map((pregunta) => (
-                        <div key={pregunta.id}>
-                          <label className="text-sm font-medium text-slate-700 flex items-center gap-1">
-                            {pregunta.pregunta}
-                            {pregunta.es_obligatoria && (
-                              <span className="text-red-500">*</span>
-                            )}
-                          </label>
+                        <div key={pregunta.id} className="border border-slate-200 rounded-lg p-3 bg-slate-50">
+                          <div className="flex items-center justify-between mb-2">
+                            <label className="text-sm font-medium text-slate-700 flex items-center gap-1 flex-1">
+                              {pregunta.pregunta}
+                              {pregunta.es_obligatoria && (
+                                <span className="text-red-500">*</span>
+                              )}
+                            </label>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  onClick={() => handleGuardarRespuestaPregunta(pregunta.id)}
+                                  disabled={guardandoPregunta === pregunta.id}
+                                  size="sm"
+                                  className="gap-2 ml-2"
+                                >
+                                  {guardandoPregunta === pregunta.id ? (
+                                    <>
+                                      <Loader2 className="h-4 w-4 animate-spin" />
+                                      Guardando...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Save className="h-4 w-4" />
+                                      Guardar
+                                    </>
+                                  )}
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top">Guardar respuesta</TooltipContent>
+                            </Tooltip>
+                          </div>
                           {renderCampoPregunta(pregunta)}
                         </div>
                       ))}
@@ -1544,84 +1647,92 @@ const [historialLoading, setHistorialLoading] = useState(false);
               </Card>
 
               {/* COTIZACIONES */}
-              {/* COTIZACIONES */}
-<Card>
-  <CardHeader className="flex flex-row items-center justify-between">
-    <CardTitle className="text-lg flex items-center gap-2">
-      <FileText size={18} />
-      Cotizaciones
-    </CardTitle>
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button onClick={openCreateCotizacion} size="sm" className="gap-2">
-          <Plus className="h-4 w-4" /> Agregar
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="top">Crear nueva cotización</TooltipContent>
-    </Tooltip>
-  </CardHeader>
-  <CardContent>
-    <CotizacionesTable
-      cotizaciones={cotizaciones}
-      sortConfig={{ key: "id", direction: "asc" }}
-      onSort={() => {}}
-      onEdit={openEditCotizacion}
-      onDelete={openDeleteCotizacion}
-      onChangeStatus={async (cot, estado) => {
-        const res = await fetch(`/api/cotizacionesagenda/${cot.id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sku: cot.sku,
-            color_externo: cot.color_externo,
-            color_interno: cot.color_interno,
-            version_id: cot.version_id,
-            anio: cot.anio,
-            marca_id: cot.marca_id,
-            modelo_id: cot.modelo_id,
-            estado,
-          }),
-        });
-        if (res.ok) {
-          toast.success(`Estado cambiado a ${estado}`);
-          if (estado === "enviada") {
-            await cambiarEtapa(6, "Cotización enviada");
-          }
-          await cargarCotizaciones(oportunidadId);
-        }
-      }}
-      onDuplicate={async (cot) => {
-        const res = await fetch("/api/cotizacionesagenda", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            oportunidad_id: cot.oportunidad_id,
-            marca_id: cot.marca_id,
-            modelo_id: cot.modelo_id,
-            version_id: cot.version_id,
-            anio: cot.anio,
-            sku: cot.sku,
-            color_externo: cot.color_externo,
-            color_interno: cot.color_interno,
-            estado: "borrador",
-            created_by: userId,
-          }),
-        });
-        if (res.ok) {
-          toast.success("Cotización duplicada");
-          await cargarCotizaciones(oportunidadId);
-        }
-      }}
-      onLoadHistorial={() => {}}
-      saving={false}
-      userId={userId}
-      onOpenHistorialDialog={(historialData) => {
-        setSelectedHistorial(historialData);
-        setHistorialDialog(true);
-      }}
-    />
-  </CardContent>
-</Card>
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <FileText size={18} />
+                    Cotizaciones
+                  </CardTitle>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button onClick={openCreateCotizacion} size="sm" className="gap-2">
+                        <Plus className="h-4 w-4" /> Agregar
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">Crear nueva cotización</TooltipContent>
+                  </Tooltip>
+                </CardHeader>
+                <CardContent>
+                  <CotizacionesTable
+                    cotizaciones={cotizaciones}
+                    sortConfig={{ key: "id", direction: "asc" }}
+                    onSort={() => {}}
+                    onEdit={openEditCotizacion}
+                    onDelete={openDeleteCotizacion}
+                    onChangeStatus={async (cot, estado) => {
+                      const res = await fetch(`/api/cotizacionesagenda/${cot.id}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          sku: cot.sku,
+                          color_externo: cot.color_externo,
+                          color_interno: cot.color_interno,
+                          version_id: cot.version_id,
+                          anio: cot.anio,
+                          marca_id: cot.marca_id,
+                          modelo_id: cot.modelo_id,
+                          estado,
+                        }),
+                      });
+                      if (res.ok) {
+                        toast.success(`Estado cambiado a ${estado}`);
+                        if (estado === "enviada") {
+                          await cambiarEtapa(6, "Cotización enviada");
+                        }
+                        await cargarCotizaciones(oportunidadId);
+                      }
+                    }}
+                    onDuplicate={async (cot) => {
+                      const res = await fetch("/api/cotizacionesagenda", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          oportunidad_id: cot.oportunidad_id,
+                          marca_id: cot.marca_id,
+                          modelo_id: cot.modelo_id,
+                          version_id: cot.version_id,
+                          anio: cot.anio,
+                          sku: cot.sku,
+                          color_externo: cot.color_externo,
+                          color_interno: cot.color_interno,
+                          estado: "borrador",
+                          created_by: userId,
+                        }),
+                      });
+                      if (res.ok) {
+                        toast.success("Cotización duplicada");
+                        await cargarCotizaciones(oportunidadId);
+                      }
+                    }}
+                    onLoadHistorial={() => {}}
+                    saving={false}
+                    userId={userId}
+                    onOpenHistorialDialog={(historialData) => {
+                      setSelectedHistorial(historialData);
+                      setHistorialDialog(true);
+                    }}
+                    // ✅ NUEVOS PROPS PARA ACCESORIOS Y PREVIEW
+                    onAddAccesorios={(cot) => {
+                      setSelectedCotizacionForAccesorios(cot);
+                      setDialogAccesoriosOpen(true);
+                    }}
+                    onPreview={(cot) => {
+                      setSelectedCotizacionPreview(cot);
+                      setPreviewCotizacionOpen(true);
+                    }}
+                  />
+                </CardContent>
+              </Card>
 
               {/* REGISTRAR ACTIVIDAD Y HISTORIAL */}
               <div className="md:col-span-2 space-y-4 pt-6 border-t-2 border-slate-200">
@@ -1636,7 +1747,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <div>
                       <label className="text-sm font-medium text-slate-700 block mb-2">
-                        Actividad a realizar (opcional)
+                        Etapa donde registrar (opcional)
                       </label>
                       <Select
                         value={etapaProxima}
@@ -1648,7 +1759,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="sin-cambio">
-                            Sin actividad
+                            Etapa actual
                           </SelectItem>
                           {etapas.map((item) => (
                             <SelectItem key={item.id} value={String(item.id)}>
@@ -1681,10 +1792,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
                   >
                     {guardandoActividad
                       ? "Guardando..."
-                      : "Guardar actividad" +
-                      (etapaProxima !== "sin-cambio"
-                        ? " y cambiar etapa"
-                        : "")}
+                      : "Guardar actividad"}
                   </Button>
                 </div>
 
@@ -1786,28 +1894,25 @@ const [historialLoading, setHistorialLoading] = useState(false);
                     <TooltipTrigger asChild>
                       <div className="cursor-help">
                         <div className="text-4xl font-bold text-slate-900 mb-2">
-                          {temperaturaNum}%
+                          {temperaturaNum}
                         </div>
                         <div className={`text-sm font-semibold text-white p-2 rounded-lg text-center ${
-                          temperaturaNum >= 75 ? "bg-red-500" :
-                          temperaturaNum >= 50 ? "bg-orange-500" :
-                          temperaturaNum >= 25 ? "bg-yellow-500" :
-                          "bg-slate-500"
+                          temperaturaColor
                         }`}>
                           {temperaturaLabel}
                         </div>
                         <div className="mt-3 w-full h-3 bg-slate-200 rounded-full overflow-hidden">
                           <div
                             className={temperaturaColor}
-                            style={{ width: `${temperaturaNum}%` }}
+                            style={{ width: `${(temperaturaNumericValue / 200) * 100}%` }}
                           />
                         </div>
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="top">
                       <div className="text-xs">
-                        <div>Indicador de temperatura</div>
-                        <div className="mt-1">0-24%: Fría | 25-49%: Templada | 50-74%: Caliente | 75-100%: Muy caliente</div>
+                        <div>Temperatura = Suma de etapas anteriores + actual</div>
+                        <div className="mt-1">Ejemplo: Etapa 1 (10%) + Etapa 2 (10%) + Etapa 4 (10%) = 30%</div>
                       </div>
                     </TooltipContent>
                   </Tooltip>
@@ -1919,7 +2024,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
         </div>
 
         {/* DIALOGS */}
-
+        
         {/* VEHÍCULO DIALOG */}
         <Dialog open={dialogVehiculoOpen} onOpenChange={setDialogVehiculoOpen}>
           <DialogContent>
@@ -2358,7 +2463,7 @@ const [historialLoading, setHistorialLoading] = useState(false);
           </AlertDialogContent>
         </AlertDialog>
 
-        {/* COTIZACIÓN DIALOG */}
+        {/* ✅ COTIZACIÓN DIALOG */}
         <CotizacionDialog
           open={dialogCotizacionOpen}
           onOpenChange={setDialogCotizacionOpen}
@@ -2378,12 +2483,30 @@ const [historialLoading, setHistorialLoading] = useState(false);
           precargadaMarcaId={cotizacionVehiculoMarcaId}
           precargadaModeloId={cotizacionVehiculoModeloId}
         />
+
+        {/* ✅ HISTORIAL DIALOG */}
         <HistorialDialog
-  open={historialDialog}
-  onOpenChange={setHistorialDialog}
-  selectedHistorial={selectedHistorial}
-  loading={historialLoading}
-/>
+          open={historialDialog}
+          onOpenChange={setHistorialDialog}
+          selectedHistorial={selectedHistorial}
+          loading={historialLoading}
+        />
+
+        {/* ✅ ACCESORIOS DIALOG */}
+        <AgregarAccesoriosDialog
+          open={dialogAccesoriosOpen}
+          onOpenChange={setDialogAccesoriosOpen}
+          cotizacion={selectedCotizacionForAccesorios}
+          marcaId={selectedCotizacionForAccesorios?.marca_id}
+          modeloId={selectedCotizacionForAccesorios?.modelo_id}
+        />
+
+        {/* ✅ PREVIEW DIALOG */}
+        <PreviewCotizacionDialog
+          open={previewCotizacionOpen}
+          onOpenChange={setPreviewCotizacionOpen}
+          cotizacion={selectedCotizacionPreview}
+        />
       </div>
     </TooltipProvider>
   );

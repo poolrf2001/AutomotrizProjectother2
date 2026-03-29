@@ -25,7 +25,7 @@ export async function GET(req, { params }) {
 
     // Obtener detalles
     const [detalles] = await db.query(
-      `SELECT rd.*, c.marca, c.modelo, c.anio
+      `SELECT rd.*, m.name as marca_nombre, mo.name as modelo_nombre, c.anio
        FROM reserva_detalles rd
        LEFT JOIN cotizacionesagenda c ON rd.cotizacion_id = c.id
        join reservas r ON rd.reserva_id = r.id
