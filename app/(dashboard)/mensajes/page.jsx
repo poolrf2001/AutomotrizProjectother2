@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye } from "lucide-react";
+import { Bell, Eye, Hourglass, TrendingUp, UserCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,18 +21,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import ConversationWorkspace from "@/app/components/conversations/ConversationWorkspace";
+import NotificationPanel from "@/app/components/conversations/NotificationPanel";
 import { useAuth } from "@/context/AuthContext";
 
-const METRIC_TOOLTIPS = {
-  total: "Total de conversaciones visibles según los filtros activos.",
-  active: "Conversaciones abiertas o pendientes. Haz clic para filtrar.",
-  unassigned: "Conversaciones sin asesor asignado. Haz clic para filtrar.",
-  overdue: "Conversaciones cuyo SLA venció. Haz clic para filtrar.",
-  unread: "Total de mensajes entrantes no leídos. Haz clic para filtrar.",
-  mine: "Mis conversaciones activas (asignadas a mí). Haz clic para filtrar.",
-  ftr: "Tiempo promedio en espera de las conversaciones de esta vista.",
-  wait: "Tiempo máximo de espera de las conversaciones de esta vista.",
-};
 
 export default function ConversationsPage() {
   const router = useRouter();
@@ -69,9 +60,11 @@ export default function ConversationsPage() {
   const [summarySession, setSummarySession] = useState(null);
   const [summaryText, setSummaryText] = useState("");
   const [summaryLoading, setSummaryLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [focusComposerSignal, setFocusComposerSignal] = useState(0);
 
   async function load() {
+    setIsLoading(true);
     try {
       setPageError("");
 
@@ -103,6 +96,8 @@ export default function ConversationsPage() {
       console.error("Error cargando conversaciones:", error);
       setPageError(error?.message || "Error cargando conversaciones");
       setSessions([]);
+    } finally {
+      setIsLoading(false);
     }
   }
 
@@ -110,8 +105,17 @@ export default function ConversationsPage() {
     load();
   }, [user?.id]);
 
-  function openTimeline(session) {
+  function handleOpenTimeline(session) {
     setSelectedSession(session);
+  }
+
+  function toggleChannel(ch) {
+    setChannelFilter((prev) => (prev === ch ? "all" : ch));
+  }
+
+  function openConversationById(sessionId) {
+    const found = sessions.find((s) => Number(s.session_id) === Number(sessionId));
+    if (found) setSelectedSession(found);
   }
 
   function resetQuickFilters() {
@@ -179,7 +183,7 @@ export default function ConversationsPage() {
     return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
   }
 
-  async function openSummaryDialog(session) {
+  async function handleOpenSummaryDialog(session) {
     setSummarySession(session);
     setSummaryText("");
     setSummaryOpen(true);
@@ -203,8 +207,8 @@ export default function ConversationsPage() {
           }
         }
       }
-    } catch {
-      // fallback a continuación
+    } catch (err) {
+      console.error("Error cargando timeline en handleOpenSummaryDialog:", err);
     }
 
     // Fallback: intentar extraer del context_json
@@ -446,6 +450,11 @@ export default function ConversationsPage() {
     ];
   }, [metrics, scopedSessions, user]);
 
+  const kpiByKey = useMemo(
+    () => Object.fromEntries(metricsCards.map((c) => [c.key, c])),
+    [metricsCards]
+  );
+
   function toggleSessionSelection(sessionId) {
     const normalized = Number(sessionId);
     setSelectedSessionIds((prev) => {
@@ -456,7 +465,7 @@ export default function ConversationsPage() {
     });
   }
 
-  function toggleSelectAllFiltered() {
+  function handleToggleSelectAll() {
     if (allFilteredSelected) {
       setSelectedSessionIds([]);
       return;
@@ -465,7 +474,7 @@ export default function ConversationsPage() {
     setSelectedSessionIds(filteredSessions.map((s) => Number(s.session_id)));
   }
 
-  async function sendBulkMessage() {
+  async function handleSendBulkMessage() {
     const text = bulkText.trim();
     if (!text || bulkSending) return;
 
@@ -523,122 +532,133 @@ export default function ConversationsPage() {
   return (
     <TooltipProvider>
       <div className="h-full min-h-0 flex flex-col gap-2 overflow-y-auto pr-1">
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-2 items-start">
-          {pageError && (
-            <div className="xl:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              {pageError}
-            </div>
-          )}
+        {pageError && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {pageError}
+          </div>
+        )}
 
-          {/* Filtros */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por cliente, celular o mensaje"
-              className="sm:col-span-3 h-9"
+        {/* Panel de filtros */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h1 className="text-base font-semibold text-gray-800">Mensajes</h1>
+            <NotificationPanel
+              conversations={sessions}
+              onOpenConversation={openConversationById}
             />
+          </div>
 
+          <Input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por cliente, celular o mensaje..."
+            className="h-10"
+          />
+
+          <div className="grid grid-cols-3 gap-3">
             <Tooltip>
               <TooltipTrigger asChild>
-                <select
-                  className="h-8 rounded-md border bg-transparent px-2 text-xs"
-                  value={channelFilter}
-                  onChange={(e) => setChannelFilter(e.target.value)}
+                <button
+                  type="button"
+                  onClick={() => applyMetricFilter("mine")}
+                  className={`rounded-2xl border p-4 text-left transition-all shadow-sm hover:shadow-md ${
+                    ownerFilter === "mine"
+                      ? "bg-green-100 border-green-300 ring-2 ring-green-400"
+                      : "bg-green-50 border-green-200 hover:border-green-300"
+                  }`}
                 >
-                  <option value="all">Todos los canales</option>
-                  <option value="whatsapp">WhatsApp</option>
-                  <option value="instagram">Instagram</option>
-                  <option value="messenger">Messenger</option>
-                  <option value="n8n">n8n</option>
-                </select>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <UserCheck className="w-4 h-4 text-green-600" />
+                    <span className="text-[10px] text-green-600 uppercase tracking-wide font-semibold">Asignados</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-green-700 leading-none">{kpiByKey["mine"]?.value ?? 0}</p>
+                </button>
               </TooltipTrigger>
-              <TooltipContent>Filtrar por canal de origen del mensaje</TooltipContent>
+              <TooltipContent>Mis conversaciones activas asignadas. Clic para filtrar.</TooltipContent>
             </Tooltip>
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <select
-                  className="h-8 rounded-md border bg-transparent px-2 text-xs"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
+                <button
+                  type="button"
+                  onClick={() => applyMetricFilter("overdue")}
+                  className={`rounded-2xl border p-4 text-left transition-all shadow-sm hover:shadow-md ${
+                    priorityFilter === "overdue"
+                      ? "bg-red-100 border-red-300 ring-2 ring-red-400"
+                      : "bg-red-50 border-red-200 hover:border-red-300"
+                  }`}
                 >
-                  <option value="all">Todos los estados</option>
-                  <option value="received">Recibido</option>
-                  <option value="queued">En cola</option>
-                  <option value="sent">Enviado</option>
-                  <option value="delivered">Entregado</option>
-                  <option value="read">Leido</option>
-                  <option value="failed">Fallido</option>
-                  <option value="unread">No leidos</option>
-                </select>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Hourglass className="w-4 h-4 text-red-500 animate-pulse" />
+                    <span className="text-[10px] text-red-500 uppercase tracking-wide font-semibold">At. Urgente</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-red-700 leading-none">{kpiByKey["overdue"]?.value ?? 0}</p>
+                </button>
               </TooltipTrigger>
-              <TooltipContent>Filtrar por estado del último mensaje</TooltipContent>
+              <TooltipContent>Conversaciones con SLA vencido. Clic para filtrar.</TooltipContent>
             </Tooltip>
 
             <Tooltip>
               <TooltipTrigger asChild>
-                <select
-                  className="h-8 rounded-md border bg-transparent px-2 text-xs"
-                  value={ownerFilter}
-                  onChange={(e) => setOwnerFilter(e.target.value)}
-                >
-                  <option value="all">Todas</option>
-                  <option value="mine">Mis conversaciones</option>
-                  <option value="unassigned">Sin asignar</option>
-                </select>
+                <div className="rounded-2xl border p-4 text-left shadow-sm bg-blue-50 border-blue-200 cursor-default">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <TrendingUp className="w-4 h-4 text-blue-500" />
+                    <span className="text-[10px] text-blue-500 uppercase tracking-wide font-semibold">Ritmo resp.</span>
+                  </div>
+                  <p className="text-2xl font-semibold text-blue-700 leading-none">{kpiByKey["ftr"]?.value ?? "--"}</p>
+                </div>
               </TooltipTrigger>
-              <TooltipContent>Filtrar por propietario de la conversación</TooltipContent>
+              <TooltipContent>Tiempo promedio de primera respuesta en la vista actual.</TooltipContent>
             </Tooltip>
+          </div>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <select
-                  className="h-8 rounded-md border bg-transparent px-2 text-xs"
-                  value={assignmentFilter}
-                  onChange={(e) => setAssignmentFilter(e.target.value)}
-                >
-                  <option value="all">Todos los flujos</option>
-                  <option value="active">Abiertas/Pendientes</option>
-                  <option value="open">Abiertas</option>
-                  <option value="pending">Pendientes</option>
-                  <option value="closed">Cerradas</option>
-                  <option value="unassigned">Sin asignar</option>
-                </select>
-              </TooltipTrigger>
-              <TooltipContent>Filtrar por estado de asignación del agente</TooltipContent>
-            </Tooltip>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => toggleChannel("whatsapp")}
+                    className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all text-[11px] font-bold ${
+                      channelFilter === "whatsapp"
+                        ? "border-green-500 bg-green-50 shadow-md scale-110 text-green-700"
+                        : "border-gray-200 text-gray-400 hover:border-green-300 hover:text-green-600"
+                    }`}
+                  >
+                    WA
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{channelFilter === "whatsapp" ? "Quitar filtro WhatsApp" : "Filtrar por WhatsApp"}</TooltipContent>
+              </Tooltip>
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <select
-                  className="h-8 rounded-md border bg-transparent px-2 text-xs"
-                  value={priorityFilter}
-                  onChange={(e) => setPriorityFilter(e.target.value)}
-                >
-                  <option value="all">Todas las prioridades</option>
-                  <option value="urgent">Urgente</option>
-                  <option value="high">Alta</option>
-                  <option value="normal">Normal</option>
-                  <option value="low">Baja</option>
-                  <option value="overdue">Vencidas SLA</option>
-                </select>
-              </TooltipTrigger>
-              <TooltipContent>Filtrar por nivel de prioridad o SLA vencido</TooltipContent>
-            </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => toggleChannel("instagram")}
+                    className={`w-10 h-10 rounded-full border-2 flex items-center justify-center transition-all text-[11px] font-bold ${
+                      channelFilter === "instagram"
+                        ? "border-pink-500 bg-pink-50 shadow-md scale-110 text-pink-700"
+                        : "border-gray-200 text-gray-400 hover:border-pink-300 hover:text-pink-600"
+                    }`}
+                  >
+                    IG
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{channelFilter === "instagram" ? "Quitar filtro Instagram" : "Filtrar por Instagram"}</TooltipContent>
+              </Tooltip>
+            </div>
 
-            <div className="flex items-center justify-between sm:col-span-3 text-xs text-gray-500 px-1 gap-1.5">
-              <span>
-                {filteredSessions.length} conversaciones · {selectedSessions.length} seleccionadas
-              </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">{filteredSessions.length} conv. · {selectedSessions.length} sel.</span>
               <Button
                 variant="outline"
                 size="sm"
                 className="h-8 px-2 text-xs"
-                onClick={toggleSelectAllFiltered}
+                onClick={() => handleToggleSelectAll()}
                 disabled={filteredSessions.length === 0}
               >
-                {allFilteredSelected ? "Limpiar selección" : "Seleccionar filtrados"}
+                {allFilteredSelected ? "Limpiar" : "Seleccionar"}
               </Button>
               <Button
                 variant="outline"
@@ -651,39 +671,8 @@ export default function ConversationsPage() {
                   setBulkOpen(true);
                 }}
               >
-                Envío masivo básico
+                Masivo
               </Button>
-            </div>
-          </div>
-
-          {/* Indicadores / Métricas */}
-          <div className="border rounded-lg p-1.5 bg-white">
-            <div className="flex items-center justify-between px-1 mb-1">
-              <p className="text-[10px] text-gray-500">Indicadores</p>
-              {hasActiveFilters && (
-                <span className="text-[9px] bg-blue-100 text-blue-700 rounded-full px-1.5 py-0.5 font-medium">
-                  Filtrado activo
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-1">
-              {metricsCards.map((card) => (
-                <Tooltip key={card.key}>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => card.clickable && applyMetricFilter(card.key)}
-                      className={`rounded-md px-1.5 py-1 text-left transition border ${severityClass(card.tone)} ${card.clickable ? "hover:shadow-sm cursor-pointer hover:opacity-90" : "cursor-default"}`}
-                    >
-                      <p className="text-[9px] opacity-70 leading-tight truncate">{card.title}</p>
-                      <p className="text-[13px] font-semibold leading-tight">{card.value}</p>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-[200px] text-center">
-                    {METRIC_TOOLTIPS[card.key] || card.title}
-                  </TooltipContent>
-                </Tooltip>
-              ))}
             </div>
           </div>
         </div>
@@ -695,9 +684,9 @@ export default function ConversationsPage() {
               {filteredSessions.map((s) => (
                 <div
                   key={s.session_id}
-                  onClick={() => openTimeline(s)}
+                  onClick={() => handleOpenTimeline(s)}
                   onDoubleClick={() => {
-                    openTimeline(s);
+                    handleOpenTimeline(s);
                     setFocusComposerSignal((prev) => prev + 1);
                   }}
                   className={`flex items-center justify-between p-4 border-b hover:bg-gray-50 cursor-pointer ${selectedSession?.session_id === s.session_id ? "bg-gray-50" : ""}`}
@@ -772,7 +761,7 @@ export default function ConversationsPage() {
                           size="icon"
                           onClick={(e) => {
                             e.stopPropagation();
-                            openSummaryDialog(s);
+                            handleOpenSummaryDialog(s);
                           }}
                         >
                           <Eye className="w-4 h-4" />
@@ -784,7 +773,13 @@ export default function ConversationsPage() {
                 </div>
               ))}
 
-              {filteredSessions.length === 0 && (
+              {isLoading && (
+                <div className="p-6 text-sm text-gray-400 text-center italic">
+                  Cargando conversaciones...
+                </div>
+              )}
+
+              {!isLoading && filteredSessions.length === 0 && (
                 <div className="p-6 text-sm text-gray-500 text-center">
                   No hay conversaciones que coincidan con los filtros.
                 </div>
@@ -860,7 +855,7 @@ export default function ConversationsPage() {
                 Cerrar
               </Button>
               <Button
-                onClick={sendBulkMessage}
+                onClick={() => handleSendBulkMessage()}
                 disabled={
                   bulkSending
                   || !bulkText.trim()
