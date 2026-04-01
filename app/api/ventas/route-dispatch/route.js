@@ -151,8 +151,7 @@ export async function POST(req) {
     `Estoy aquí para ayudarte con todo lo que necesites. ¿En qué te puedo ayudar hoy?\n\n` +
     `Por favor, elige una opción:\n\n` +
     `1️⃣ *Comprar un vehículo nuevo* 🚘\n` +
-    `2️⃣ *Mantenimiento, citas o taller* 🔩\n` +
-    `3️⃣ *Hablar con un asesor humano* 👨‍💼\n\n` +
+    `2️⃣ *Mantenimiento, citas o taller* 🔩\n\n` +
     `Responde con el *número* de tu opción. ¡Estamos para servirte! ✅`;
 
   const menuBody = process.env.VENTAS_MENU_TEXT
@@ -204,10 +203,8 @@ function detectMenuSelection(text) {
     return "taller";
   }
 
+  // "3" ya no está en el menú — solo keywords naturales redirigen a asesor
   if (
-    clean === "3" ||
-    clean.startsWith("3.") ||
-    clean.startsWith("3 ") ||
     clean.includes("asesor") ||
     clean.includes("agente") ||
     clean.includes("persona") ||
