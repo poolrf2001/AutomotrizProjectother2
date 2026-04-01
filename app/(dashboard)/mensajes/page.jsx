@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Bell, Eye, Hourglass, Search, TrendingUp, UserCheck, Users, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Bell, ChevronDown, Eye, Hourglass, Search, TrendingUp, UserCheck, Users, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,6 +133,8 @@ export default function ConversationsPage() {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [focusComposerSignal, setFocusComposerSignal] = useState(0);
+  const prevUrgentCountRef = useRef(0);
+  const prevUnreadTotalRef = useRef(0);
 
   async function load() {
     setIsLoading(true);
@@ -176,6 +178,40 @@ export default function ConversationsPage() {
     load();
   }, [user?.id]);
 
+  // ── Favicon + título con contador de no leídos ───────────────
+  useEffect(() => {
+    const total = sessions.reduce((acc, s) => acc + Number(s?.unread_count || 0), 0);
+    document.title = total > 0 ? `(${total}) Mensajes — CRM` : "Mensajes — CRM";
+    prevUnreadTotalRef.current = total;
+  }, [sessions]);
+
+  // ── Sonido de alerta cuando llega nueva conversación urgente ─
+  useEffect(() => {
+    const urgentCount = sessions.filter(
+      (s) => s?.priority_level === "urgent" || Number(s?.is_overdue || 0) === 1
+    ).length;
+
+    if (urgentCount > prevUrgentCountRef.current) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        oscillator.start(ctx.currentTime);
+        oscillator.stop(ctx.currentTime + 0.5);
+      } catch (err) {
+        console.error("Error reproduciendo alerta de sonido:", err);
+      }
+    }
+
+    prevUrgentCountRef.current = urgentCount;
+  }, [sessions]);
+
   function handleOpenTimeline(session) {
     setSelectedSession(session);
   }
@@ -187,6 +223,23 @@ export default function ConversationsPage() {
   function handleOpenConversationById(sessionId) {
     const found = sessions.find((s) => Number(s.session_id) === Number(sessionId));
     if (found) setSelectedSession(found);
+  }
+
+  async function handleQuickStatusChange(sessionId, nextStatus) {
+    try {
+      const res = await fetch("/api/conversations/assign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, assignment_status: nextStatus }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data?.message || "No se pudo actualizar el estado");
+      }
+      await load();
+    } catch (err) {
+      console.error("Error en quick-assign:", err);
+    }
   }
 
   function resetQuickFilters() {
@@ -828,7 +881,28 @@ export default function ConversationsPage() {
                       <div className="flex items-center justify-between mt-1.5">
                         <div className="flex items-center gap-1.5">
                           <ChannelPill channel={s.source_channel} />
-                          <span className="text-[10px] text-gray-400 capitalize">
+                          {/* Quick-assign status */}
+                          <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                            <div className="relative flex items-center">
+                              <select
+                                value={s.assignment_status || "unassigned"}
+                                onChange={(e) => handleQuickStatusChange(s.session_id, e.target.value)}
+                                className={`appearance-none text-[10px] pr-4 pl-1.5 py-0.5 rounded-full border font-medium cursor-pointer transition-colors ${
+                                  s.assignment_status === "open" ? "bg-green-50 border-green-300 text-green-700" :
+                                  s.assignment_status === "pending" ? "bg-amber-50 border-amber-300 text-amber-700" :
+                                  s.assignment_status === "closed" ? "bg-gray-100 border-gray-300 text-gray-500" :
+                                  "bg-gray-50 border-gray-200 text-gray-400"
+                                }`}
+                              >
+                                <option value="unassigned">Sin asignar</option>
+                                <option value="open">Abierta</option>
+                                <option value="pending">Pendiente</option>
+                                <option value="closed">Cerrada</option>
+                              </select>
+                              <ChevronDown className="absolute right-1 w-2.5 h-2.5 pointer-events-none text-current opacity-60" />
+                            </div>
+                          </div>
+                          <span className="group-hover:hidden text-[10px] text-gray-400 capitalize">
                             {s.assignment_status || "sin asignar"}
                           </span>
                         </div>
