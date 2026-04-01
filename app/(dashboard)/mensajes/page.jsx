@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bell, Eye, Hourglass, TrendingUp, UserCheck, Users } from "lucide-react";
+import { AlertTriangle, Bell, Eye, Hourglass, TrendingUp, UserCheck, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -784,8 +784,9 @@ export default function ConversationsPage() {
                           {isOverdue && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-semibold">
-                                  SLA
+                                <span className="bg-red-500 text-white text-[10px] rounded-full px-1.5 py-0.5 font-semibold flex items-center gap-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5" />
+                                  Urgente
                                 </span>
                               </TooltipTrigger>
                               <TooltipContent>SLA vencido — requiere atención urgente</TooltipContent>
