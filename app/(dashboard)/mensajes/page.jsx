@@ -689,123 +689,130 @@ export default function ConversationsPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* KPI + Canal — fila única */}
+          <div className="grid grid-cols-7 gap-1.5">
+            {/* Asignados */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={() => handleApplyMetricFilter("mine")}
-                  className={`rounded-2xl border p-3 text-left transition-all shadow-sm hover:shadow-md ${
+                  className={`rounded-xl border p-2 text-left transition-all hover:shadow-sm ${
                     ownerFilter === "mine"
-                      ? "bg-green-100 border-green-300 ring-2 ring-green-400"
+                      ? "bg-green-100 border-green-300 ring-1 ring-green-400"
                       : "bg-green-50 border-green-200 hover:border-green-300"
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <UserCheck className="w-3.5 h-3.5 text-green-600" />
-                    <span className="text-[9px] text-green-600 uppercase tracking-wide font-semibold">Asignados</span>
+                  <div className="flex items-center gap-1 mb-1">
+                    <UserCheck className="w-3 h-3 text-green-600 flex-shrink-0" />
+                    <span className="text-[8px] text-green-600 uppercase tracking-wide font-semibold truncate">Asignados</span>
                   </div>
-                  <p className="text-xl font-semibold text-green-700 leading-none">{kpiByKey["mine"]?.value ?? 0}</p>
+                  <p className="text-base font-bold text-green-700 leading-none">{kpiByKey["mine"]?.value ?? 0}</p>
                 </button>
               </TooltipTrigger>
               <TooltipContent>Mis conversaciones activas asignadas. Clic para filtrar.</TooltipContent>
             </Tooltip>
 
+            {/* At. Urgente */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={() => handleApplyMetricFilter("overdue")}
-                  className={`rounded-2xl border p-3 text-left transition-all shadow-sm hover:shadow-md ${
+                  className={`rounded-xl border p-2 text-left transition-all hover:shadow-sm ${
                     priorityFilter === "overdue"
-                      ? "bg-red-100 border-red-300 ring-2 ring-red-400"
+                      ? "bg-red-100 border-red-300 ring-1 ring-red-400"
                       : "bg-red-50 border-red-200 hover:border-red-300"
                   }`}
                 >
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Hourglass className="w-3.5 h-3.5 text-red-500 animate-pulse" />
-                    <span className="text-[9px] text-red-500 uppercase tracking-wide font-semibold">At. Urgente</span>
+                  <div className="flex items-center gap-1 mb-1">
+                    <Hourglass className="w-3 h-3 text-red-500 animate-pulse flex-shrink-0" />
+                    <span className="text-[8px] text-red-500 uppercase tracking-wide font-semibold truncate">Urgente</span>
                   </div>
-                  <p className="text-xl font-semibold text-red-700 leading-none">{kpiByKey["overdue"]?.value ?? 0}</p>
+                  <p className="text-base font-bold text-red-700 leading-none">{kpiByKey["overdue"]?.value ?? 0}</p>
                 </button>
               </TooltipTrigger>
               <TooltipContent>Conversaciones con SLA vencido. Clic para filtrar.</TooltipContent>
             </Tooltip>
 
+            {/* Ritmo resp. */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="rounded-2xl border p-3 text-left shadow-sm bg-blue-50 border-blue-200 cursor-default">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-[9px] text-blue-500 uppercase tracking-wide font-semibold">Ritmo resp.</span>
+                <div className="rounded-xl border p-2 text-left bg-blue-50 border-blue-200 cursor-default">
+                  <div className="flex items-center gap-1 mb-1">
+                    <TrendingUp className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                    <span className="text-[8px] text-blue-500 uppercase tracking-wide font-semibold truncate">Ritmo</span>
                   </div>
-                  <p className="text-xl font-semibold text-blue-700 leading-none">{kpiByKey["ftr"]?.value ?? "--"}</p>
+                  <p className="text-base font-bold text-blue-700 leading-none">{kpiByKey["ftr"]?.value ?? "--"}</p>
                 </div>
               </TooltipTrigger>
-              <TooltipContent>Tiempo promedio de primera respuesta (dato real del servidor).</TooltipContent>
+              <TooltipContent>Tiempo promedio de primera respuesta.</TooltipContent>
             </Tooltip>
 
+            {/* Interacción */}
             <Tooltip>
               <TooltipTrigger asChild>
-                <div className="rounded-2xl border p-3 text-left shadow-sm bg-slate-50 border-slate-200 cursor-default">
-                  <div className="flex items-center gap-1.5 mb-2">
-                    <Users className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="text-[9px] text-slate-500 uppercase tracking-wide font-semibold">Interacción</span>
+                <div className="rounded-xl border p-2 text-left bg-slate-50 border-slate-200 cursor-default">
+                  <div className="flex items-center gap-1 mb-1">
+                    <Users className="w-3 h-3 text-slate-500 flex-shrink-0" />
+                    <span className="text-[8px] text-slate-500 uppercase tracking-wide font-semibold truncate">Interacc.</span>
                   </div>
-                  <p className="text-xl font-semibold text-slate-700 leading-none">
-                    {avgInteractionMin != null ? `${avgInteractionMin} min` : "--"}
+                  <p className="text-base font-bold text-slate-700 leading-none">
+                    {avgInteractionMin != null ? `${avgInteractionMin}m` : "--"}
                   </p>
                 </div>
               </TooltipTrigger>
-              <TooltipContent>Duración promedio de conversaciones activas/pendientes.</TooltipContent>
+              <TooltipContent>Duración promedio de sesiones de conversación activas.</TooltipContent>
             </Tooltip>
-          </div>
 
-          {/* Cards de canal con logos oficiales */}
-          <div className="grid grid-cols-3 gap-2">
+            {/* Canal cards */}
             {[
               {
                 key: "whatsapp",
-                label: "WhatsApp",
+                label: "WA",
                 Icon: WhatsAppIcon,
-                active: "border-green-500 bg-green-50 ring-2 ring-green-300 shadow-sm",
+                active: "border-green-500 bg-green-50 ring-1 ring-green-300",
                 inactive: "border-gray-200 hover:border-green-300 hover:bg-green-50/50",
                 iconColor: "text-green-500",
                 countColor: "text-green-700",
               },
               {
                 key: "instagram",
-                label: "Instagram",
+                label: "IG",
                 Icon: InstagramIcon,
-                active: "border-pink-500 bg-pink-50 ring-2 ring-pink-300 shadow-sm",
+                active: "border-pink-500 bg-pink-50 ring-1 ring-pink-300",
                 inactive: "border-gray-200 hover:border-pink-300 hover:bg-pink-50/50",
                 iconColor: "text-pink-500",
                 countColor: "text-pink-700",
               },
               {
                 key: "facebook",
-                label: "Facebook",
+                label: "FB",
                 Icon: FacebookIcon,
-                active: "border-blue-500 bg-blue-50 ring-2 ring-blue-300 shadow-sm",
+                active: "border-blue-500 bg-blue-50 ring-1 ring-blue-300",
                 inactive: "border-gray-200 hover:border-blue-300 hover:bg-blue-50/50",
                 iconColor: "text-blue-600",
                 countColor: "text-blue-700",
               },
             ].map(({ key, label, Icon, active, inactive, iconColor, countColor }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => handleToggleChannel(key)}
-                className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
-                  channelFilter === key ? active : inactive
-                }`}
-              >
-                <Icon className={`w-5 h-5 mb-1.5 ${channelFilter === key ? iconColor : "text-gray-400"}`} />
-                <p className={`text-[10px] font-semibold ${channelFilter === key ? countColor : "text-gray-500"}`}>
-                  {channelCounts[key]}
-                </p>
-                <p className="text-[9px] text-gray-400 truncate">{label}</p>
-              </button>
+              <Tooltip key={key}>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => handleToggleChannel(key)}
+                    className={`rounded-xl border p-2 text-left transition-all cursor-pointer ${
+                      channelFilter === key ? active : inactive
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 mb-1 ${channelFilter === key ? iconColor : "text-gray-400"}`} />
+                    <p className={`text-base font-bold leading-none ${channelFilter === key ? countColor : "text-gray-500"}`}>
+                      {channelCounts[key]}
+                    </p>
+                    <p className="text-[8px] text-gray-400 mt-0.5">{label}</p>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>{channelFilter === key ? `Quitar filtro ${label}` : `Filtrar por ${label}`}</TooltipContent>
+              </Tooltip>
             ))}
           </div>
 
