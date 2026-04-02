@@ -77,7 +77,7 @@ function authenticateWebhook(req) {
 
 ### UI patterns
 - Use shadcn/ui components (`Card`, `Dialog`, `Button`, etc.) — don't reinvent.
-- Icons from `lucide-react` only.
+- Icons from `lucide-react` only. **Exception:** brand/social logos not available in lucide (WhatsApp, Instagram, Facebook) may be implemented as inline SVG helper functions at module scope.
 - Tailwind for styling — no inline styles, no CSS modules.
 - Loading states: use skeleton components (`*Skeleton.jsx`) or `isLoading` guards.
 
