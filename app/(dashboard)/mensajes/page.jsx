@@ -797,7 +797,22 @@ export default function ConversationsPage() {
 
           {/* KPI: vista global o por chat según selección */}
           {selectedSession ? (
-            <ChatKpiCards session={selectedSession} />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 truncate">
+                  {selectedSession.cliente_nombre || "Chat seleccionado"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSession(null)}
+                  className="flex items-center gap-1 text-[10px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  Ver todo
+                </button>
+              </div>
+              <ChatKpiCards session={selectedSession} />
+            </div>
           ) : (
           <div className="grid grid-cols-7 gap-1.5">
             {/* Asignados */}
