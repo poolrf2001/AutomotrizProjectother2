@@ -123,17 +123,47 @@ function formatChatDuration(createdAt) {
   return `${Math.floor(hrs / 24)}d`;
 }
 
+const CHANNEL_CFG = {
+  whatsapp: { Icon: WhatsAppIcon, iconColor: "text-green-500", bg: "bg-green-50 border-green-200", label: "WhatsApp" },
+  instagram: { Icon: InstagramIcon, iconColor: "text-pink-500", bg: "bg-pink-50 border-pink-200", label: "Instagram" },
+  facebook: { Icon: FacebookIcon, iconColor: "text-blue-600", bg: "bg-blue-50 border-blue-200", label: "Facebook" },
+};
+
+const CHANNEL_FILTERS = [
+  {
+    key: "whatsapp",
+    label: "WA",
+    Icon: WhatsAppIcon,
+    active: "border-green-500 bg-green-50 ring-1 ring-green-300",
+    inactive: "border-gray-200 hover:border-green-300 hover:bg-green-50/50",
+    iconColor: "text-green-500",
+    countColor: "text-green-700",
+  },
+  {
+    key: "instagram",
+    label: "IG",
+    Icon: InstagramIcon,
+    active: "border-pink-500 bg-pink-50 ring-1 ring-pink-300",
+    inactive: "border-gray-200 hover:border-pink-300 hover:bg-pink-50/50",
+    iconColor: "text-pink-500",
+    countColor: "text-pink-700",
+  },
+  {
+    key: "facebook",
+    label: "FB",
+    Icon: FacebookIcon,
+    active: "border-blue-500 bg-blue-50 ring-1 ring-blue-300",
+    inactive: "border-gray-200 hover:border-blue-300 hover:bg-blue-50/50",
+    iconColor: "text-blue-600",
+    countColor: "text-blue-700",
+  },
+];
+
 function ChatKpiCards({ session }) {
   const unread = Number(session?.unread_count || 0);
   const sla = formatSlaStatus(session?.sla_due_at);
   const duration = formatChatDuration(session?.created_at);
   const ch = String(session?.source_channel || "").toLowerCase();
-
-  const CHANNEL_CFG = {
-    whatsapp: { Icon: WhatsAppIcon, iconColor: "text-green-500", bg: "bg-green-50 border-green-200", label: "WhatsApp" },
-    instagram: { Icon: InstagramIcon, iconColor: "text-pink-500", bg: "bg-pink-50 border-pink-200", label: "Instagram" },
-    facebook: { Icon: FacebookIcon, iconColor: "text-blue-600", bg: "bg-blue-50 border-blue-200", label: "Facebook" },
-  };
   const cfg = CHANNEL_CFG[ch] || { Icon: null, iconColor: "text-gray-400", bg: "bg-gray-50 border-gray-200", label: ch || "Sin canal" };
   const ChanIcon = cfg.Icon;
 
@@ -161,7 +191,7 @@ function ChatKpiCards({ session }) {
       <div className={`rounded-xl border p-2 ${slaBg}`}>
         <div className="flex items-center gap-1 mb-1">
           <Hourglass className={`w-3 h-3 flex-shrink-0 ${slaIconColor}`} />
-          <p className={`text-[8px] uppercase tracking-wide font-semibold truncate ${slaIconColor}`}>SLA</p>
+          <p className={`text-[8px] uppercase tracking-wide font-semibold truncate ${slaIconColor}`}>Urgente</p>
         </div>
         <p className={`text-base font-bold leading-none ${slaTextColor}`}>{sla.label}</p>
         {sla.detail && <p className="text-[8px] text-gray-400 mt-0.5">{sla.detail}</p>}
@@ -890,35 +920,7 @@ export default function ConversationsPage() {
             </Tooltip>
 
             {/* Canal cards */}
-            {[
-              {
-                key: "whatsapp",
-                label: "WA",
-                Icon: WhatsAppIcon,
-                active: "border-green-500 bg-green-50 ring-1 ring-green-300",
-                inactive: "border-gray-200 hover:border-green-300 hover:bg-green-50/50",
-                iconColor: "text-green-500",
-                countColor: "text-green-700",
-              },
-              {
-                key: "instagram",
-                label: "IG",
-                Icon: InstagramIcon,
-                active: "border-pink-500 bg-pink-50 ring-1 ring-pink-300",
-                inactive: "border-gray-200 hover:border-pink-300 hover:bg-pink-50/50",
-                iconColor: "text-pink-500",
-                countColor: "text-pink-700",
-              },
-              {
-                key: "facebook",
-                label: "FB",
-                Icon: FacebookIcon,
-                active: "border-blue-500 bg-blue-50 ring-1 ring-blue-300",
-                inactive: "border-gray-200 hover:border-blue-300 hover:bg-blue-50/50",
-                iconColor: "text-blue-600",
-                countColor: "text-blue-700",
-              },
-            ].map(({ key, label, Icon, active, inactive, iconColor, countColor }) => (
+            {CHANNEL_FILTERS.map(({ key, label, Icon, active, inactive, iconColor, countColor }) => (
               <Tooltip key={key}>
                 <TooltipTrigger asChild>
                   <button
