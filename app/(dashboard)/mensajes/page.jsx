@@ -95,6 +95,99 @@ function formatDurationCompact(seconds) {
 }
 
 
+// ─── Helpers para KPI de chat individual ────────────────────────────────────
+
+function formatSlaStatus(slaDueAt) {
+  if (!slaDueAt) return { label: "Sin SLA", detail: "", tone: "neutral" };
+  const diff = new Date(slaDueAt).getTime() - Date.now();
+  if (diff > 0) {
+    const mins = Math.round(diff / 60000);
+    if (mins < 5) return { label: `${mins}m`, detail: "restantes", tone: "high" };
+    if (mins < 15) return { label: `${mins}m`, detail: "restantes", tone: "medium" };
+    return { label: `${mins}m`, detail: "restantes", tone: "low" };
+  }
+  const mins = Math.round(Math.abs(diff) / 60000);
+  const hrs = Math.floor(mins / 60);
+  const label = hrs > 0 ? `${hrs}h ${mins % 60}m` : `${mins}m`;
+  return { label, detail: "vencido", tone: "high" };
+}
+
+function formatChatDuration(createdAt) {
+  if (!createdAt) return "--";
+  const diff = Date.now() - new Date(createdAt).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "ahora";
+  if (mins < 60) return `${mins}m`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h`;
+  return `${Math.floor(hrs / 24)}d`;
+}
+
+function ChatKpiCards({ session }) {
+  const unread = Number(session?.unread_count || 0);
+  const sla = formatSlaStatus(session?.sla_due_at);
+  const duration = formatChatDuration(session?.created_at);
+  const ch = String(session?.source_channel || "").toLowerCase();
+
+  const CHANNEL_CFG = {
+    whatsapp: { Icon: WhatsAppIcon, iconColor: "text-green-500", bg: "bg-green-50 border-green-200", label: "WhatsApp" },
+    instagram: { Icon: InstagramIcon, iconColor: "text-pink-500", bg: "bg-pink-50 border-pink-200", label: "Instagram" },
+    facebook: { Icon: FacebookIcon, iconColor: "text-blue-600", bg: "bg-blue-50 border-blue-200", label: "Facebook" },
+  };
+  const cfg = CHANNEL_CFG[ch] || { Icon: null, iconColor: "text-gray-400", bg: "bg-gray-50 border-gray-200", label: ch || "Sin canal" };
+  const ChanIcon = cfg.Icon;
+
+  const slaBg = sla.tone === "high" ? "bg-red-50 border-red-200"
+    : sla.tone === "medium" ? "bg-amber-50 border-amber-200"
+    : sla.tone === "low" ? "bg-green-50 border-green-200"
+    : "bg-gray-50 border-gray-200";
+  const slaIconColor = sla.tone === "high" ? "text-red-500"
+    : sla.tone === "medium" ? "text-amber-500"
+    : "text-gray-400";
+  const slaTextColor = sla.tone === "high" ? "text-red-700"
+    : sla.tone === "medium" ? "text-amber-700"
+    : sla.tone === "low" ? "text-green-700"
+    : "text-gray-400";
+
+  return (
+    <div className="grid grid-cols-4 gap-1.5">
+      {/* No leídos */}
+      <div className={`rounded-xl border p-2 ${unread > 0 ? "bg-blue-50 border-blue-200" : "bg-gray-50 border-gray-200"}`}>
+        <p className={`text-[8px] uppercase tracking-wide font-semibold mb-1 truncate ${unread > 0 ? "text-blue-500" : "text-gray-400"}`}>No leídos</p>
+        <p className={`text-base font-bold leading-none ${unread > 0 ? "text-blue-700" : "text-gray-400"}`}>{unread}</p>
+      </div>
+
+      {/* SLA */}
+      <div className={`rounded-xl border p-2 ${slaBg}`}>
+        <div className="flex items-center gap-1 mb-1">
+          <Hourglass className={`w-3 h-3 flex-shrink-0 ${slaIconColor}`} />
+          <p className={`text-[8px] uppercase tracking-wide font-semibold truncate ${slaIconColor}`}>SLA</p>
+        </div>
+        <p className={`text-base font-bold leading-none ${slaTextColor}`}>{sla.label}</p>
+        {sla.detail && <p className="text-[8px] text-gray-400 mt-0.5">{sla.detail}</p>}
+      </div>
+
+      {/* Duración */}
+      <div className="rounded-xl border p-2 bg-slate-50 border-slate-200">
+        <div className="flex items-center gap-1 mb-1">
+          <Users className="w-3 h-3 text-slate-500 flex-shrink-0" />
+          <p className="text-[8px] uppercase tracking-wide font-semibold text-slate-500 truncate">Duración</p>
+        </div>
+        <p className="text-base font-bold text-slate-700 leading-none">{duration}</p>
+      </div>
+
+      {/* Canal */}
+      <div className={`rounded-xl border p-2 ${cfg.bg}`}>
+        <div className="flex items-center gap-1 mb-1">
+          {ChanIcon && <ChanIcon className={`w-3 h-3 flex-shrink-0 ${cfg.iconColor}`} />}
+          <p className={`text-[8px] uppercase tracking-wide font-semibold truncate ${cfg.iconColor}`}>Canal</p>
+        </div>
+        <p className={`text-[10px] font-bold leading-none ${cfg.iconColor}`}>{cfg.label}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Brand icons (SVG inline — lucide-react no incluye logos de marca) ────────
 
 function WhatsAppIcon({ className }) {
@@ -702,7 +795,10 @@ export default function ConversationsPage() {
             )}
           </div>
 
-          {/* KPI + Canal — fila única */}
+          {/* KPI: vista global o por chat según selección */}
+          {selectedSession ? (
+            <ChatKpiCards session={selectedSession} />
+          ) : (
           <div className="grid grid-cols-7 gap-1.5">
             {/* Asignados */}
             <Tooltip>
@@ -828,6 +924,7 @@ export default function ConversationsPage() {
               </Tooltip>
             ))}
           </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div />

@@ -79,6 +79,13 @@ export async function POST(req) {
       [sessionId, phone, message, channel, idempotencyKey]
     );
     messageLogId = logResult.insertId;
+    // Limpiar SLA al responder: el agente/bot respondió, la urgencia se resuelve
+    if (sessionId) {
+      await db.query(
+        `UPDATE conversation_sessions SET updated_at = NOW(), sla_due_at = NULL WHERE id = ?`,
+        [sessionId]
+      ).catch((err) => console.warn("[send-message] No se pudo limpiar sla_due_at:", err.message));
+    }
   } catch (e) {
     console.warn("[send-message] No se pudo insertar en agent_actions_log:", e.message);
   }

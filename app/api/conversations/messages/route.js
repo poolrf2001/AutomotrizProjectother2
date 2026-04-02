@@ -243,17 +243,23 @@ async function updateSessionAfterMessage({ sessionId, actionType, messageId, isI
     }
   }
 
-  await db.query(
-    `
-    UPDATE conversation_sessions
-    SET
-      updated_at = NOW(),
-      last_intent = ?,
-      last_message_id = ?
-    WHERE id = ?
-    `,
-    [actionType, messageId, sessionId]
-  );
+  // Outbound: limpiar SLA — el agente respondió, la urgencia se resuelve
+  try {
+    await db.query(
+      `
+      UPDATE conversation_sessions
+      SET updated_at = NOW(), last_intent = ?, last_message_id = ?, sla_due_at = NULL
+      WHERE id = ?
+      `,
+      [actionType, messageId, sessionId]
+    );
+  } catch (error) {
+    if (!isMissingColumnError(error)) throw error;
+    await db.query(
+      `UPDATE conversation_sessions SET updated_at = NOW(), last_intent = ?, last_message_id = ? WHERE id = ?`,
+      [actionType, messageId, sessionId]
+    );
+  }
 }
 
 // POST /api/conversations/messages
