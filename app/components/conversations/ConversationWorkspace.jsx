@@ -81,7 +81,7 @@ export default function ConversationWorkspace({
     if (lastMarkedRef.current >= lastMessageId) return;
 
     try {
-      await fetch("/api/conversations/mark-read", {
+      const res = await fetch("/api/conversations/mark-read", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -89,6 +89,7 @@ export default function ConversationWorkspace({
           last_message_id: lastMessageId,
         }),
       });
+      if (!res.ok) throw new Error(`mark-read failed: ${res.status}`);
       lastMarkedRef.current = lastMessageId;
       if (onConversationUpdated) onConversationUpdated();
     } catch (e) {
