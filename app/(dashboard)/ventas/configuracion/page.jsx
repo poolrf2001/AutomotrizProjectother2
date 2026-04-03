@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bot, ChevronDown, ChevronUp, Plus, Save, Trash2 } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, Plus, Save, Trash2, ToggleLeft, ToggleRight } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,8 @@ function FinanciamientoForm({ data, onSave }) {
       if (!res.ok) throw new Error("Error al guardar");
       toast.success("Configuración de financiamiento guardada");
       onSave(contenido);
-    } catch {
+    } catch (err) {
+      console.error("[FinanciamientoForm] Error al guardar:", err);
       toast.error("No se pudo guardar");
     } finally {
       setSaving(false);
@@ -184,7 +185,8 @@ function DocumentacionForm({ seccion, label, data, onSave }) {
       if (!res.ok) throw new Error("Error al guardar");
       toast.success(`Documentación para ${label} guardada`);
       onSave(contenido);
-    } catch {
+    } catch (err) {
+      console.error("[DocumentacionForm] Error al guardar:", err);
       toast.error("No se pudo guardar");
     } finally {
       setSaving(false);
@@ -268,7 +270,8 @@ function GarantiasForm({ data, onSave }) {
       if (!res.ok) throw new Error("Error al guardar");
       toast.success("Configuración de garantías guardada");
       onSave(contenido);
-    } catch {
+    } catch (err) {
+      console.error("[GarantiasForm] Error al guardar:", err);
       toast.error("No se pudo guardar");
     } finally {
       setSaving(false);
@@ -363,7 +366,8 @@ function ServiciosForm({ data, onSave }) {
       if (!res.ok) throw new Error("Error al guardar");
       toast.success("Servicios adicionales guardados");
       onSave(contenido);
-    } catch {
+    } catch (err) {
+      console.error("[ServiciosForm] Error al guardar:", err);
       toast.error("No se pudo guardar");
     } finally {
       setSaving(false);
@@ -536,40 +540,119 @@ Asesor/humano → action: escalate
 [Se inyectan desde el CRM en cada conversación]`,
 };
 
-function AgentPromptForm({ agente, onSave }) {
-  const [consideraciones, setConsideraciones] = useState(agente?.consideraciones || "");
-  const [saving, setSaving] = useState(false);
+const CATEGORIAS = ["Promoción", "Restricción", "Horario", "Protocolo", "Otro"];
+
+function AgentPromptForm({ agente }) {
+  const [instrucciones, setInstrucciones] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [showPrompt, setShowPrompt] = useState(false);
 
-  async function handleSave() {
+  // Formulario nueva instrucción
+  const [nuevoTexto, setNuevoTexto] = useState("");
+  const [nuevaCategoria, setNuevaCategoria] = useState("");
+  const [nuevaVigencia, setNuevaVigencia] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const fetchInstrucciones = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/agentes/instrucciones?agent=${agente.agent_key}`);
+      if (!res.ok) throw new Error("Error al cargar instrucciones");
+      const data = await res.json();
+      setInstrucciones(data.instrucciones || []);
+    } catch (err) {
+      console.error("[AgentPromptForm] Error al cargar instrucciones:", err);
+      toast.error("No se pudieron cargar las instrucciones");
+    } finally {
+      setLoading(false);
+    }
+  }, [agente.agent_key]);
+
+  useEffect(() => { fetchInstrucciones(); }, [fetchInstrucciones]);
+
+  async function handleAgregar() {
+    if (!nuevoTexto.trim()) return;
     setSaving(true);
     try {
-      const res = await fetch("/api/agentes/prompt-config", {
-        method: "PUT",
+      const res = await fetch("/api/agentes/instrucciones", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agent_key: agente.agent_key, consideraciones }),
+        body: JSON.stringify({
+          agent_key: agente.agent_key,
+          texto: nuevoTexto,
+          categoria: nuevaCategoria || null,
+          vigencia_hasta: nuevaVigencia || null,
+        }),
       });
-      if (!res.ok) throw new Error("Error al guardar");
-      toast.success(`Consideraciones de "${agente.display_name}" guardadas`);
-      onSave(agente.agent_key, consideraciones);
-    } catch {
-      toast.error("No se pudo guardar");
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Error al guardar");
+      }
+      toast.success("Instrucción agregada");
+      setNuevoTexto("");
+      setNuevaCategoria("");
+      setNuevaVigencia("");
+      await fetchInstrucciones();
+    } catch (err) {
+      toast.error(err.message || "No se pudo guardar");
     } finally {
       setSaving(false);
     }
   }
 
-  const updatedAt = agente?.updated_at
-    ? new Date(agente.updated_at).toLocaleString("es-PE")
-    : null;
+  async function handleToggle(instruccion) {
+    const nuevaActiva = !instruccion.es_activa;
+    try {
+      const res = await fetch("/api/agentes/instrucciones", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: instruccion.id, es_activa: nuevaActiva }),
+      });
+      if (!res.ok) throw new Error("Error al actualizar");
+      setInstrucciones((prev) =>
+        prev.map((i) =>
+          i.id === instruccion.id
+            ? { ...i, es_activa: nuevaActiva ? 1 : 0, desactivada_por: nuevaActiva ? null : "yo", desactivada_at: nuevaActiva ? null : new Date().toISOString() }
+            : i
+        )
+      );
+      toast.success(nuevaActiva ? "Instrucción activada" : "Instrucción desactivada");
+    } catch (err) {
+      console.error("[AgentPromptForm] Error al togglear instrucción:", err);
+      toast.error("No se pudo actualizar");
+    }
+  }
+
+  async function handleEliminar(id) {
+    try {
+      const res = await fetch("/api/agentes/instrucciones", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!res.ok) throw new Error("Error al eliminar");
+      setInstrucciones((prev) => prev.filter((i) => i.id !== id));
+      toast.success("Instrucción eliminada");
+    } catch (err) {
+      console.error("[AgentPromptForm] Error al eliminar instrucción:", err);
+      toast.error("No se pudo eliminar");
+    }
+  }
 
   const promptBase = PROMPTS_BASE[agente?.agent_key] || "(Prompt no disponible)";
+  const activas = instrucciones.filter((i) => i.es_activa).length;
 
   return (
-    <div className="border rounded-lg p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <Bot className="w-4 h-4 text-blue-600" />
-        <span className="font-medium text-sm text-gray-800">{agente?.display_name}</span>
+    <div className="border rounded-lg p-4 space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Bot className="w-4 h-4 text-blue-600" />
+          <span className="font-medium text-sm text-gray-800">{agente?.display_name}</span>
+        </div>
+        <span className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2 py-0.5">
+          {activas} activa{activas !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* Prompt base colapsable */}
@@ -591,49 +674,148 @@ function AgentPromptForm({ agente, onSave }) {
         )}
       </div>
 
+      {/* Tabla de instrucciones */}
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          Consideraciones adicionales
-        </label>
-        <Textarea
-          value={consideraciones}
-          onChange={(e) => setConsideraciones(e.target.value)}
-          placeholder={`Ej: Esta semana hay 20% de descuento en cambio de aceite. Informar a todos los clientes que lo consulten.`}
-          rows={5}
-        />
-        <p className="text-xs text-gray-400 mt-1">
-          Este texto se agrega al final del prompt base del agente. No reemplaza sus reglas existentes.
-        </p>
+        <p className="text-xs font-medium text-gray-600 mb-2">Instrucciones registradas</p>
+        {loading ? (
+          <p className="text-xs text-gray-400">Cargando…</p>
+        ) : instrucciones.length === 0 ? (
+          <p className="text-xs text-gray-400 italic">No hay instrucciones registradas aún.</p>
+        ) : (
+          <div className="border rounded-md overflow-hidden text-xs">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b">
+                <tr>
+                  <th className="text-left px-3 py-2 text-gray-500 font-medium w-1/2">Instrucción</th>
+                  <th className="text-left px-3 py-2 text-gray-500 font-medium">Categoría</th>
+                  <th className="text-left px-3 py-2 text-gray-500 font-medium">Vigencia</th>
+                  <th className="text-left px-3 py-2 text-gray-500 font-medium">Agregada</th>
+                  <th className="text-left px-3 py-2 text-gray-500 font-medium">Por</th>
+                  <th className="px-3 py-2 text-gray-500 font-medium text-center">Estado</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {instrucciones.map((instr) => {
+                  const vencida = instr.vigencia_hasta && new Date(instr.vigencia_hasta) < new Date();
+                  return (
+                    <tr key={instr.id} className={!instr.es_activa || vencida ? "opacity-50 bg-gray-50" : ""}>
+                      <td className="px-3 py-2 text-gray-800 leading-relaxed">{instr.texto}</td>
+                      <td className="px-3 py-2 text-gray-500">
+                        {instr.categoria ? (
+                          <span className="bg-gray-100 rounded px-1.5 py-0.5">{instr.categoria}</span>
+                        ) : (
+                          <span className="text-gray-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500">
+                        {instr.vigencia_hasta ? (
+                          <span className={vencida ? "text-red-500" : ""}>
+                            {new Date(instr.vigencia_hasta).toLocaleDateString("es-PE")}
+                            {vencida && " (vencida)"}
+                          </span>
+                        ) : (
+                          <span className="text-gray-300">Sin límite</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-gray-400 whitespace-nowrap">
+                        {new Date(instr.agregada_at).toLocaleString("es-PE", {
+                          day: "2-digit", month: "2-digit", year: "2-digit",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </td>
+                      <td className="px-3 py-2 text-gray-500 max-w-[100px] truncate" title={instr.agregada_por}>
+                        {instr.agregada_por}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => handleToggle(instr)}
+                          title={instr.es_activa ? "Desactivar" : "Activar"}
+                          className="text-gray-400 hover:text-blue-600 transition-colors"
+                        >
+                          {instr.es_activa ? (
+                            <ToggleRight className="w-5 h-5 text-blue-500" />
+                          ) : (
+                            <ToggleLeft className="w-5 h-5" />
+                          )}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        <button
+                          onClick={() => handleEliminar(instr.id)}
+                          className="text-red-300 hover:text-red-500 transition-colors"
+                          title="Eliminar instrucción"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center justify-between">
-        <Button onClick={handleSave} disabled={saving} size="sm">
-          <Save className="w-4 h-4 mr-2" />
-          {saving ? "Guardando…" : "Guardar"}
-        </Button>
-        {updatedAt && agente?.updated_by && (
-          <span className="text-xs text-gray-400">
-            Actualizado: {updatedAt} por {agente.updated_by}
-          </span>
-        )}
+      {/* Formulario agregar instrucción */}
+      <div className="border rounded-md p-3 bg-blue-50 space-y-3">
+        <p className="text-xs font-medium text-blue-700">Agregar instrucción</p>
+        <Textarea
+          value={nuevoTexto}
+          onChange={(e) => setNuevoTexto(e.target.value)}
+          placeholder="Ej: Esta semana hay 20% de descuento en cambio de aceite. Informar a todos los clientes que lo consulten."
+          rows={3}
+          className="text-sm bg-white"
+        />
+        <div className="flex gap-2 flex-wrap">
+          <select
+            value={nuevaCategoria}
+            onChange={(e) => setNuevaCategoria(e.target.value)}
+            className="border rounded px-2 py-1.5 text-xs bg-white text-gray-700 flex-1 min-w-[120px]"
+          >
+            <option value="">Categoría (opcional)</option>
+            {CATEGORIAS.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+            <label className="text-xs text-gray-500 whitespace-nowrap">Vigente hasta:</label>
+            <Input
+              type="date"
+              value={nuevaVigencia}
+              onChange={(e) => setNuevaVigencia(e.target.value)}
+              className="h-8 text-xs"
+            />
+          </div>
+          <Button size="sm" onClick={handleAgregar} disabled={saving || !nuevoTexto.trim()}>
+            <Plus className="w-3.5 h-3.5 mr-1" />
+            {saving ? "Guardando…" : "Agregar"}
+          </Button>
+        </div>
+        <p className="text-xs text-blue-600/70">
+          Cada instrucción se inyecta individualmente al final del prompt. Las vencidas se ignoran automáticamente.
+        </p>
       </div>
     </div>
   );
 }
 
-function AgentesIAForm({ agentes, onSave }) {
-  if (!agentes || agentes.length === 0) {
+function AgentesIAForm({ agentes }) {
+  const agentesVisibles = (agentes || []).filter((a) => a.agent_key !== "presales");
+
+  if (agentesVisibles.length === 0) {
     return <p className="text-sm text-gray-500">No hay agentes configurados.</p>;
   }
 
   return (
     <div className="max-w-2xl space-y-4">
       <p className="text-sm text-gray-600">
-        Agrega consideraciones que los agentes IA tendrán en cuenta en sus respuestas.
+        Agregá instrucciones adicionales que los agentes IA tendrán en cuenta en sus respuestas.
         Se inyectan dinámicamente en cada conversación sin modificar la lógica base.
       </p>
-      {agentes.map((agente) => (
-        <AgentPromptForm key={agente.agent_key} agente={agente} onSave={onSave} />
+      {agentesVisibles.map((agente) => (
+        <AgentPromptForm key={agente.agent_key} agente={agente} />
       ))}
     </div>
   );
@@ -654,10 +836,14 @@ export default function VentasConfiguracionPage() {
         fetch("/api/ventas/configuracion"),
         fetch("/api/agentes/prompt-config"),
       ]);
+      if (!resConfig.ok || !resAgentes.ok) throw new Error("Error al cargar configuración");
       const dataConfig = await resConfig.json();
       const dataAgentes = await resAgentes.json();
       setConfig(dataConfig.configuracion || {});
       setAgentes(dataAgentes.agentes || []);
+    } catch (err) {
+      console.error("[VentasConfiguracionPage] Error al cargar configuración:", err);
+      toast.error("No se pudo cargar la configuración");
     } finally {
       setLoading(false);
     }
@@ -667,12 +853,6 @@ export default function VentasConfiguracionPage() {
 
   function updateSection(seccion, contenido) {
     setConfig((c) => ({ ...c, [seccion]: contenido }));
-  }
-
-  function updateAgente(agentKey, consideraciones) {
-    setAgentes((prev) =>
-      prev.map((a) => (a.agent_key === agentKey ? { ...a, consideraciones } : a))
-    );
   }
 
   return (
@@ -732,7 +912,7 @@ export default function VentasConfiguracionPage() {
             />
           )}
           {tab === "agentes" && (
-            <AgentesIAForm agentes={agentes} onSave={updateAgente} />
+            <AgentesIAForm agentes={agentes} />
           )}
         </>
       )}

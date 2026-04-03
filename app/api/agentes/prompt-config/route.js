@@ -25,9 +25,6 @@ function detectInjection(text) {
   return null;
 }
 
-// Columnas que el agente de IA puede leer (devueltas a n8n)
-const AGENT_CONFIG_COLUMNS = "agent_key, agent_name, taller_name, dealer_name, consideraciones, is_active";
-
 // Autentica llamadas desde n8n via webhook secret
 function authenticateWebhook(req) {
   const secret = req.headers.get("x-conversations-webhook-secret") || "";
@@ -42,19 +39,31 @@ export async function GET(req) {
   // Si viene con webhook secret (llamada desde n8n), responde directamente
   if (authenticateWebhook(req)) {
     if (!agentKey || !AGENT_KEYS_VALIDOS.includes(agentKey)) {
-      return NextResponse.json({ consideraciones: null, agent_name: null, taller_name: null, dealer_name: null });
+      return NextResponse.json({ message: "agent_key inválido" }, { status: 400 });
     }
     try {
-      const [rows] = await db.query(
-        "SELECT agent_key, agent_name, taller_name, dealer_name, consideraciones, is_active FROM agent_prompt_config WHERE agent_key = ? AND is_active = 1 LIMIT 1",
-        [agentKey]
-      );
+      const [[rows], [instrRows]] = await Promise.all([
+        db.query(
+          "SELECT agent_name, taller_name, dealer_name FROM agent_prompt_config WHERE agent_key = ? AND is_active = 1 LIMIT 1",
+          [agentKey]
+        ),
+        db.query(
+          `SELECT texto FROM agent_instrucciones
+           WHERE agent_key = ? AND es_activa = 1
+             AND (vigencia_hasta IS NULL OR vigencia_hasta >= CURDATE())
+           ORDER BY agregada_at ASC`,
+          [agentKey]
+        ),
+      ]);
       const row = rows[0] || {};
+      const consideraciones = instrRows.length > 0
+        ? instrRows.map((r) => `- ${r.texto}`).join("\n")
+        : null;
       return NextResponse.json({
-        agent_name:      row.agent_name      || null,
-        taller_name:     row.taller_name     || null,
-        dealer_name:     row.dealer_name     || null,
-        consideraciones: row.consideraciones || null,
+        agent_name:      row.agent_name  || null,
+        taller_name:     row.taller_name || null,
+        dealer_name:     row.dealer_name || null,
+        consideraciones,
       });
     } catch (err) {
       console.error("[GET prompt-config webhook]", err);
