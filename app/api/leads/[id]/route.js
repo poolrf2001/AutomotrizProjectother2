@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
-const REGEX_LD = "^LD-[0-9]+$";
+const REGEX_LD = "^LD-[0-9]{4}-[0-9]{3}$";
 
 /* =========================
    GET: obtener un lead
@@ -26,34 +26,26 @@ export async function GET(req, { params }) {
         o.etapasconversion_id,
         o.created_by,
         o.asignado_a,
-
-        ec.sort_order AS etapa_sort_order,
-        ec.color AS etapa_color,
-
-        COALESCE((
-          SELECT SUM(CAST(ec2.descripcion AS DECIMAL(10,2)))
-          FROM etapasconversion ec2
-          WHERE ec2.sort_order <= ec.sort_order
-            AND ec2.descripcion IS NOT NULL
-            AND ec2.descripcion REGEXP '^-?[0-9]+(\\\\.[0-9]+)?$'
-        ), 0) AS temperatura,
-
-        DATE_FORMAT(o.fecha_agenda, '%Y-%m-%d') AS fecha_agenda,
-        TIME_FORMAT(o.hora_agenda, '%H:%i') AS hora_agenda,
         o.created_at,
         o.updated_at,
 
-        CONCAT(COALESCE(c.nombre,''), ' ', COALESCE(c.apellido,'')) AS cliente_name,
-        c.email AS email,
-        c.celular AS celular,
-        c.identificacion_fiscal AS dni,
-        m.name AS marca_name,
-        mo.name AS modelo_name,
-        oc.name AS origen_name,
-        sc.name AS suborigen_name,
-        ec.nombre AS etapa_name,
-        u1.fullname AS created_by_name,
-        u2.fullname AS asignado_a_name
+        COALESCE(c.nombre, '') AS cliente_nombre,
+        COALESCE(c.apellido, '') AS cliente_apellido,
+        c.email AS cliente_email,
+        c.celular AS cliente_celular,
+        c.identificacion_fiscal AS cliente_dni,
+        
+        m.name AS marca_nombre,
+        mo.name AS modelo_nombre,
+        oc.name AS origen_nombre,
+        sc.name AS suborigen_nombre,
+        ec.nombre AS etapa_nombre,
+        
+        u1.fullname AS creado_por_nombre,
+        u2.fullname AS asignado_a_nombre,
+        
+        DATE_FORMAT(o.created_at, '%Y-%m-%d %H:%i:%s') AS fecha_creacion,
+        DATE_FORMAT(o.updated_at, '%Y-%m-%d %H:%i:%s') AS fecha_actualizacion
 
       FROM oportunidades o
       LEFT JOIN clientes c ON c.id = o.cliente_id
@@ -65,10 +57,10 @@ export async function GET(req, { params }) {
       LEFT JOIN usuarios u1 ON u1.id = o.created_by
       LEFT JOIN usuarios u2 ON u2.id = o.asignado_a
       WHERE o.id = ?
-        AND o.oportunidad_id REGEXP ?
+        AND o.oportunidad_id LIKE 'LD-%'
       LIMIT 1
       `,
-      [id, REGEX_LD]
+      [id]
     );
 
     if (!rows.length) {
@@ -100,184 +92,111 @@ export async function PUT(req, { params }) {
     const { id } = await params;
     const body = await req.json();
 
-    const cliente_id = body.cliente_id ? Number(body.cliente_id) : null;
-    const marca_id = body.marca_id ? Number(body.marca_id) : null;
-    const modelo_id = body.modelo_id ? Number(body.modelo_id) : null;
-    const origen_id = body.origen_id ? Number(body.origen_id) : null;
-
-    const suborigen_id =
-      body.suborigen_id === null ||
-      body.suborigen_id === undefined ||
-      body.suborigen_id === ""
-        ? null
-        : Number(body.suborigen_id);
-
-    const detalle = (body.detalle || "").trim() || null;
-
-    const etapasconversion_id = body.etapasconversion_id
-      ? Number(body.etapasconversion_id)
-      : null;
-
-    const created_by =
-      body.created_by === null ||
-      body.created_by === undefined ||
-      body.created_by === ""
-        ? null
-        : Number(body.created_by);
-
-    const asignado_a =
-      body.asignado_a === null ||
-      body.asignado_a === undefined ||
-      body.asignado_a === ""
-        ? null
-        : Number(body.asignado_a);
-
-    const fecha_agenda =
-      body.fecha_agenda && String(body.fecha_agenda).trim() !== ""
-        ? String(body.fecha_agenda).trim()
-        : null;
-
-    const hora_agenda =
-      body.hora_agenda && String(body.hora_agenda).trim() !== ""
-        ? String(body.hora_agenda).trim()
-        : null;
-
-    if (
-      !cliente_id ||
-      !marca_id ||
-      !modelo_id ||
-      !origen_id ||
-      !etapasconversion_id ||
-      !created_by
-    ) {
-      return NextResponse.json(
-        {
-          message:
-            "cliente_id, marca_id, modelo_id, origen_id, etapasconversion_id y created_by son obligatorios",
-        },
-        { status: 400 }
-      );
-    }
-
-    const [exists] = await db.query(
-      `
-      SELECT id
-      FROM oportunidades
-      WHERE id = ?
-        AND oportunidad_id REGEXP ?
-      LIMIT 1
-      `,
-      [id, REGEX_LD]
+    // Validar que sea un lead LD
+    const [existsCheck] = await db.query(
+      `SELECT id FROM oportunidades WHERE id = ? AND oportunidad_id LIKE 'LD-%' LIMIT 1`,
+      [id]
     );
 
-    if (!exists.length) {
+    if (!existsCheck.length) {
       return NextResponse.json(
         { message: "Lead LD no encontrado" },
         { status: 404 }
       );
     }
 
-    const [cliente] = await db.query(
+    const cliente_id = body.cliente_id ? Number(body.cliente_id) : null;
+    const marca_id = body.marca_id ? Number(body.marca_id) : null;
+    const modelo_id = body.modelo_id ? Number(body.modelo_id) : null;
+    const origen_id = body.origen_id ? Number(body.origen_id) : null;
+    const suborigen_id = body.suborigen_id ? Number(body.suborigen_id) : null;
+    const detalle = (body.detalle || "").trim() || null;
+    const etapasconversion_id = body.etapasconversion_id ? Number(body.etapasconversion_id) : null;
+    const created_by = body.created_by ? Number(body.created_by) : null;
+    const asignado_a = body.asignado_a ? Number(body.asignado_a) : null;
+
+    // Validar campos obligatorios
+    if (!cliente_id || !origen_id || !etapasconversion_id || !created_by) {
+      return NextResponse.json(
+        {
+          message: "Campos obligatorios: cliente_id, origen_id, etapasconversion_id, created_by",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Validar existencia de registros relacionados
+    const [clienteCheck] = await db.query(
       `SELECT id FROM clientes WHERE id = ? LIMIT 1`,
       [cliente_id]
     );
-    if (!cliente.length) {
+    if (!clienteCheck.length) {
       return NextResponse.json(
-        { message: "El cliente no existe" },
+        { message: "Cliente no encontrado" },
         { status: 404 }
       );
     }
 
-    const [marca] = await db.query(
-      `SELECT id FROM marcas WHERE id = ? LIMIT 1`,
-      [marca_id]
-    );
-    if (!marca.length) {
-      return NextResponse.json(
-        { message: "La marca no existe" },
-        { status: 404 }
-      );
-    }
-
-    const [modelo] = await db.query(
-      `SELECT id FROM modelos WHERE id = ? LIMIT 1`,
-      [modelo_id]
-    );
-    if (!modelo.length) {
-      return NextResponse.json(
-        { message: "El modelo no existe" },
-        { status: 404 }
-      );
-    }
-
-    const [origen] = await db.query(
+    const [origenCheck] = await db.query(
       `SELECT id FROM origenes_citas WHERE id = ? LIMIT 1`,
       [origen_id]
     );
-    if (!origen.length) {
+    if (!origenCheck.length) {
       return NextResponse.json(
-        { message: "El origen no existe" },
+        { message: "Origen no encontrado" },
         { status: 404 }
       );
     }
 
     if (suborigen_id) {
-      const [suborigen] = await db.query(
-        `
-        SELECT id
-        FROM suborigenes_citas
-        WHERE id = ? AND origen_id = ?
-        LIMIT 1
-        `,
+      const [suborigenCheck] = await db.query(
+        `SELECT id FROM suborigenes_citas WHERE id = ? AND origen_id = ? LIMIT 1`,
         [suborigen_id, origen_id]
       );
-
-      if (!suborigen.length) {
+      if (!suborigenCheck.length) {
         return NextResponse.json(
-          {
-            message: "El suborigen no existe o no pertenece al origen seleccionado",
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    const [etapa] = await db.query(
-      `SELECT id FROM etapasconversion WHERE id = ? LIMIT 1`,
-      [etapasconversion_id]
-    );
-    if (!etapa.length) {
-      return NextResponse.json(
-        { message: "La etapa de conversión no existe" },
-        { status: 404 }
-      );
-    }
-
-    const [creador] = await db.query(
-      `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
-      [created_by]
-    );
-    if (!creador.length) {
-      return NextResponse.json(
-        { message: "El usuario creador no existe" },
-        { status: 404 }
-      );
-    }
-
-    if (asignado_a) {
-      const [asignado] = await db.query(
-        `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
-        [asignado_a]
-      );
-
-      if (!asignado.length) {
-        return NextResponse.json(
-          { message: "El usuario asignado no existe" },
+          { message: "Suborigen no válido para este origen" },
           { status: 404 }
         );
       }
     }
 
+    const [etapaCheck] = await db.query(
+      `SELECT id FROM etapasconversion WHERE id = ? LIMIT 1`,
+      [etapasconversion_id]
+    );
+    if (!etapaCheck.length) {
+      return NextResponse.json(
+        { message: "Etapa no encontrada" },
+        { status: 404 }
+      );
+    }
+
+    const [usuarioCheck] = await db.query(
+      `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
+      [created_by]
+    );
+    if (!usuarioCheck.length) {
+      return NextResponse.json(
+        { message: "Usuario creador no encontrado" },
+        { status: 404 }
+      );
+    }
+
+    if (asignado_a) {
+      const [asignadoCheck] = await db.query(
+        `SELECT id FROM usuarios WHERE id = ? LIMIT 1`,
+        [asignado_a]
+      );
+      if (!asignadoCheck.length) {
+        return NextResponse.json(
+          { message: "Usuario asignado no encontrado" },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Actualizar
     await db.query(
       `
       UPDATE oportunidades
@@ -291,11 +210,8 @@ export async function PUT(req, { params }) {
         etapasconversion_id = ?,
         created_by = ?,
         asignado_a = ?,
-        fecha_agenda = ?,
-        hora_agenda = ?,
         updated_at = NOW()
-      WHERE id = ?
-        AND oportunidad_id REGEXP ?
+      WHERE id = ? AND oportunidad_id LIKE 'LD-%'
       `,
       [
         cliente_id,
@@ -307,15 +223,13 @@ export async function PUT(req, { params }) {
         etapasconversion_id,
         created_by,
         asignado_a,
-        fecha_agenda,
-        hora_agenda,
         id,
-        REGEX_LD,
       ]
     );
 
     return NextResponse.json({
-      message: "Lead LD actualizado",
+      message: "Lead actualizado correctamente",
+      id,
     });
   } catch (error) {
     console.error("PUT /api/leads/[id] error:", error);
@@ -323,8 +237,6 @@ export async function PUT(req, { params }) {
       {
         message: "Error al actualizar lead",
         error: error.message,
-        sqlMessage: error.sqlMessage || null,
-        code: error.code || null,
       },
       { status: 500 }
     );
@@ -340,12 +252,8 @@ export async function DELETE(req, { params }) {
     const { id } = await params;
 
     const [result] = await db.query(
-      `
-      DELETE FROM oportunidades
-      WHERE id = ?
-        AND oportunidad_id REGEXP ?
-      `,
-      [id, REGEX_LD]
+      `DELETE FROM oportunidades WHERE id = ? AND oportunidad_id LIKE 'LD-%'`,
+      [id]
     );
 
     if (!result.affectedRows) {
@@ -355,7 +263,7 @@ export async function DELETE(req, { params }) {
       );
     }
 
-    return NextResponse.json({ message: "Lead LD eliminado" });
+    return NextResponse.json({ message: "Lead eliminado correctamente" });
   } catch (error) {
     console.error("DELETE /api/leads/[id] error:", error);
     return NextResponse.json(
