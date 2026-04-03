@@ -285,6 +285,7 @@ export default function LeadsTable({
     }
 
     router.push(`/oportunidades/${row.id}`);
+
   };
 
   return (
