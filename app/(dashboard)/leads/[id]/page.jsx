@@ -439,12 +439,12 @@ export default function LeadDetailPage() {
         ? Number(etapaProxima)
         : etapaActual;
 
-      // ✅ CAMBIAR API A /api/actividades-leads
-      const resActividad = await fetch("/api/actividades-leads", {
+      // ✅ CAMBIAR API A /api/actividades-oportunidades
+      const resActividad = await fetch("/api/actividades-oportunidades", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          lead_id: Number(leadId),
+          oportunidad_id: Number(leadId),
           etapasconversion_id: etapaParaActividad,
           detalle: detalleAccion,
           created_by: userId,
