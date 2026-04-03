@@ -71,6 +71,11 @@ export async function POST(req) {
   const body = await req.json().catch(() => ({}));
   const channel = body?.channel || "whatsapp";
 
+  // Ventas IA y menú solo aplican para WhatsApp — retornar antes de validar phone
+  if (channel !== "whatsapp") {
+    return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
+  }
+
   const phone = normalizePhone(body?.phone);
 
   if (!phone) {
@@ -82,11 +87,6 @@ export async function POST(req) {
   if (body?.force_ventas === true) {
     await createVentasSession(phone);
     return NextResponse.json({ ok: true, route: "ventas_ia", forced: true });
-  }
-
-  // Ventas IA y menú solo aplican para WhatsApp
-  if (channel !== "whatsapp") {
-    return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
   }
 
   const text = body?.text || "";
