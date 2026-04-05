@@ -56,6 +56,7 @@ export default function ReservaDetailPage() {
 
   const [reserva, setReserva] = useState(null);
   const [detalles, setDetalles] = useState(null);
+  const [cotizacion, setCotizacion] = useState(null);
   const [accesorios, setAccesorios] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -68,10 +69,15 @@ export default function ReservaDetailPage() {
   const [filteredProvincias, setFilteredProvincias] = useState([]);
   const [filteredDistritos, setFilteredDistritos] = useState([]);
 
+  // Estados para VIN
+  const [historialesCarros, setHistorialesCarros] = useState([]);
+  const [filteredCarros, setFilteredCarros] = useState([]);
+
   // Estados para los popovers
   const [openDep, setOpenDep] = useState(false);
   const [openProv, setOpenProv] = useState(false);
   const [openDist, setOpenDist] = useState(false);
+  const [openVin, setOpenVin] = useState(false);
 
   // Form states
   const [formData, setFormData] = useState({
@@ -110,60 +116,103 @@ export default function ReservaDetailPage() {
     marca_nombre: "",
     modelo_nombre: "",
     clase_nombre: "",
+    version_nombre: "",
     anio: "",
     precio_base: "",
     subtotal: "",
   });
 
-  // ✅ Cargar ubicaciones PRIMERO
+  // ✅ Cargar ubicaciones y carros PRIMERO
   useEffect(() => {
-    async function loadUbicaciones() {
+    async function loadInitialData() {
       try {
-        const [depRes, provRes, distRes] = await Promise.all([
+        const [depRes, provRes, distRes, carrosRes] = await Promise.all([
           fetch("/api/departamentos"),
           fetch("/api/provincias"),
           fetch("/api/distritos"),
+          fetch("/api/historial-carros"),
         ]);
 
         let deps = await depRes.json();
         let provs = await provRes.json();
         let dists = await distRes.json();
+        let carros = await carrosRes.json();
 
-        console.log("Departamentos cargados:", deps);
-        console.log("Provincias cargadas:", provs);
-        console.log("Distritos cargados:", dists);
-
-        // ✅ Si los datos vienen dentro de una propiedad, extraerlos
         deps = deps.data || (Array.isArray(deps) ? deps : []);
         provs = provs.data || (Array.isArray(provs) ? provs : []);
         dists = dists.data || (Array.isArray(dists) ? dists : []);
+        carros = carros.data || (Array.isArray(carros) ? carros : []);
 
         setDepartamentos(Array.isArray(deps) ? deps : []);
         setProvincias(Array.isArray(provs) ? provs : []);
         setDistritos(Array.isArray(dists) ? dists : []);
+        setHistorialesCarros(Array.isArray(carros) ? carros : []);
 
-        // ✅ Después de cargar ubicaciones, cargar reserva
-        loadReservaDetail(Array.isArray(provs) ? provs : [], Array.isArray(dists) ? dists : []);
+        console.log("Carros cargados:", Array.isArray(carros) ? carros.length : 0);
+
+        loadReservaDetail(
+          Array.isArray(provs) ? provs : [],
+          Array.isArray(dists) ? dists : [],
+          Array.isArray(carros) ? carros : []
+        );
       } catch (error) {
-        console.error("Error cargando ubicaciones:", error);
+        console.error("Error cargando datos iniciales:", error);
         setDepartamentos([]);
         setProvincias([]);
         setDistritos([]);
+        setHistorialesCarros([]);
         setLoading(false);
       }
     }
 
-    loadUbicaciones();
+    loadInitialData();
   }, [params.id]);
+
+  // ✅ DEBUG Y FILTRADO DE CARROS - USANDO COTIZACION
+  useEffect(() => {
+    if (cotizacion && historialesCarros.length > 0) {
+      const marcaTarget = parseInt(cotizacion.marca_id);
+      const modeloTarget = parseInt(cotizacion.modelo_id);
+      const versionTarget = parseInt(cotizacion.version_id);
+
+      console.log("=== DEBUG FILTRADO VIN ===");
+      console.log("Buscando (desde cotizacion):");
+      console.log("  marca_id:", marcaTarget);
+      console.log("  modelo_id:", modeloTarget);
+      console.log("  version_id:", versionTarget);
+
+      console.log("\nPrimeros 5 carros disponibles:");
+      historialesCarros.slice(0, 5).forEach((carro) => {
+        console.log(
+          `  VIN: ${carro.vin} - marca: ${carro.marca_id}, modelo: ${carro.modelo_id}, version: ${carro.version_id}`
+        );
+      });
+
+      const filtered = historialesCarros.filter((carro) => {
+        const marcaMatch = parseInt(carro.marca_id) === marcaTarget;
+        const modeloMatch = parseInt(carro.modelo_id) === modeloTarget;
+        const versionMatch = parseInt(carro.version_id) === versionTarget;
+
+        return marcaMatch && modeloMatch && versionMatch;
+      });
+
+      console.log("\nCarros filtrados:", filtered.length);
+      filtered.forEach((carro) => {
+        console.log(`  ${carro.vin}`);
+      });
+      console.log("=== FIN DEBUG ===\n");
+
+      setFilteredCarros(filtered);
+    }
+  }, [cotizacion, historialesCarros]);
 
   // ✅ Filtrar provincias cuando cambia departamento
   useEffect(() => {
     if (formData.departamento_id) {
       const depId = parseInt(formData.departamento_id);
       const filtered = Array.isArray(provincias)
-        ? provincias.filter(p => p.departamento_id === depId)
+        ? provincias.filter((p) => p.departamento_id === depId)
         : [];
-      console.log(`Filtrando provincias para departamento ${depId}:`, filtered);
       setFilteredProvincias(filtered);
       setFilteredDistritos([]);
     } else {
@@ -177,9 +226,8 @@ export default function ReservaDetailPage() {
     if (formData.provincia_id) {
       const provId = parseInt(formData.provincia_id);
       const filtered = Array.isArray(distritos)
-        ? distritos.filter(d => d.provincia_id === provId)
+        ? distritos.filter((d) => d.provincia_id === provId)
         : [];
-      console.log(`Filtrando distritos para provincia ${provId}:`, filtered);
       setFilteredDistritos(filtered);
     } else {
       setFilteredDistritos([]);
@@ -227,7 +275,7 @@ export default function ReservaDetailPage() {
         ];
 
         const cleanData = {};
-        editableFields.forEach(key => {
+        editableFields.forEach((key) => {
           if (key in data) {
             cleanData[key] = data[key] === "" ? null : data[key];
           }
@@ -270,62 +318,58 @@ export default function ReservaDetailPage() {
   }, [formData, autoSaveDetalles, detalles]);
 
   // ✅ Cargar detalles de reserva
-  async function loadReservaDetail(provList = [], distList = []) {
+  async function loadReservaDetail(provList = [], distList = [], carrosList = []) {
     try {
       const res = await fetch(`/api/reservas/${params.id}`, {
         cache: "no-store",
       });
       const data = await res.json();
+
+      console.log("=== DATOS DE RESERVA CARGADOS ===");
+      console.log("Detalles:", data.detalles);
+      console.log("Cotizaciones:", data.cotizaciones);
+      console.log("=== FIN ===\n");
+
       setReserva(data);
       setDetalles(data.detalles);
+      setCotizacion(data.cotizaciones?.[0] || null); // ✅ USAR COTIZACION
       setAccesorios(data.accesorios || []);
 
-      console.log("Reserva completa cargada:", data);
-
-      // ✅ Pre-llenar formulario
       if (data.detalles) {
-        // ✅ Obtener IDs - buscar primero en detalles, luego en datos adicionales
         const depId = (data.detalles.departamento_id || data.departamento_id)?.toString() || "";
         const provId = (data.detalles.provincia_id || data.provincia_id)?.toString() || "";
         const distId = (data.detalles.distrito_id || data.distrito_id)?.toString() || "";
 
-        console.log("IDs cargados:", { depId, provId, distId });
-        console.log("Detalles completos:", data.detalles);
-
-        // ✅ Si no hay IDs en detalles, intentar buscar en provincias/distritos por nombre
         let finalDepId = depId;
         let finalProvId = provId;
         let finalDistId = distId;
 
-        // Si tenemos nombre de departamento pero no ID, buscarlo
         if (!finalDepId && data.detalles.departamento_nombre && Array.isArray(departamentos)) {
-          const foundDep = departamentos.find(d => d.nombre === data.detalles.departamento_nombre);
+          const foundDep = departamentos.find((d) => d.nombre === data.detalles.departamento_nombre);
           if (foundDep) {
             finalDepId = foundDep.id.toString();
           }
         }
 
-        // Si tenemos nombre de provincia pero no ID, buscarlo
         if (!finalProvId && data.detalles.provincia_nombre && Array.isArray(provList)) {
-          const foundProv = provList.find(p => p.nombre?.trim() === data.detalles.provincia_nombre?.trim());
+          const foundProv = provList.find((p) => p.nombre?.trim() === data.detalles.provincia_nombre?.trim());
           if (foundProv) {
             finalProvId = foundProv.id.toString();
           }
         }
 
-        // Si tenemos nombre de distrito pero no ID, buscarlo
         if (!finalDistId && data.detalles.distrito_nombre && Array.isArray(distList)) {
-          const foundDist = distList.find(d => d.nombre === data.detalles.distrito_nombre);
+          const foundDist = distList.find((d) => d.nombre === data.detalles.distrito_nombre);
           if (foundDist) {
             finalDistId = foundDist.id.toString();
           }
         }
 
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           tipo_comprobante: data.detalles.tipo_comprobante || "",
-          fecha_nacimiento: data.detalles.fecha_nacimiento 
-            ? data.detalles.fecha_nacimiento.split('T')[0] 
+          fecha_nacimiento: data.detalles.fecha_nacimiento
+            ? data.detalles.fecha_nacimiento.split("T")[0]
             : "",
           ocupacion: data.detalles.ocupacion || "",
           domicilio: data.detalles.domicilio || "",
@@ -360,24 +404,21 @@ export default function ReservaDetailPage() {
           marca_nombre: data.detalles.marca_nombre || "",
           modelo_nombre: data.detalles.modelo_nombre || "",
           clase_nombre: data.detalles.clase_nombre || "",
+          version_nombre: data.detalles.version_nombre || "",
           anio: data.detalles.anio?.toString() || "",
           precio_base: data.detalles.precio_base?.toString() || "",
           subtotal: data.detalles.subtotal?.toString() || "",
         }));
 
-        // ✅ Filtrar provincias si hay departamento
         if (finalDepId && Array.isArray(provList)) {
           const depIdNum = parseInt(finalDepId);
-          const filtered = provList.filter(p => p.departamento_id === depIdNum);
-          console.log("Provincias filtradas:", filtered);
+          const filtered = provList.filter((p) => p.departamento_id === depIdNum);
           setFilteredProvincias(filtered);
         }
 
-        // ✅ Filtrar distritos si hay provincia
         if (finalProvId && Array.isArray(distList)) {
           const provIdNum = parseInt(finalProvId);
-          const filtered = distList.filter(d => d.provincia_id === provIdNum);
-          console.log("Distritos filtrados:", filtered);
+          const filtered = distList.filter((d) => d.provincia_id === provIdNum);
           setFilteredDistritos(filtered);
         }
       }
@@ -391,31 +432,39 @@ export default function ReservaDetailPage() {
   }
 
   const handleFieldChange = (field, value) => {
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [field]: value,
     }));
   };
 
-  // ✅ Obtener nombre del departamento seleccionado
   const getDepartamentoNombre = () => {
-    if (!formData.departamento_id || !Array.isArray(departamentos)) return "Seleccionar departamento";
-    const dep = departamentos.find(d => d.id.toString() === formData.departamento_id);
+    if (!formData.departamento_id || !Array.isArray(departamentos))
+      return "Seleccionar departamento";
+    const dep = departamentos.find((d) => d.id.toString() === formData.departamento_id);
     return dep ? dep.nombre : "Seleccionar departamento";
   };
 
-  // ✅ Obtener nombre de la provincia seleccionada
   const getProvinciaNombre = () => {
-    if (!formData.provincia_id || !Array.isArray(provincias)) return "Seleccionar provincia";
-    const prov = provincias.find(p => p.id.toString() === formData.provincia_id);
+    if (!formData.provincia_id || !Array.isArray(provincias))
+      return "Seleccionar provincia";
+    const prov = provincias.find((p) => p.id.toString() === formData.provincia_id);
     return prov ? prov.nombre : "Seleccionar provincia";
   };
 
-  // ✅ Obtener nombre del distrito seleccionado
   const getDistritoNombre = () => {
-    if (!formData.distrito_id || !Array.isArray(distritos)) return "Seleccionar distrito";
-    const dist = distritos.find(d => d.id.toString() === formData.distrito_id);
+    if (!formData.distrito_id || !Array.isArray(distritos))
+      return "Seleccionar distrito";
+    const dist = distritos.find((d) => d.id.toString() === formData.distrito_id);
     return dist ? dist.nombre : "Seleccionar distrito";
+  };
+
+  const getVinDisplay = () => {
+    if (!formData.vin) return "Seleccionar VIN";
+    const carro = historialesCarros.find((c) => c.vin === formData.vin);
+    return carro
+      ? `${carro.vin} - Precio Venta: S/ ${carro.precioventa || "N/A"}`
+      : formData.vin;
   };
 
   if (loading) {
@@ -434,11 +483,7 @@ export default function ReservaDetailPage() {
           <div className="flex items-center gap-4">
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => router.back()}
-                >
+                <Button variant="outline" size="icon" onClick={() => router.back()}>
                   <ArrowLeft size={18} />
                 </Button>
               </TooltipTrigger>
@@ -488,8 +533,10 @@ export default function ReservaDetailPage() {
               <CardTitle className="text-sm">Vehículo</CardTitle>
             </CardHeader>
             <CardContent className="text-sm space-y-2">
-              <p className="font-semibold">{formData.marca_nombre} {formData.modelo_nombre}</p>
-              <p className="text-xs text-gray-600">A��o: {formData.anio}</p>
+              <p className="font-semibold">
+                {formData.marca_nombre} {formData.modelo_nombre}
+              </p>
+              <p className="text-xs text-gray-600">Año: {formData.anio}</p>
               <p className="text-xs text-gray-600">VIN: {formData.vin}</p>
             </CardContent>
           </Card>
@@ -517,28 +564,6 @@ export default function ReservaDetailPage() {
             </CardContent>
           </Card>
         </div>
-
-        {/* ACCESORIOS */}
-        {accesorios.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">Accesorios</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2">
-                {accesorios.map((acc, idx) => (
-                  <div key={idx} className="flex justify-between p-2 bg-gray-50 rounded">
-                    <div className="text-sm">
-                      <p className="font-medium">{acc.detalle}</p>
-                      <p className="text-xs text-gray-600">{acc.numero_parte}</p>
-                    </div>
-                    <p className="font-semibold">{acc.moneda_simbolo} {acc.precio}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
         {/* BOTONES DE ACCIÓN */}
         <div className="flex gap-2 flex-wrap">
@@ -615,7 +640,9 @@ export default function ReservaDetailPage() {
                   </label>
                   <Input
                     value={formData.tipo_comprobante}
-                    onChange={(e) => handleFieldChange("tipo_comprobante", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("tipo_comprobante", e.target.value)
+                    }
                     placeholder="Boleta/Factura"
                   />
                 </div>
@@ -646,7 +673,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="date"
                     value={formData.fecha_nacimiento}
-                    onChange={(e) => handleFieldChange("fecha_nacimiento", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("fecha_nacimiento", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -691,20 +720,25 @@ export default function ReservaDetailPage() {
                         <CommandEmpty>No hay departamento.</CommandEmpty>
                         <CommandList>
                           <CommandGroup>
-                            {Array.isArray(departamentos) && departamentos.length > 0 ? (
+                            {Array.isArray(departamentos) &&
+                            departamentos.length > 0 ? (
                               departamentos.map((dep) => (
                                 <CommandItem
                                   key={dep.id}
                                   value={dep.nombre}
                                   onSelect={() => {
-                                    handleFieldChange("departamento_id", dep.id.toString());
+                                    handleFieldChange(
+                                      "departamento_id",
+                                      dep.id.toString()
+                                    );
                                     setOpenDep(false);
                                   }}
                                 >
                                   <Check
                                     className={cn(
                                       "mr-2 h-4 w-4",
-                                      formData.departamento_id === dep.id.toString()
+                                      formData.departamento_id ===
+                                        dep.id.toString()
                                         ? "opacity-100"
                                         : "opacity-0"
                                     )}
@@ -713,7 +747,9 @@ export default function ReservaDetailPage() {
                                 </CommandItem>
                               ))
                             ) : (
-                              <CommandEmpty>No hay departamentos disponibles</CommandEmpty>
+                              <CommandEmpty>
+                                No hay departamentos disponibles
+                              </CommandEmpty>
                             )}
                           </CommandGroup>
                         </CommandList>
@@ -746,13 +782,17 @@ export default function ReservaDetailPage() {
                         <CommandEmpty>No hay provincia.</CommandEmpty>
                         <CommandList>
                           <CommandGroup>
-                            {Array.isArray(filteredProvincias) && filteredProvincias.length > 0 ? (
+                            {Array.isArray(filteredProvincias) &&
+                            filteredProvincias.length > 0 ? (
                               filteredProvincias.map((prov) => (
                                 <CommandItem
                                   key={prov.id}
                                   value={prov.nombre}
                                   onSelect={() => {
-                                    handleFieldChange("provincia_id", prov.id.toString());
+                                    handleFieldChange(
+                                      "provincia_id",
+                                      prov.id.toString()
+                                    );
                                     setOpenProv(false);
                                   }}
                                 >
@@ -768,7 +808,9 @@ export default function ReservaDetailPage() {
                                 </CommandItem>
                               ))
                             ) : (
-                              <CommandEmpty>No hay provincia para este departamento</CommandEmpty>
+                              <CommandEmpty>
+                                No hay provincia para este departamento
+                              </CommandEmpty>
                             )}
                           </CommandGroup>
                         </CommandList>
@@ -801,13 +843,17 @@ export default function ReservaDetailPage() {
                         <CommandEmpty>No hay distrito.</CommandEmpty>
                         <CommandList>
                           <CommandGroup>
-                            {Array.isArray(filteredDistritos) && filteredDistritos.length > 0 ? (
+                            {Array.isArray(filteredDistritos) &&
+                            filteredDistritos.length > 0 ? (
                               filteredDistritos.map((dist) => (
                                 <CommandItem
                                   key={dist.id}
                                   value={dist.nombre}
                                   onSelect={() => {
-                                    handleFieldChange("distrito_id", dist.id.toString());
+                                    handleFieldChange(
+                                      "distrito_id",
+                                      dist.id.toString()
+                                    );
                                     setOpenDist(false);
                                   }}
                                 >
@@ -823,7 +869,9 @@ export default function ReservaDetailPage() {
                                 </CommandItem>
                               ))
                             ) : (
-                              <CommandEmpty>No hay distrito para esta provincia</CommandEmpty>
+                              <CommandEmpty>
+                                No hay distrito para esta provincia
+                              </CommandEmpty>
                             )}
                           </CommandGroup>
                         </CommandList>
@@ -836,12 +884,7 @@ export default function ReservaDetailPage() {
                   <label className="text-xs font-medium text-gray-600 block mb-2">
                     Email
                   </label>
-                  <Input
-                    type="email"
-                    value={formData.email}
-                    disabled
-                    className="bg-gray-100"
-                  />
+                  <Input value={formData.email} disabled className="bg-gray-100" />
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-2">
@@ -859,7 +902,9 @@ export default function ReservaDetailPage() {
                   </label>
                   <Input
                     value={formData.nombreconyugue}
-                    onChange={(e) => handleFieldChange("nombreconyugue", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("nombreconyugue", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -868,7 +913,9 @@ export default function ReservaDetailPage() {
                   </label>
                   <Input
                     value={formData.dniconyugue}
-                    onChange={(e) => handleFieldChange("dniconyugue", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("dniconyugue", e.target.value)
+                    }
                   />
                 </div>
               </div>
@@ -880,24 +927,6 @@ export default function ReservaDetailPage() {
                 DATOS DEL VEHÍCULO
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-2">
-                    VIN *
-                  </label>
-                  <Input
-                    value={formData.vin}
-                    onChange={(e) => handleFieldChange("vin", e.target.value)}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-600 block mb-2">
-                    Uso del Vehículo *
-                  </label>
-                  <Input
-                    value={formData.usovehiculo}
-                    onChange={(e) => handleFieldChange("usovehiculo", e.target.value)}
-                  />
-                </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-2">
                     Marca
@@ -930,6 +959,16 @@ export default function ReservaDetailPage() {
                 </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-2">
+                    Versión
+                  </label>
+                  <Input
+                    value={formData.version_nombre}
+                    disabled
+                    className="bg-gray-100"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-2">
                     Año
                   </label>
                   <Input
@@ -938,13 +977,100 @@ export default function ReservaDetailPage() {
                     className="bg-gray-100"
                   />
                 </div>
+
+                {/* VIN SELECT */}
+                <div className="md:col-span-2">
+                  <label className="text-xs font-medium text-gray-600 block mb-2">
+                    VIN * {filteredCarros.length > 0 && `(${filteredCarros.length} disponibles)`}
+                  </label>
+                  <Popover open={openVin} onOpenChange={setOpenVin}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={openVin}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate">{getVinDisplay()}</span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-full p-0">
+                      <Command>
+                        <CommandInput placeholder="Buscar por VIN..." />
+                        <CommandEmpty>
+                          {filteredCarros.length === 0
+                            ? `No hay VINs disponibles para ${formData.marca_nombre} ${formData.modelo_nombre} ${formData.version_nombre}`
+                            : "No se encontró el VIN"}
+                        </CommandEmpty>
+                        <CommandList>
+                          <CommandGroup>
+                            {Array.isArray(filteredCarros) &&
+                            filteredCarros.length > 0 ? (
+                              filteredCarros.map((carro) => (
+                                <CommandItem
+                                  key={carro.vin}
+                                  value={carro.vin}
+                                  onSelect={() => {
+                                    handleFieldChange("vin", carro.vin);
+                                    setOpenVin(false);
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      formData.vin === carro.vin
+                                        ? "opacity-100"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                  <div className="flex flex-col">
+                                    <span className="font-mono text-sm">
+                                      {carro.vin}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      Compra: S/ {carro.preciocompra || "N/A"} | Venta: S/ {carro.precioventa || "N/A"}
+                                    </span>
+                                  </div>
+                                </CommandItem>
+                              ))
+                            ) : (
+                              <CommandEmpty>
+                                No hay VINs para esta combinación
+                              </CommandEmpty>
+                            )}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                  {filteredCarros.length === 0 && formData.vin && (
+                    <p className="text-xs text-amber-600 mt-2">
+                      ⚠️ El VIN "{formData.vin}" no existe para esta combinación de marca/modelo/versión
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-2">
+                    Uso del Vehículo *
+                  </label>
+                  <Input
+                    value={formData.usovehiculo}
+                    onChange={(e) =>
+                      handleFieldChange("usovehiculo", e.target.value)
+                    }
+                  />
+                </div>
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-2">
                     Color Externo *
                   </label>
                   <Input
                     value={formData.color_externo}
-                    onChange={(e) => handleFieldChange("color_externo", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("color_externo", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -953,7 +1079,9 @@ export default function ReservaDetailPage() {
                   </label>
                   <Input
                     value={formData.color_interno}
-                    onChange={(e) => handleFieldChange("color_interno", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("color_interno", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -962,7 +1090,9 @@ export default function ReservaDetailPage() {
                   </label>
                   <Input
                     value={formData.numero_motor}
-                    onChange={(e) => handleFieldChange("numero_motor", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("numero_motor", e.target.value)
+                    }
                   />
                 </div>
               </div>
@@ -981,7 +1111,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.dsctocredinissan}
-                    onChange={(e) => handleFieldChange("dsctocredinissan", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("dsctocredinissan", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -991,7 +1123,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.dsctotienda}
-                    onChange={(e) => handleFieldChange("dsctotienda", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("dsctotienda", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1001,7 +1135,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.dsctobonoretoma}
-                    onChange={(e) => handleFieldChange("dsctobonoretoma", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("dsctobonoretoma", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1011,7 +1147,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.dsctonper}
-                    onChange={(e) => handleFieldChange("dsctonper", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("dsctonper", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1063,7 +1201,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.tarjetaplaca}
-                    onChange={(e) => handleFieldChange("tarjetaplaca", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("tarjetaplaca", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1083,7 +1223,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.tc_referencial}
-                    onChange={(e) => handleFieldChange("tc_referencial", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("tc_referencial", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1102,7 +1244,9 @@ export default function ReservaDetailPage() {
 
             {/* VALORES - CARTA */}
             <div className="border-b pb-6">
-              <h3 className="font-semibold text-gray-900 mb-4">VALORES - CARTA DE CARACTERÍSTICAS</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">
+                VALORES - CARTA DE CARACTERÍSTICAS
+              </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-2">
@@ -1111,7 +1255,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.valores_tc_ref}
-                    onChange={(e) => handleFieldChange("valores_tc_ref", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("valores_tc_ref", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1121,7 +1267,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.cuota_inicial}
-                    onChange={(e) => handleFieldChange("cuota_inicial", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("cuota_inicial", e.target.value)
+                    }
                   />
                 </div>
                 <div>
@@ -1131,7 +1279,9 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.monto_aprobado}
-                    onChange={(e) => handleFieldChange("monto_aprobado", e.target.value)}
+                    onChange={(e) =>
+                      handleFieldChange("monto_aprobado", e.target.value)
+                    }
                   />
                 </div>
               </div>
@@ -1144,7 +1294,9 @@ export default function ReservaDetailPage() {
               </label>
               <Textarea
                 value={formData.observaciones}
-                onChange={(e) => handleFieldChange("observaciones", e.target.value)}
+                onChange={(e) =>
+                  handleFieldChange("observaciones", e.target.value)
+                }
                 placeholder="Observaciones adicionales..."
                 rows={4}
                 className="text-sm"
@@ -1175,7 +1327,7 @@ export default function ReservaDetailPage() {
                 <p className="text-xs text-blue-700">
                   Los cambios se guardan automáticamente mientras escribes (después de 1.5
                   segundos sin escribir). Los campos en gris son datos de referencia y no
-                  pueden editarse.
+                  pueden editarse. Los VINs se filtran automáticamente según marca, modelo y versión.
                 </p>
               </div>
             </div>

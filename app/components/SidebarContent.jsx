@@ -324,6 +324,11 @@ export default function SidebarContent({ onNavigate, isMobile = false }) {
                 </DropdownMenuLabel>
 
                 <DropdownMenuSeparator />
+                <DropdownMenuLabel>
+                  {user.rolename}
+                </DropdownMenuLabel>
+
+                <DropdownMenuSeparator />
 
                 <DropdownMenuItem asChild>
                   <a
