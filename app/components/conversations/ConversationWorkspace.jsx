@@ -36,9 +36,11 @@ function channelFromInbox(channelType) {
 
 function mapSession(session) {
   if (!session) return null;
+  const sid = session.session_id ?? session.id;
+  if (!sid) return null;
   // Support both old CRM format and new Chatwoot format
   return {
-    session_id: session.session_id ?? session.id,
+    session_id: sid,
     client_name: session.client_name ?? session.meta?.sender?.name ?? "Cliente",
     cliente_nombre: session.cliente_nombre ?? session.client_name ?? session.meta?.sender?.name ?? "Cliente",
     phone: session.phone ?? session.celular ?? session.meta?.sender?.phone_number ?? "",
@@ -52,7 +54,9 @@ function mapSession(session) {
 function getAuthToken() {
   if (typeof document === "undefined") return "";
   const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-  return match ? match[1] : "";
+  const token = match ? match[1] : "";
+  if (!token) console.warn("ConversationWorkspace: no auth token found in cookies");
+  return token;
 }
 
 function getInitials(name) {
@@ -156,7 +160,9 @@ export default function ConversationWorkspace({
         message_direction: msg.message_type === 0 ? "inbound" : "outbound",
         source_channel: sess.source_channel || "whatsapp",
         created_at: msg.created_at
-          ? new Date(msg.created_at * 1000).toISOString()
+          ? (typeof msg.created_at === "number"
+            ? new Date(msg.created_at * 1000).toISOString()
+            : new Date(msg.created_at).toISOString())
           : null,
         message_status: msg.status || "sent",
         sender_name: msg.sender?.name || "",
