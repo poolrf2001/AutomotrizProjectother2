@@ -3,9 +3,8 @@ import { broadcastSseEvent } from "@/lib/chatwootSse";
 import crypto from "crypto";
 
 // EXCEPCIÓN DOCUMENTADA: Chatwoot envía su firma como HMAC-SHA256 en
-// x-chatwoot-signature — prescrito por el vendor. Se acepta también el header
-// estándar del proyecto (x-conversations-webhook-secret) como fallback.
-// La validación HMAC es más segura que comparación simple de token.
+// x-chatwoot-signature — prescrito por el vendor. La validación HMAC es más
+// segura que comparación simple de token.
 function verifySignature(body, signature) {
   const secret = process.env.CONVERSATIONS_WEBHOOK_SECRET;
   if (!secret) return false; // no secret configured → reject all (fail closed)
@@ -15,8 +14,8 @@ function verifySignature(body, signature) {
 
 export async function POST(req) {
   const rawBody = await req.text();
-  // Chatwoot sends x-chatwoot-signature, but we check project standard header too
-  const signature = req.headers.get("x-conversations-webhook-secret") || req.headers.get("x-chatwoot-signature") || "";
+  // Chatwoot sends HMAC-SHA256 signature in x-chatwoot-signature header
+  const signature = req.headers.get("x-chatwoot-signature") || "";
 
   if (!verifySignature(rawBody, signature)) {
     return NextResponse.json({ message: "Invalid signature" }, { status: 401 });
