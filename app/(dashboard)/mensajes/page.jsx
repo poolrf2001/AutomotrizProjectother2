@@ -400,35 +400,28 @@ export default function ConversationsPage() {
     const token = getAuthToken();
     if (!token) return;
 
-    // Carga inicial
-    fetchConversations("open")
-      .then(setSessions)
-      .catch((err) => console.error("SSE carga inicial fallida:", err));
+    // Resolver el status de Chatwoot a partir del filtro activo
+    const chatwootStatuses = ["open", "pending", "resolved"];
+    const activeStatus = chatwootStatuses.includes(assignmentFilter) ? assignmentFilter : "open";
 
     // SSE para actualizaciones en tiempo real
     const evtSource = new EventSource(`/api/chatwoot/sse?token=${token}`);
 
     evtSource.addEventListener("new_message", () => {
-      fetchConversations("open")
-        .then(setSessions)
-        .catch((err) => console.error("SSE new_message refresh fallido:", err));
+      fetchConversations(activeStatus).then(setSessions).catch(console.error);
     });
     evtSource.addEventListener("new_conversation", () => {
-      fetchConversations("open")
-        .then(setSessions)
-        .catch((err) => console.error("SSE new_conversation refresh fallido:", err));
+      fetchConversations(activeStatus).then(setSessions).catch(console.error);
     });
     evtSource.addEventListener("conversation_status", () => {
-      fetchConversations("open")
-        .then(setSessions)
-        .catch((err) => console.error("SSE conversation_status refresh fallido:", err));
+      fetchConversations(activeStatus).then(setSessions).catch(console.error);
     });
     evtSource.onerror = () => {
-      // El navegador reconecta EventSource automáticamente — no se necesita acción
+      console.warn("Chatwoot SSE: connection error — browser will auto-reconnect. readyState:", evtSource.readyState);
     };
 
     return () => evtSource.close();
-  }, [user?.id]);
+  }, [user?.id, assignmentFilter]);
 
   // ── Favicon + título con contador de no leídos ───────────────
   useEffect(() => {
