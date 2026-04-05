@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { updateConversationStatus } from "@/lib/chatwoot";
 import { authorizeConversation } from "@/lib/conversationsAuth";
 
-export async function PUT(req, { params }) {
+export async function POST(req, { params }) {
   const auth = authorizeConversation(req, "edit");
   if (!auth.ok) return auth.response;
 
