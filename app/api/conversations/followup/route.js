@@ -32,6 +32,7 @@ export async function GET(req) {
 
   const { searchParams } = new URL(req.url);
   const pending = searchParams.get("pending") === "1";
+  const closed  = searchParams.get("closed")  === "1";
 
   try {
     let query, params;
@@ -56,6 +57,25 @@ export async function GET(req) {
         LIMIT 50
       `;
       params = [];
+    } else if (closed) {
+      query = `
+        SELECT
+          cs.id,
+          cs.phone,
+          cs.source,
+          cs.followup_count,
+          cs.followup_next_at,
+          cs.closure_reason,
+          cs.updated_at,
+          TRIM(CONCAT(COALESCE(c.nombre, ''), ' ', COALESCE(c.apellido, ''))) AS nombre_cliente
+        FROM conversation_sessions cs
+        LEFT JOIN clientes c
+          ON REPLACE(REPLACE(REPLACE(c.celular, '+', ''), ' ', ''), '-', '') = cs.phone COLLATE utf8mb4_unicode_ci
+        WHERE cs.closure_reason IS NOT NULL
+        ORDER BY cs.updated_at DESC
+        LIMIT 100
+      `;
+      params = [];
     } else {
       query = `
         SELECT
@@ -65,10 +85,14 @@ export async function GET(req) {
           cs.followup_count,
           cs.followup_next_at,
           cs.closure_reason,
-          cs.updated_at
+          cs.updated_at,
+          TRIM(CONCAT(COALESCE(c.nombre, ''), ' ', COALESCE(c.apellido, ''))) AS nombre_cliente
         FROM conversation_sessions cs
+        LEFT JOIN clientes c
+          ON REPLACE(REPLACE(REPLACE(c.celular, '+', ''), ' ', ''), '-', '') = cs.phone COLLATE utf8mb4_unicode_ci
         WHERE cs.followup_next_at IS NOT NULL
-        ORDER BY cs.followup_next_at DESC
+          AND cs.closure_reason IS NULL
+        ORDER BY cs.followup_next_at ASC
         LIMIT 100
       `;
       params = [];
