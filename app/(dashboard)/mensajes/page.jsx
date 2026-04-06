@@ -39,7 +39,7 @@ function channelFromInbox(channelType) {
   if (!channelType) return "whatsapp";
   if (channelType.includes("Whatsapp")) return "whatsapp";
   if (channelType.includes("Instagram")) return "instagram";
-  if (channelType.includes("FacebookPage")) return "facebook";
+  if (channelType.includes("FacebookPage") || channelType.includes("Page")) return "facebook";
   return "whatsapp";
 }
 
@@ -60,7 +60,7 @@ async function fetchConversations(status = "open") {
     cliente_nombre: conv.meta?.sender?.name || "Cliente",
     phone: conv.meta?.sender?.phone_number || "",
     celular: conv.meta?.sender?.phone_number || "",
-    source_channel: channelFromInbox(conv.inbox?.channel_type),
+    source_channel: channelFromInbox(conv.channel),
     assignment_status: conv.status,
     unread_count: conv.unread_count || 0,
     last_activity_at: conv.last_activity_at

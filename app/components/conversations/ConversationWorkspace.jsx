@@ -30,7 +30,7 @@ function channelFromInbox(channelType) {
   if (!channelType) return "whatsapp";
   if (channelType.includes("Whatsapp")) return "whatsapp";
   if (channelType.includes("Instagram")) return "instagram";
-  if (channelType.includes("FacebookPage")) return "facebook";
+  if (channelType.includes("FacebookPage") || channelType.includes("Page")) return "facebook";
   return "whatsapp";
 }
 
@@ -45,7 +45,7 @@ function mapSession(session) {
     cliente_nombre: session.cliente_nombre ?? session.client_name ?? session.meta?.sender?.name ?? "Cliente",
     phone: session.phone ?? session.celular ?? session.meta?.sender?.phone_number ?? "",
     celular: session.celular ?? session.phone ?? session.meta?.sender?.phone_number ?? "",
-    source_channel: session.source_channel ?? channelFromInbox(session.inbox?.channel_type),
+    source_channel: session.source_channel ?? channelFromInbox(session.channel ?? session.inbox?.channel_type),
     assignment_status: session.assignment_status ?? session.status ?? "open",
     resumen: session.resumen ?? "",
   };
