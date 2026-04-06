@@ -13,13 +13,12 @@ const mysql = require("mysql2/promise");
     console.log("Creando tabla roles_chatwoot_mapping...");
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS roles_chatwoot_mapping (
-        id                INT AUTO_INCREMENT PRIMARY KEY,
-        role_id           INT NOT NULL,
+        id                INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        role_id           INT UNSIGNED NOT NULL,
         chatwoot_team_id  INT DEFAULT NULL,
         chatwoot_agent_id INT DEFAULT NULL,
         updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_role_id (role_id),
-        CONSTRAINT fk_rcm_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE
+        UNIQUE KEY uq_role_id (role_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
 
