@@ -345,6 +345,7 @@ export default function ConversationsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [focusComposerSignal, setFocusComposerSignal] = useState(0);
   const [avgInteractionMin, setAvgInteractionMin] = useState(null);
+  const [agents, setAgents] = useState([]);
   const prevUrgentCountRef = useRef(0);
   const prevUnreadTotalRef = useRef(0);
 
@@ -353,10 +354,14 @@ export default function ConversationsPage() {
     try {
       setPageError("");
 
-      const [newSessions, metricsRes, interactionRes] = await Promise.all([
+      const token = getAuthToken();
+      const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+
+      const [newSessions, metricsRes, interactionRes, agentsRes] = await Promise.all([
         fetchConversations("open"),
         fetch(`/api/conversations/metrics?user_id=${user?.id || 0}`, { cache: "no-store" }),
         fetch("/api/conversations/interaction-metrics", { cache: "no-store" }),
+        fetch("/api/chatwoot/agents", { cache: "no-store", headers: authHeaders }),
       ]);
 
       if (metricsRes.status === 401) {
@@ -381,6 +386,11 @@ export default function ConversationsPage() {
         setAvgInteractionMin(interactionData?.avg_interaction_minutes ?? null);
       } else {
         console.error("interaction-metrics failed:", interactionRes.status);
+      }
+
+      if (agentsRes.ok) {
+        const agentsData = await agentsRes.json();
+        setAgents(Array.isArray(agentsData) ? agentsData : []);
       }
     } catch (error) {
       console.error("Error cargando conversaciones:", error);
@@ -491,6 +501,29 @@ export default function ConversationsPage() {
     } catch (err) {
       console.error("Error en quick-assign:", err);
       setPageError(err?.message || "No se pudo actualizar el estado");
+    }
+  }
+
+  async function handleQuickAgentAssign(sessionId, agentIdStr) {
+    const agentId = agentIdStr ? Number(agentIdStr) : null;
+    try {
+      const token = getAuthToken();
+      const res = await fetch(`/api/chatwoot/conversations/${sessionId}/assign`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ agent_id: agentId }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data?.message || "No se pudo asignar agente");
+      }
+      await load();
+    } catch (err) {
+      console.error("Error en asignación de agente:", err);
+      setPageError(err?.message || "No se pudo asignar agente");
     }
   }
 
@@ -1139,7 +1172,7 @@ export default function ConversationsPage() {
                       </p>
 
                       <div className="flex items-center justify-between mt-1.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <ChannelPill channel={s.source_channel} />
                           {/* Quick-assign status */}
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
@@ -1165,17 +1198,43 @@ export default function ConversationsPage() {
                           <span className="group-hover:hidden text-[10px] text-gray-400 capitalize">
                             {s.assignment_status || "sin asignar"}
                           </span>
+                          {/* Agente asignado — siempre visible si existe */}
+                          {s.assigned_agent_name && (
+                            <span className="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-1.5 py-0.5 truncate max-w-[80px]">
+                              {s.assigned_agent_name}
+                            </span>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenSummaryDialog(s);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-gray-400" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          {/* Quick-assign agente (hover) */}
+                          {agents.length > 0 && (
+                            <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+                              <div className="relative flex items-center">
+                                <select
+                                  value={s.assigned_agent_id || ""}
+                                  onChange={(e) => handleQuickAgentAssign(s.session_id, e.target.value)}
+                                  className="appearance-none text-[10px] pr-4 pl-1.5 py-0.5 rounded-full border bg-indigo-50 border-indigo-200 text-indigo-700 font-medium cursor-pointer"
+                                >
+                                  <option value="">Asignar...</option>
+                                  {agents.map((a) => (
+                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                  ))}
+                                </select>
+                                <ChevronDown className="absolute right-1 w-2.5 h-2.5 pointer-events-none text-indigo-500 opacity-60" />
+                              </div>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenSummaryDialog(s);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-gray-100"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-gray-400" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
