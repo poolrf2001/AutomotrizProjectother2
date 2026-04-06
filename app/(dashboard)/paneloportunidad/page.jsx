@@ -2,31 +2,17 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
-import {
   RefreshCw,
   Calendar,
   TrendingUp,
-  Users,
   Zap,
-  CheckCircle,
-  Clock,
-  AlertCircle,
-  Download,
   ChevronDown,
   ChevronUp,
   Eye,
   Edit2,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -59,7 +45,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
 
 import { useAuth } from "@/context/AuthContext";
 import { hasPermission } from "@/lib/permissions";
@@ -72,34 +57,7 @@ const FILTER_THIS_MONTH = "este_mes";
 const BRAND_PRIMARY = "#5d16ec";
 const BRAND_SECONDARY = "#81929c";
 
-const COLORS = [
-  "#5d16ec",
-  "#ff6b6b",
-  "#4ecdc4",
-  "#45b7d1",
-  "#ffa502",
-  "#26de81",
-];
-
-function getTemperaturaColor(temperatura) {
-  if (temperatura >= 75) {
-    return { bg: "bg-red-100", text: "text-red-700", border: "border-red-300" };
-  } else if (temperatura >= 50) {
-    return {
-      bg: "bg-orange-100",
-      text: "text-orange-700",
-      border: "border-orange-300",
-    };
-  } else if (temperatura >= 25) {
-    return {
-      bg: "bg-yellow-100",
-      text: "text-yellow-700",
-      border: "border-yellow-300",
-    };
-  } else {
-    return { bg: "bg-blue-100", text: "text-blue-700", border: "border-blue-300" };
-  }
-}
+const ITEMS_PER_PAGE = 15;
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -123,32 +81,33 @@ export default function DashboardPage() {
   const [stats, setStats] = useState({
     totalOportunidades: 0,
     totalLeads: 0,
-    oportunidadesAsignadas: 0,
-    leadsAsignados: 0,
-    oportunidadesNuevas: 0,
-    leadsNuevos: 0,
-    oportunidadesEnProgreso: 0,
-    leadsEnProgreso: 0,
-    oportunidadesCerradas: 0,
-    leadsCerrados: 0,
-    tempPromedio: 0,
+    oposPorEtapa: {},
+    leadsPorEtapa: {},
   });
 
   const [loading, setLoading] = useState(false);
-  const [filterPeriodo, setFilterPeriodo] = useState(FILTER_ALL);
+  const [filterAgendaPeriodo, setFilterAgendaPeriodo] = useState(FILTER_TODAY);
+  const [filterOposPeriodo, setFilterOposPeriodo] = useState(FILTER_ALL);
+  const [filterLeadsPeriodo, setFilterLeadsPeriodo] = useState(FILTER_ALL);
+
   const [rawData, setRawData] = useState({
     oportunidades: [],
     leads: [],
     usuarios: [],
     etapas: [],
+    detallesOpo: {},
+    detallesLeads: {},
   });
 
   const [expandedTables, setExpandedTables] = useState({
-    usuarios: false,
-    etapas: false,
-    oportunidadesPorEtapa: false,
-    leadsPorEtapa: false,
+    oportunidades: true,
+    leads: true,
   });
+
+  // Paginación
+  const [pagOportunidades, setPagOportunidades] = useState(0);
+  const [pagLeads, setPagLeads] = useState(0);
+  const [pagAgenda, setPagAgenda] = useState(0);
 
   function getFechaFiltros() {
     const hoy = new Date();
@@ -174,15 +133,41 @@ export default function DashboardPage() {
     };
   }
 
-  function filterByPeriodo(items, dateField) {
+  function filterByAgendaPeriodo(items, detalles) {
     const fechas = getFechaFiltros();
 
     return items.filter((item) => {
-      if (!item[dateField]) return false;
+      const detalle = detalles[item.id];
+      if (!detalle || !detalle.fecha_agenda) return false;
 
-      const itemDate = new Date(item[dateField]);
+      const agendaDate = new Date(detalle.fecha_agenda);
 
-      switch (filterPeriodo) {
+      switch (filterAgendaPeriodo) {
+        case FILTER_TODAY:
+          return agendaDate >= fechas.hoy && agendaDate < fechas.finHoy;
+        case FILTER_THIS_WEEK:
+          return (
+            agendaDate >= fechas.inicioSemana && agendaDate <= fechas.finSemana
+          );
+        case FILTER_THIS_MONTH:
+          return (
+            agendaDate >= fechas.inicioMes && agendaDate <= fechas.finMes
+          );
+        default:
+          return true;
+      }
+    });
+  }
+
+  function filterByCreatedPeriodo(items, periodo) {
+    const fechas = getFechaFiltros();
+
+    return items.filter((item) => {
+      if (!item.created_at) return false;
+
+      const itemDate = new Date(item.created_at);
+
+      switch (periodo) {
         case FILTER_TODAY:
           return itemDate >= fechas.hoy && itemDate < fechas.finHoy;
         case FILTER_THIS_WEEK:
@@ -197,6 +182,40 @@ export default function DashboardPage() {
           return true;
       }
     });
+  }
+
+  async function enriquecerConDetalles(items, apiEndpoint, type) {
+    const detalles = {};
+
+    await Promise.allSettled(
+      items.map(async (item) => {
+        try {
+          const res = await fetch(`${apiEndpoint}/${item.id}/detalles?limit=1`, {
+            cache: "no-store",
+          });
+
+          if (!res.ok) {
+            console.warn(`No detalles para ${type} ${item.id}`);
+            return;
+          }
+
+          const data = await res.json();
+          const ultimoDetalle = Array.isArray(data)
+            ? data[0]
+            : Array.isArray(data?.data)
+            ? data.data[0]
+            : null;
+
+          if (ultimoDetalle) {
+            detalles[item.id] = ultimoDetalle;
+          }
+        } catch (error) {
+          console.warn(`Error enriqueciendo ${type} ${item.id}:`, error);
+        }
+      })
+    );
+
+    return detalles;
   }
 
   async function loadData() {
@@ -228,77 +247,76 @@ export default function DashboardPage() {
         (opp) => opp.oportunidad_id?.substring(0, 3) === "OPO"
       );
 
-      setRawData({ oportunidades, leads, usuarios, etapas });
+      console.log("📊 Cargando detalles para", oportunidades.length, "oportunidades");
+      console.log("📊 Cargando detalles para", leads.length, "leads");
 
-      const opoFiltradas = filterByPeriodo(oportunidades, "created_at");
-      const leadsFiltrados = filterByPeriodo(leads, "created_at");
+      const detallesOpo = await enriquecerConDetalles(
+        oportunidades,
+        "/api/oportunidades-oportunidades",
+        "oportunidad"
+      );
+      const detallesLeads = await enriquecerConDetalles(
+        leads,
+        "/api/leads",
+        "lead"
+      );
 
+      console.log("✅ Detalles OPO cargados:", Object.keys(detallesOpo).length);
+      console.log("✅ Detalles Leads cargados:", Object.keys(detallesLeads).length);
+
+      setRawData({
+        oportunidades,
+        leads,
+        usuarios,
+        etapas,
+        detallesOpo,
+        detallesLeads,
+      });
+
+      // Calcular OPO visibles
       const opoVisibles = canViewAllOportunidades
-        ? opoFiltradas
-        : opoFiltradas.filter(
+        ? oportunidades
+        : oportunidades.filter(
             (opp) =>
               String(opp.asignado_a) === String(user?.id) ||
               String(opp.created_by) === String(user?.id)
           );
 
+      // Calcular Leads visibles
       const leadsVisibles = canViewAllLeads
-        ? leadsFiltrados
-        : leadsFiltrados.filter(
+        ? leads
+        : leads.filter(
             (lead) =>
               String(lead.asignado_a) === String(user?.id) ||
               String(lead.created_by) === String(user?.id)
           );
 
-      const nuevasEtapaId = etapas.find((e) =>
-        e.nombre?.toLowerCase().includes("nuevo")
-      )?.id;
-      const progresoEtapaIds = etapas
-        .filter(
-          (e) =>
-            !e.nombre?.toLowerCase().includes("cerrada") &&
-            !e.nombre?.toLowerCase().includes("nuevo")
-        )
-        .map((e) => e.id);
-      const cerradaEtapaIds = etapas
-        .filter((e) => e.nombre?.toLowerCase().includes("cerrada"))
-        .map((e) => e.id);
+      // Calcular por etapas (suma OPO + Leads)
+      const oposPorEtapa = {};
+      const leadsPorEtapa = {};
 
-      const tempPromedio =
-        opoVisibles.reduce((acc, opp) => {
-          const etapa = etapas.find((e) => e.id === opp.etapasconversion_id);
-          return acc + (etapa?.descripcion || 0);
-        }, 0) / (opoVisibles.length || 1);
+      etapas.forEach((etapa) => {
+        const opoCount = opoVisibles.filter(
+          (opp) => opp.etapasconversion_id === etapa.id
+        ).length;
+        const leadCount = leadsVisibles.filter(
+          (lead) => lead.etapasconversion_id === etapa.id
+        ).length;
+        
+        oposPorEtapa[etapa.id] = opoCount;
+        leadsPorEtapa[etapa.id] = leadCount;
+      });
 
       setStats({
         totalOportunidades: opoVisibles.length,
         totalLeads: leadsVisibles.length,
-        oportunidadesAsignadas: opoVisibles.filter((opp) => opp.asignado_a)
-          .length,
-        leadsAsignados: leadsVisibles.filter((lead) => lead.asignado_a).length,
-        oportunidadesNuevas: opoVisibles.filter(
-          (opp) => opp.etapasconversion_id === nuevasEtapaId
-        ).length,
-        leadsNuevos: leadsVisibles.filter(
-          (lead) => lead.etapasconversion_id === nuevasEtapaId
-        ).length,
-        oportunidadesEnProgreso: opoVisibles.filter((opp) =>
-          progresoEtapaIds.includes(opp.etapasconversion_id)
-        ).length,
-        leadsEnProgreso: leadsVisibles.filter((lead) =>
-          progresoEtapaIds.includes(lead.etapasconversion_id)
-        ).length,
-        oportunidadesCerradas: opoVisibles.filter((opp) =>
-          cerradaEtapaIds.includes(opp.etapasconversion_id)
-        ).length,
-        leadsCerrados: leadsVisibles.filter((lead) =>
-          cerradaEtapaIds.includes(lead.etapasconversion_id)
-        ).length,
-        tempPromedio: Math.round(tempPromedio),
+        oposPorEtapa,
+        leadsPorEtapa,
       });
 
       toast.success("Dashboard actualizado");
     } catch (error) {
-      console.error("Error cargando dashboard:", error);
+      console.error("❌ Error cargando dashboard:", error);
       toast.error("Error cargando datos del dashboard");
     } finally {
       setLoading(false);
@@ -311,194 +329,124 @@ export default function DashboardPage() {
     }
   }, [canViewOportunidades, canViewLeads]);
 
-  useEffect(() => {
-    if (rawData.oportunidades.length > 0 || rawData.leads.length > 0) {
-      loadData();
-    }
-  }, [filterPeriodo]);
+  // ==================== TABLA AGENDA HOY ====================
+  const agendaHoy = useMemo(() => {
+    let opoConAgenda = rawData.oportunidades.filter(
+      (opp) =>
+        rawData.detallesOpo[opp.id] && rawData.detallesOpo[opp.id].fecha_agenda
+    );
+    let leadsConAgenda = rawData.leads.filter(
+      (lead) =>
+        rawData.detallesLeads[lead.id] &&
+        rawData.detallesLeads[lead.id].fecha_agenda
+    );
 
-  // ==================== DATOS PARA GRÁFICOS ====================
-  const etapaDistribution = useMemo(() => {
-    if (rawData.oportunidades.length === 0) return [];
+    opoConAgenda = filterByAgendaPeriodo(opoConAgenda, rawData.detallesOpo);
+    leadsConAgenda = filterByAgendaPeriodo(leadsConAgenda, rawData.detallesLeads);
 
-    const filtradas = filterByPeriodo(rawData.oportunidades, "created_at");
-    const visibles = canViewAllOportunidades
-      ? filtradas
-      : filtradas.filter(
+    const opoVisibles = canViewAllOportunidades
+      ? opoConAgenda
+      : opoConAgenda.filter(
           (opp) =>
             String(opp.asignado_a) === String(user?.id) ||
             String(opp.created_by) === String(user?.id)
         );
 
-    const distribution = visibles.reduce((acc, opp) => {
-      const etapa = rawData.etapas.find((e) => e.id === opp.etapasconversion_id);
-      const etapaNombre = etapa?.nombre || "Sin etapa";
-
-      const existing = acc.find((item) => item.name === etapaNombre);
-      if (existing) {
-        existing.value += 1;
-      } else {
-        acc.push({ name: etapaNombre, value: 1 });
-      }
-      return acc;
-    }, []);
-
-    return distribution;
-  }, [rawData, filterPeriodo, canViewAllOportunidades, user]);
-
-  const usuariosPerformance = useMemo(() => {
-    const filtradas = filterByPeriodo(rawData.oportunidades, "created_at");
-    const leadsFiltrados = filterByPeriodo(rawData.leads, "created_at");
-
-    const visiblesOpo = canViewAllOportunidades
-      ? filtradas
-      : filtradas.filter(
-          (opp) =>
-            String(opp.asignado_a) === String(user?.id) ||
-            String(opp.created_by) === String(user?.id)
-        );
-
-    const visiblesLeads = canViewAllLeads
-      ? leadsFiltrados
-      : leadsFiltrados.filter(
+    const leadsVisibles = canViewAllLeads
+      ? leadsConAgenda
+      : leadsConAgenda.filter(
           (lead) =>
             String(lead.asignado_a) === String(user?.id) ||
             String(lead.created_by) === String(user?.id)
         );
 
-    const performance = rawData.usuarios.map((usuario) => {
-      const opoAsignadas = visiblesOpo.filter(
-        (opp) => opp.asignado_a === usuario.id
-      ).length;
-      const leadsAsignados = visiblesLeads.filter(
-        (lead) => lead.asignado_a === usuario.id
-      ).length;
-
-      return {
-        id: usuario.id,
-        name: usuario.fullname || usuario.username,
-        opo: opoAsignadas,
-        leads: leadsAsignados,
-        total: opoAsignadas + leadsAsignados,
-      };
+    const combinados = [
+      ...opoVisibles.map((opp) => ({
+        ...opp,
+        tipo: "OPO",
+        detalle: rawData.detallesOpo[opp.id],
+      })),
+      ...leadsVisibles.map((lead) => ({
+        ...lead,
+        tipo: "LD",
+        detalle: rawData.detallesLeads[lead.id],
+      })),
+    ].sort((a, b) => {
+      const fechaA = new Date(a.detalle.fecha_agenda);
+      const fechaB = new Date(b.detalle.fecha_agenda);
+      return fechaA - fechaB;
     });
 
-    return performance.filter((p) => p.opo > 0 || p.leads > 0);
-  }, [rawData, filterPeriodo, canViewAllOportunidades, canViewAllLeads, user]);
+    return combinados;
+  }, [
+    rawData,
+    filterAgendaPeriodo,
+    canViewAllOportunidades,
+    canViewAllLeads,
+    user,
+  ]);
 
-  const oportunidadesPorEtapa = useMemo(() => {
-    const filtradas = filterByPeriodo(rawData.oportunidades, "created_at");
-    const visibles = canViewAllOportunidades
-      ? filtradas
-      : filtradas.filter(
+  // ==================== TABLA OPORTUNIDADES ====================
+  const oportunidadesOrdenadas = useMemo(() => {
+    let opoVisibles = canViewAllOportunidades
+      ? rawData.oportunidades
+      : rawData.oportunidades.filter(
           (opp) =>
             String(opp.asignado_a) === String(user?.id) ||
             String(opp.created_by) === String(user?.id)
         );
 
-    const grouped = rawData.etapas
-      .map((etapa) => {
-        const cantidad = visibles.filter(
-          (opp) => opp.etapasconversion_id === etapa.id
-        ).length;
-        return {
-          id: etapa.id,
-          nombre: etapa.nombre,
-          cantidad,
-          temperatura: etapa.descripcion || 0,
-          items: visibles.filter((opp) => opp.etapasconversion_id === etapa.id),
-        };
-      })
-      .filter((e) => e.cantidad > 0);
+    // Aplicar filtro de período
+    opoVisibles = filterByCreatedPeriodo(opoVisibles, filterOposPeriodo);
 
-    return grouped;
-  }, [rawData, filterPeriodo, canViewAllOportunidades, user]);
+    return opoVisibles.sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+  }, [rawData.oportunidades, canViewAllOportunidades, user, filterOposPeriodo]);
 
-  const leadsPorEtapa = useMemo(() => {
-    const filtradas = filterByPeriodo(rawData.leads, "created_at");
-    const visibles = canViewAllLeads
-      ? filtradas
-      : filtradas.filter(
+  // ==================== TABLA LEADS ====================
+  const leadsOrdenados = useMemo(() => {
+    let leadsVisibles = canViewAllLeads
+      ? rawData.leads
+      : rawData.leads.filter(
           (lead) =>
             String(lead.asignado_a) === String(user?.id) ||
             String(lead.created_by) === String(user?.id)
         );
 
-    const grouped = rawData.etapas
-      .map((etapa) => {
-        const cantidad = visibles.filter(
-          (lead) => lead.etapasconversion_id === etapa.id
-        ).length;
-        return {
-          id: etapa.id,
-          nombre: etapa.nombre,
-          cantidad,
-          temperatura: etapa.descripcion || 0,
-          items: visibles.filter((lead) => lead.etapasconversion_id === etapa.id),
-        };
-      })
-      .filter((e) => e.cantidad > 0);
+    // Aplicar filtro de período
+    leadsVisibles = filterByCreatedPeriodo(leadsVisibles, filterLeadsPeriodo);
 
-    return grouped;
-  }, [rawData, filterPeriodo, canViewAllLeads, user]);
+    return leadsVisibles.sort(
+      (a, b) => new Date(b.created_at) - new Date(a.created_at)
+    );
+  }, [rawData.leads, canViewAllLeads, user, filterLeadsPeriodo]);
 
-  const downloadCSV = (data, filename) => {
-    const csv = [
-      Object.keys(data[0]).join(","),
-      ...data.map((row) => Object.values(row).join(",")),
-    ].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${filename}.csv`;
-    a.click();
-  };
+  // Paginación de Agenda
+  const agendaPaginada = useMemo(() => {
+    const inicio = pagAgenda * ITEMS_PER_PAGE;
+    return agendaHoy.slice(inicio, inicio + ITEMS_PER_PAGE);
+  }, [agendaHoy, pagAgenda]);
 
-  const statCards = [
-    {
-      title: "Oportunidades",
-      value: stats.totalOportunidades,
-      icon: TrendingUp,
-      color: "#5d16ec",
-      visible: canViewOportunidades,
-    },
-    {
-      title: "Leads",
-      value: stats.totalLeads,
-      icon: Zap,
-      color: "#ff6b6b",
-      visible: canViewLeads,
-    },
-    {
-      title: "OPO Asignadas",
-      value: stats.oportunidadesAsignadas,
-      icon: Users,
-      color: "#4ecdc4",
-      visible: canViewOportunidades,
-    },
-    {
-      title: "Leads Asignados",
-      value: stats.leadsAsignados,
-      icon: Users,
-      color: "#45b7d1",
-      visible: canViewLeads,
-    },
-    {
-      title: "OPO Nuevas",
-      value: stats.oportunidadesNuevas,
-      icon: AlertCircle,
-      color: "#ffa502",
-      visible: canViewOportunidades,
-    },
-    {
-      title: "Leads Nuevos",
-      value: stats.leadsNuevos,
-      icon: AlertCircle,
-      color: "#26de81",
-      visible: canViewLeads,
-    },
-  ];
+  const totalPagAgenda = Math.ceil(agendaHoy.length / ITEMS_PER_PAGE);
+
+  // Paginación de Oportunidades
+  const opoPaginada = useMemo(() => {
+    const inicio = pagOportunidades * ITEMS_PER_PAGE;
+    return oportunidadesOrdenadas.slice(inicio, inicio + ITEMS_PER_PAGE);
+  }, [oportunidadesOrdenadas, pagOportunidades]);
+
+  const totalPagOpo = Math.ceil(
+    oportunidadesOrdenadas.length / ITEMS_PER_PAGE
+  );
+
+  // Paginación de Leads
+  const leadsPaginada = useMemo(() => {
+    const inicio = pagLeads * ITEMS_PER_PAGE;
+    return leadsOrdenados.slice(inicio, inicio + ITEMS_PER_PAGE);
+  }, [leadsOrdenados, pagLeads]);
+
+  const totalPagLeads = Math.ceil(leadsOrdenados.length / ITEMS_PER_PAGE);
 
   if (!canViewOportunidades && !canViewLeads) {
     return (
@@ -520,7 +468,7 @@ export default function DashboardPage() {
               className="text-2xl sm:text-3xl font-bold"
               style={{ color: BRAND_PRIMARY }}
             >
-              Dashboard
+              Panel de Ventas
             </h1>
             <p
               className="text-xs sm:text-sm mt-1"
@@ -534,51 +482,6 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex gap-2 w-full sm:w-auto">
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-xs sm:text-sm h-8 sm:h-9 flex-1 sm:flex-none"
-                >
-                  <Calendar className="h-3 sm:h-4 w-3 sm:w-4" />
-                  <span className="hidden sm:inline">
-                    {filterPeriodo === FILTER_ALL
-                      ? "Todos"
-                      : filterPeriodo === FILTER_TODAY
-                      ? "Hoy"
-                      : filterPeriodo === FILTER_THIS_WEEK
-                      ? "Semana"
-                      : "Mes"}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-[200px] p-0" align="end">
-                <Command>
-                  <CommandList>
-                    <CommandGroup>
-                      {[
-                        { value: FILTER_ALL, label: "Todos" },
-                        { value: FILTER_TODAY, label: "Hoy" },
-                        { value: FILTER_THIS_WEEK, label: "Esta semana" },
-                        { value: FILTER_THIS_MONTH, label: "Este mes" },
-                      ].map((item) => (
-                        <CommandItem
-                          key={item.value}
-                          value={item.value}
-                          onSelect={() => setFilterPeriodo(item.value)}
-                          className="cursor-pointer text-xs sm:text-sm"
-                        >
-                          {filterPeriodo === item.value && "✓ "}
-                          {item.label}
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -588,7 +491,11 @@ export default function DashboardPage() {
                   size="sm"
                   className="gap-2 text-xs sm:text-sm h-8 sm:h-9"
                 >
-                  <RefreshCw className="h-3 sm:h-4 w-3 sm:w-4" />
+                  <RefreshCw
+                    className={`h-3 sm:h-4 w-3 sm:w-4 ${
+                      loading ? "animate-spin" : ""
+                    }`}
+                  />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">
@@ -598,558 +505,764 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* TARJETAS DE ESTADÍSTICAS */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {statCards
-            .filter((card) => card.visible)
-            .map((card, idx) => {
-              const Icon = card.icon;
-              return (
-                <Card
-                  key={idx}
-                  className="overflow-hidden hover:shadow-lg transition-shadow"
-                  style={{
-                    borderLeftWidth: "3px",
-                    borderLeftColor: card.color,
-                  }}
-                >
-                  <CardContent className="p-2 sm:p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-gray-600 truncate">
-                          {card.title}
-                        </p>
-                        <p
-                          className="text-xl sm:text-2xl font-bold"
-                          style={{ color: card.color }}
-                        >
-                          {card.value}
-                        </p>
-                      </div>
-                      <Icon
-                        size={20}
-                        className="flex-shrink-0 opacity-20"
-                        style={{ color: card.color }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
-        </div>
-
-        {/* TEMPERATURA PROMEDIO */}
-        {canViewOportunidades && (
-          <Card
-            style={{
-              borderLeftWidth: "3px",
-              borderLeftColor: BRAND_PRIMARY,
-            }}
-          >
-            <CardHeader className="pb-2">
-              <CardTitle
-                className="text-base"
-                style={{ color: BRAND_PRIMARY }}
-              >
-                Temperatura Promedio: {stats.tempPromedio}%
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div
-                  className="h-full transition-all duration-300"
-                  style={{
-                    width: `${stats.tempPromedio}%`,
-                    backgroundColor:
-                      stats.tempPromedio >= 75
-                        ? "#ff6b6b"
-                        : stats.tempPromedio >= 50
-                        ? "#ffa502"
-                        : stats.tempPromedio >= 25
-                        ? "#ffd93d"
-                        : "#26de81",
-                  }}
-                />
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                {stats.tempPromedio >= 75
-                  ? "🔴 Muy caliente"
-                  : stats.tempPromedio >= 50
-                  ? "🟠 Caliente"
-                  : stats.tempPromedio >= 25
-                  ? "🟡 Templada"
-                  : "🔵 Fría"}
-              </p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* GRÁFICOS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {canViewOportunidades && etapaDistribution.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base" style={{ color: BRAND_PRIMARY }}>
-                  OPO por Etapa
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <PieChart>
-                    <Pie
-                      data={etapaDistribution}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      fill="#8884d8"
-                      dataKey="value"
-                      label={{ fontSize: 10 }}
+        {/* TARJETAS DE ESTADÍSTICAS - TOTALES */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 gap-2">
+          {/* TOTAL OPORTUNIDADES */}
+          {canViewOportunidades && (
+            <Card
+              className="overflow-hidden hover:shadow-lg transition-shadow"
+              style={{
+                borderLeftWidth: "3px",
+                borderLeftColor: "#5d16ec",
+              }}
+            >
+              <CardContent className="p-2 sm:p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-600 truncate">
+                      OPO Totales
+                    </p>
+                    <p
+                      className="text-xl sm:text-2xl font-bold"
+                      style={{ color: "#5d16ec" }}
                     >
-                      {etapaDistribution.map((entry, index) => (
-                        <Cell
-                          key={`cell-${index}`}
-                          fill={COLORS[index % COLORS.length]}
-                        />
-                      ))}
-                    </Pie>
-                    <Tooltip fontSize={12} />
-                  </PieChart>
-                </ResponsiveContainer>
+                      {stats.totalOportunidades}
+                    </p>
+                  </div>
+                  <TrendingUp
+                    size={20}
+                    className="flex-shrink-0 opacity-20"
+                    style={{ color: "#5d16ec" }}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
 
-          {usuariosPerformance.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base" style={{ color: BRAND_PRIMARY }}>
-                  Desempeño por Usuario
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={usuariosPerformance}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis
-                      dataKey="name"
-                      angle={-45}
-                      textAnchor="end"
-                      height={70}
-                      tick={{ fontSize: 10 }}
-                    />
-                    <YAxis tick={{ fontSize: 10 }} />
-                    <Tooltip fontSize={12} />
-                    <Bar dataKey="opo" fill="#5d16ec" />
-                    <Bar dataKey="leads" fill="#ff6b6b" />
-                  </BarChart>
-                </ResponsiveContainer>
+          {/* TOTAL LEADS */}
+          {canViewLeads && (
+            <Card
+              className="overflow-hidden hover:shadow-lg transition-shadow"
+              style={{
+                borderLeftWidth: "3px",
+                borderLeftColor: "#ff6b6b",
+              }}
+            >
+              <CardContent className="p-2 sm:p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-gray-600 truncate">
+                      Leads Totales
+                    </p>
+                    <p
+                      className="text-xl sm:text-2xl font-bold"
+                      style={{ color: "#ff6b6b" }}
+                    >
+                      {stats.totalLeads}
+                    </p>
+                  </div>
+                  <Zap
+                    size={20}
+                    className="flex-shrink-0 opacity-20"
+                    style={{ color: "#ff6b6b" }}
+                  />
+                </div>
               </CardContent>
             </Card>
           )}
         </div>
 
-        {/* TABLAS INTERACTIVAS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-          {/* TABLA USUARIOS */}
-          {usuariosPerformance.length > 0 && (
-            <Card>
-              <CardHeader
-                className="pb-2 cursor-pointer hover:bg-gray-50"
-                onClick={() =>
-                  setExpandedTables({
-                    ...expandedTables,
-                    usuarios: !expandedTables.usuarios,
-                  })
-                }
+        {/* TARJETAS DE ESTADÍSTICAS - POR ETAPA (SUMA OPO + LEADS) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+          {rawData.etapas.map((etapa) => {
+            const totalEtapa =
+              (stats.oposPorEtapa[etapa.id] || 0) +
+              (stats.leadsPorEtapa[etapa.id] || 0);
+
+            return (
+              <Card
+                key={etapa.id}
+                className="overflow-hidden hover:shadow-lg transition-shadow"
+                style={{
+                  borderLeftWidth: "3px",
+                  borderLeftColor: "#4ecdc4",
+                }}
               >
-                <div className="flex items-center justify-between">
+                <CardContent className="p-2 sm:p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-600 truncate">
+                        {etapa.nombre}
+                      </p>
+                      <p
+                        className="text-xl sm:text-2xl font-bold"
+                        style={{ color: "#4ecdc4" }}
+                      >
+                        {totalEtapa}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        OPO: {stats.oposPorEtapa[etapa.id] || 0} | LD:{" "}
+                        {stats.leadsPorEtapa[etapa.id] || 0}
+                      </p>
+                    </div>
+                    <TrendingUp
+                      size={16}
+                      className="flex-shrink-0 opacity-20"
+                      style={{ color: "#4ecdc4" }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+
+        {/* TABLA AGENDA - NO DESPLEGABLE */}
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock size={16} style={{ color: BRAND_PRIMARY }} />
+                <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
+                  Agenda - {agendaHoy.length} registros
+                </CardTitle>
+              </div>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1 text-xs h-7"
+                  >
+                    <Calendar className="h-3 w-3" />
+                    {filterAgendaPeriodo === FILTER_TODAY
+                      ? "Hoy"
+                      : filterAgendaPeriodo === FILTER_THIS_WEEK
+                      ? "Semana"
+                      : "Mes"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[200px] p-0" align="end">
+                  <Command>
+                    <CommandList>
+                      <CommandGroup>
+                        {[
+                          { value: FILTER_TODAY, label: "Hoy" },
+                          {
+                            value: FILTER_THIS_WEEK,
+                            label: "Esta semana",
+                          },
+                          { value: FILTER_THIS_MONTH, label: "Este mes" },
+                        ].map((item) => (
+                          <CommandItem
+                            key={item.value}
+                            value={item.value}
+                            onSelect={() => {
+                              setFilterAgendaPeriodo(item.value);
+                              setPagAgenda(0);
+                            }}
+                            className="cursor-pointer text-xs sm:text-sm"
+                          >
+                            {filterAgendaPeriodo === item.value && "✓ "}
+                            {item.label}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
+            {agendaHoy.length === 0 ? (
+              <div className="p-4 text-center text-xs text-gray-500">
+                No hay items en agenda para este período
+              </div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="text-xs px-3 py-2">Tipo</TableHead>
+                      <TableHead className="text-xs px-3 py-2">Código</TableHead>
+                      <TableHead className="text-xs px-3 py-2">Cliente</TableHead>
+                      <TableHead className="text-xs px-3 py-2">Asignado</TableHead>
+                      <TableHead className="text-xs px-3 py-2">Fecha</TableHead>
+                      <TableHead className="text-xs px-3 py-2">Hora</TableHead>
+                      <TableHead className="text-xs text-right px-3 py-2">
+                        Acciones
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {agendaPaginada.map((item) => {
+                      const usuario = rawData.usuarios.find(
+                        (u) => u.id === item.asignado_a
+                      );
+                      const cliente = rawData.usuarios.find(
+                        (c) => c.id === item.cliente_id
+                      );
+                      const fecha = new Date(
+                        item.detalle.fecha_agenda
+                      ).toLocaleDateString();
+                      const hora = item.detalle.hora_agenda?.substring(0, 5);
+
+                      return (
+                        <TableRow
+                          key={`${item.tipo}-${item.id}`}
+                          className="hover:bg-gray-50"
+                        >
+                          <TableCell className="text-xs px-3 py-2 font-bold">
+                            <span
+                              style={{
+                                backgroundColor:
+                                  item.tipo === "OPO" ? "#5d16ec" : "#ff6b6b",
+                                color: "white",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                fontSize: "10px",
+                              }}
+                            >
+                              {item.tipo}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-xs px-3 py-2 font-medium">
+                            {item.oportunidad_id ||
+                              `${item.tipo}-${item.id}`}
+                          </TableCell>
+                          <TableCell className="text-xs px-3 py-2 max-w-xs truncate">
+                            {cliente?.fullname || "-"}
+                          </TableCell>
+                          <TableCell className="text-xs px-3 py-2">
+                            {usuario?.fullname || "Sin asignar"}
+                          </TableCell>
+                          <TableCell className="text-xs px-3 py-2">
+                            {fecha}
+                          </TableCell>
+                          <TableCell className="text-xs px-3 py-2 font-semibold">
+                            {hora}
+                          </TableCell>
+                          <TableCell className="px-3 py-2 text-right">
+                            <div className="flex justify-end gap-1">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-6 w-6 p-0"
+                                    onClick={() =>
+                                      router.push(
+                                        `/oportunidades/${item.id}`
+                                      )
+                                    }
+                                  >
+                                    <Eye size={12} />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent side="left" className="text-xs">
+                                  Ver
+                                </TooltipContent>
+                              </Tooltip>
+                              {canEdit && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={() =>
+                                        router.push(
+                                          `/oportunidades/${item.id}`
+                                        )
+                                      }
+                                    >
+                                      <Edit2 size={12} />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="text-xs">
+                                    Editar
+                                  </TooltipContent>
+                                </Tooltip>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+                {totalPagAgenda > 1 && (
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
+                    <span className="text-gray-600">
+                      Página {pagAgenda + 1} de {totalPagAgenda}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2"
+                        disabled={pagAgenda === 0}
+                        onClick={() => setPagAgenda(pagAgenda - 1)}
+                      >
+                        <ChevronLeft size={14} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2"
+                        disabled={pagAgenda === totalPagAgenda - 1}
+                        onClick={() => setPagAgenda(pagAgenda + 1)}
+                      >
+                        <ChevronRight size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* TABLA OPORTUNIDADES */}
+        {oportunidadesOrdenadas.length > 0 && (
+          <Card>
+            <CardHeader
+              className="pb-2 cursor-pointer hover:bg-gray-50"
+              onClick={() =>
+                setExpandedTables({
+                  ...expandedTables,
+                  oportunidades: !expandedTables.oportunidades,
+                })
+              }
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
-                    Usuarios
+                    Oportunidades - {oportunidadesOrdenadas.length} registros
                   </CardTitle>
-                  {expandedTables.usuarios ? (
+                </div>
+                <div className="flex items-center gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 text-xs h-7"
+                      >
+                        <Calendar className="h-3 w-3" />
+                        {filterOposPeriodo === FILTER_ALL
+                          ? "Todos"
+                          : filterOposPeriodo === FILTER_TODAY
+                          ? "Hoy"
+                          : filterOposPeriodo === FILTER_THIS_WEEK
+                          ? "Semana"
+                          : "Mes"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[200px] p-0" align="end">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {[
+                              { value: FILTER_ALL, label: "Todos" },
+                              { value: FILTER_TODAY, label: "Hoy" },
+                              {
+                                value: FILTER_THIS_WEEK,
+                                label: "Esta semana",
+                              },
+                              { value: FILTER_THIS_MONTH, label: "Este mes" },
+                            ].map((item) => (
+                              <CommandItem
+                                key={item.value}
+                                value={item.value}
+                                onSelect={() => {
+                                  setFilterOposPeriodo(item.value);
+                                  setPagOportunidades(0);
+                                }}
+                                className="cursor-pointer text-xs sm:text-sm"
+                              >
+                                {filterOposPeriodo === item.value && "✓ "}
+                                {item.label}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  {expandedTables.oportunidades ? (
                     <ChevronUp size={16} />
                   ) : (
                     <ChevronDown size={16} />
                   )}
                 </div>
-              </CardHeader>
-              {expandedTables.usuarios && (
+              </div>
+            </CardHeader>
+            {expandedTables.oportunidades && (
+              <>
                 <CardContent className="p-0 overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
                         <TableHead className="text-xs px-3 py-2">
-                          Usuario
+                          Código
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Cliente
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Asignado
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Etapa
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Creado
                         </TableHead>
                         <TableHead className="text-xs text-right px-3 py-2">
-                          OPO
-                        </TableHead>
-                        <TableHead className="text-xs text-right px-3 py-2">
-                          LD
-                        </TableHead>
-                        <TableHead className="text-xs text-right px-3 py-2">
-                          Total
+                          Acciones
                         </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {usuariosPerformance.map((row) => (
-                        <TableRow key={row.id} className="hover:bg-gray-50">
-                          <TableCell className="text-xs px-3 py-2 font-medium">
-                            {row.name}
-                          </TableCell>
-                          <TableCell className="text-xs text-right px-3 py-2">
-                            {row.opo}
-                          </TableCell>
-                          <TableCell className="text-xs text-right px-3 py-2">
-                            {row.leads}
-                          </TableCell>
-                          <TableCell className="text-xs text-right px-3 py-2 font-bold">
-                            {row.total}
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {opoPaginada.map((item) => {
+                        const usuario = rawData.usuarios.find(
+                          (u) => u.id === item.asignado_a
+                        );
+                        const cliente = rawData.usuarios.find(
+                          (c) => c.id === item.cliente_id
+                        );
+                        const etapa = rawData.etapas.find(
+                          (e) => e.id === item.etapasconversion_id
+                        );
+                        const fecha = new Date(
+                          item.created_at
+                        ).toLocaleDateString();
+
+                        return (
+                          <TableRow key={item.id} className="hover:bg-gray-50">
+                            <TableCell className="text-xs px-3 py-2 font-medium">
+                              {item.oportunidad_id || `OPO-${item.id}`}
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2 max-w-xs truncate">
+                              {cliente?.fullname || "-"}
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2">
+                              {usuario?.fullname || "Sin asignar"}
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                {etapa?.nombre || "Sin etapa"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2">
+                              {fecha}
+                            </TableCell>
+                            <TableCell className="px-3 py-2 text-right">
+                              <div className="flex justify-end gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={() =>
+                                        router.push(
+                                          `/oportunidades/${item.id}`
+                                        )
+                                      }
+                                    >
+                                      <Eye size={12} />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="text-xs">
+                                    Ver
+                                  </TooltipContent>
+                                </Tooltip>
+                                {canEdit && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() =>
+                                          router.push(
+                                            `/oportunidades/${item.id}`
+                                          )
+                                        }
+                                      >
+                                        <Edit2 size={12} />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="text-xs">
+                                      Editar
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </CardContent>
-              )}
-            </Card>
-          )}
+                {totalPagOpo > 1 && (
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
+                    <span className="text-gray-600">
+                      Página {pagOportunidades + 1} de {totalPagOpo}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2"
+                        disabled={pagOportunidades === 0}
+                        onClick={() =>
+                          setPagOportunidades(pagOportunidades - 1)
+                        }
+                      >
+                        <ChevronLeft size={14} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2"
+                        disabled={pagOportunidades === totalPagOpo - 1}
+                        onClick={() =>
+                          setPagOportunidades(pagOportunidades + 1)
+                        }
+                      >
+                        <ChevronRight size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        )}
 
-          {/* TABLA ETAPAS */}
-          {oportunidadesPorEtapa.length > 0 && (
-            <Card>
-              <CardHeader
-                className="pb-2 cursor-pointer hover:bg-gray-50"
-                onClick={() =>
-                  setExpandedTables({
-                    ...expandedTables,
-                    etapas: !expandedTables.etapas,
-                  })
-                }
-              >
-                <div className="flex items-center justify-between">
+        {/* TABLA LEADS */}
+        {leadsOrdenados.length > 0 && (
+          <Card>
+            <CardHeader
+              className="pb-2 cursor-pointer hover:bg-gray-50"
+              onClick={() =>
+                setExpandedTables({
+                  ...expandedTables,
+                  leads: !expandedTables.leads,
+                })
+              }
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
                   <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
-                    Etapas
+                    Leads - {leadsOrdenados.length} registros
                   </CardTitle>
-                  {expandedTables.etapas ? (
+                </div>
+                <div className="flex items-center gap-2">
+                  <Popover>
+                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="gap-1 text-xs h-7"
+                      >
+                        <Calendar className="h-3 w-3" />
+                        {filterLeadsPeriodo === FILTER_ALL
+                          ? "Todos"
+                          : filterLeadsPeriodo === FILTER_TODAY
+                          ? "Hoy"
+                          : filterLeadsPeriodo === FILTER_THIS_WEEK
+                          ? "Semana"
+                          : "Mes"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[200px] p-0" align="end">
+                      <Command>
+                        <CommandList>
+                          <CommandGroup>
+                            {[
+                              { value: FILTER_ALL, label: "Todos" },
+                              { value: FILTER_TODAY, label: "Hoy" },
+                              {
+                                value: FILTER_THIS_WEEK,
+                                label: "Esta semana",
+                              },
+                              { value: FILTER_THIS_MONTH, label: "Este mes" },
+                            ].map((item) => (
+                              <CommandItem
+                                key={item.value}
+                                value={item.value}
+                                onSelect={() => {
+                                  setFilterLeadsPeriodo(item.value);
+                                  setPagLeads(0);
+                                }}
+                                className="cursor-pointer text-xs sm:text-sm"
+                              >
+                                {filterLeadsPeriodo === item.value && "✓ "}
+                                {item.label}
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+
+                  {expandedTables.leads ? (
                     <ChevronUp size={16} />
                   ) : (
                     <ChevronDown size={16} />
                   )}
                 </div>
-              </CardHeader>
-              {expandedTables.etapas && (
+              </div>
+            </CardHeader>
+            {expandedTables.leads && (
+              <>
                 <CardContent className="p-0 overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="text-xs px-3 py-2">Etapa</TableHead>
-                        <TableHead className="text-xs text-right px-3 py-2">
-                          Cantidad
+                        <TableHead className="text-xs px-3 py-2">
+                          Código
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Cliente
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Asignado
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Etapa
+                        </TableHead>
+                        <TableHead className="text-xs px-3 py-2">
+                          Creado
                         </TableHead>
                         <TableHead className="text-xs text-right px-3 py-2">
-                          Temp.
+                          Acciones
                         </TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {oportunidadesPorEtapa.map((row) => (
-                        <TableRow key={row.id} className="hover:bg-gray-50">
-                          <TableCell className="text-xs px-3 py-2 font-medium">
-                            {row.nombre}
-                          </TableCell>
-                          <TableCell className="text-xs text-right px-3 py-2">
-                            {row.cantidad}
-                          </TableCell>
-                          <TableCell className="text-xs text-right px-3 py-2">
-                            <span
-                              className={`px-2 py-1 rounded text-xs font-semibold ${
-                                getTemperaturaColor(row.temperatura).bg
-                              } ${getTemperaturaColor(row.temperatura).text}`}
-                            >
-                              {row.temperatura}%
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {leadsPaginada.map((item) => {
+                        const usuario = rawData.usuarios.find(
+                          (u) => u.id === item.asignado_a
+                        );
+                        const cliente = rawData.usuarios.find(
+                          (c) => c.id === item.cliente_id
+                        );
+                        const etapa = rawData.etapas.find(
+                          (e) => e.id === item.etapasconversion_id
+                        );
+                        const fecha = new Date(
+                          item.created_at
+                        ).toLocaleDateString();
+
+                        return (
+                          <TableRow key={item.id} className="hover:bg-gray-50">
+                            <TableCell className="text-xs px-3 py-2 font-medium">
+                              {item.oportunidad_id || `LD-${item.id}`}
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2 max-w-xs truncate">
+                              {cliente?.fullname || "-"}
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2">
+                              {usuario?.fullname || "Sin asignar"}
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                {etapa?.nombre || "Sin etapa"}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs px-3 py-2">
+                              {fecha}
+                            </TableCell>
+                            <TableCell className="px-3 py-2 text-right">
+                              <div className="flex justify-end gap-1">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 w-6 p-0"
+                                      onClick={() =>
+                                        router.push(
+                                          `/oportunidades/${item.id}`
+                                        )
+                                      }
+                                    >
+                                      <Eye size={12} />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="text-xs">
+                                    Ver
+                                  </TooltipContent>
+                                </Tooltip>
+                                {canEdit && (
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 w-6 p-0"
+                                        onClick={() =>
+                                          router.push(
+                                            `/oportunidades/${item.id}`
+                                          )
+                                        }
+                                      >
+                                        <Edit2 size={12} />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="left" className="text-xs">
+                                      Editar
+                                    </TooltipContent>
+                                  </Tooltip>
+                                )}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </CardContent>
-              )}
-            </Card>
-          )}
-
-          {/* TABLA OPO POR ETAPA (EXPANDIBLE) */}
-          {oportunidadesPorEtapa.length > 0 && (
-            <Card className="lg:col-span-2">
-              <CardHeader
-                className="pb-2 cursor-pointer hover:bg-gray-50"
-                onClick={() =>
-                  setExpandedTables({
-                    ...expandedTables,
-                    oportunidadesPorEtapa: !expandedTables.oportunidadesPorEtapa,
-                  })
-                }
-              >
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
-                    Oportunidades por Etapa
-                  </CardTitle>
-                  {expandedTables.oportunidadesPorEtapa ? (
-                    <ChevronUp size={16} />
-                  ) : (
-                    <ChevronDown size={16} />
-                  )}
-                </div>
-              </CardHeader>
-              {expandedTables.oportunidadesPorEtapa && (
-                <CardContent className="p-0 overflow-x-auto">
-                  <div className="space-y-3 p-3">
-                    {oportunidadesPorEtapa.map((etapa) => (
-                      <div key={etapa.id}>
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-xs font-bold">{etapa.nombre}</h4>
-                          <span className="text-xs text-gray-600">
-                            {etapa.cantidad} items
-                          </span>
-                        </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs px-2 py-1">
-                                Código
-                              </TableHead>
-                              <TableHead className="text-xs px-2 py-1">
-                                Cliente
-                              </TableHead>
-                              <TableHead className="text-xs px-2 py-1">
-                                Asignado
-                              </TableHead>
-                              <TableHead className="text-xs text-right px-2 py-1">
-                                Acciones
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {etapa.items.slice(0, 3).map((item) => {
-                              const usuario = rawData.usuarios.find(
-                                (u) => u.id === item.asignado_a
-                              );
-                              const cliente = rawData.usuarios.find(
-                                (c) => c.id === item.cliente_id
-                              );
-                              return (
-                                <TableRow
-                                  key={item.id}
-                                  className="text-xs hover:bg-gray-50"
-                                >
-                                  <TableCell className="px-2 py-1 font-medium">
-                                    {item.oportunidad_id || `OPO-${item.id}`}
-                                  </TableCell>
-                                  <TableCell className="px-2 py-1 max-w-xs truncate">
-                                    {cliente?.fullname || "-"}
-                                  </TableCell>
-                                  <TableCell className="px-2 py-1">
-                                    {usuario?.fullname || "Sin asignar"}
-                                  </TableCell>
-                                  <TableCell className="px-2 py-1 text-right">
-                                    <div className="flex justify-end gap-1">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-6 w-6 p-0"
-                                            onClick={() =>
-                                              router.push(
-                                                `/oportunidades/${item.id}`
-                                              )
-                                            }
-                                          >
-                                            <Eye size={12} />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="left" className="text-xs">
-                                          Ver
-                                        </TooltipContent>
-                                      </Tooltip>
-                                      {canEdit && (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              className="h-6 w-6 p-0"
-                                              onClick={() =>
-                                                router.push(
-                                                  `/oportunidades/${item.id}`
-                                                )
-                                              }
-                                            >
-                                              <Edit2 size={12} />
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="left" className="text-xs">
-                                            Editar
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                        {etapa.items.length > 3 && (
-                          <p className="text-xs text-gray-500 mt-1 px-2">
-                            +{etapa.items.length - 3} más
-                          </p>
-                        )}
-                      </div>
-                    ))}
+                {totalPagLeads > 1 && (
+                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
+                    <span className="text-gray-600">
+                      Página {pagLeads + 1} de {totalPagLeads}
+                    </span>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2"
+                        disabled={pagLeads === 0}
+                        onClick={() => setPagLeads(pagLeads - 1)}
+                      >
+                        <ChevronLeft size={14} />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2"
+                        disabled={pagLeads === totalPagLeads - 1}
+                        onClick={() => setPagLeads(pagLeads + 1)}
+                      >
+                        <ChevronRight size={14} />
+                      </Button>
+                    </div>
                   </div>
-                </CardContent>
-              )}
-            </Card>
-          )}
-
-          {/* TABLA LEADS POR ETAPA (EXPANDIBLE) */}
-          {leadsPorEtapa.length > 0 && (
-            <Card className="lg:col-span-2">
-              <CardHeader
-                className="pb-2 cursor-pointer hover:bg-gray-50"
-                onClick={() =>
-                  setExpandedTables({
-                    ...expandedTables,
-                    leadsPorEtapa: !expandedTables.leadsPorEtapa,
-                  })
-                }
-              >
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
-                    Leads por Etapa
-                  </CardTitle>
-                  {expandedTables.leadsPorEtapa ? (
-                    <ChevronUp size={16} />
-                  ) : (
-                    <ChevronDown size={16} />
-                  )}
-                </div>
-              </CardHeader>
-              {expandedTables.leadsPorEtapa && (
-                <CardContent className="p-0 overflow-x-auto">
-                  <div className="space-y-3 p-3">
-                    {leadsPorEtapa.map((etapa) => (
-                      <div key={etapa.id}>
-                        <div className="flex items-center justify-between mb-2">
-                          <h4 className="text-xs font-bold">{etapa.nombre}</h4>
-                          <span className="text-xs text-gray-600">
-                            {etapa.cantidad} items
-                          </span>
-                        </div>
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs px-2 py-1">
-                                Código
-                              </TableHead>
-                              <TableHead className="text-xs px-2 py-1">
-                                Cliente
-                              </TableHead>
-                              <TableHead className="text-xs px-2 py-1">
-                                Asignado
-                              </TableHead>
-                              <TableHead className="text-xs text-right px-2 py-1">
-                                Acciones
-                              </TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {etapa.items.slice(0, 3).map((item) => {
-                              const usuario = rawData.usuarios.find(
-                                (u) => u.id === item.asignado_a
-                              );
-                              const cliente = rawData.usuarios.find(
-                                (c) => c.id === item.cliente_id
-                              );
-                              return (
-                                <TableRow
-                                  key={item.id}
-                                  className="text-xs hover:bg-gray-50"
-                                >
-                                  <TableCell className="px-2 py-1 font-medium">
-                                    {item.oportunidad_id || `LD-${item.id}`}
-                                  </TableCell>
-                                  <TableCell className="px-2 py-1 max-w-xs truncate">
-                                    {cliente?.fullname || "-"}
-                                  </TableCell>
-                                  <TableCell className="px-2 py-1">
-                                    {usuario?.fullname || "Sin asignar"}
-                                  </TableCell>
-                                  <TableCell className="px-2 py-1 text-right">
-                                    <div className="flex justify-end gap-1">
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Button
-                                            size="sm"
-                                            variant="ghost"
-                                            className="h-6 w-6 p-0"
-                                            onClick={() =>
-                                              router.push(
-                                                `/oportunidades/${item.id}`
-                                              )
-                                            }
-                                          >
-                                            <Eye size={12} />
-                                          </Button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="left" className="text-xs">
-                                          Ver
-                                        </TooltipContent>
-                                      </Tooltip>
-                                      {canEdit && (
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <Button
-                                              size="sm"
-                                              variant="ghost"
-                                              className="h-6 w-6 p-0"
-                                              onClick={() =>
-                                                router.push(
-                                                  `/oportunidades/${item.id}`
-                                                )
-                                              }
-                                            >
-                                              <Edit2 size={12} />
-                                            </Button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="left" className="text-xs">
-                                            Editar
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              );
-                            })}
-                          </TableBody>
-                        </Table>
-                        {etapa.items.length > 3 && (
-                          <p className="text-xs text-gray-500 mt-1 px-2">
-                            +{etapa.items.length - 3} más
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-          )}
-        </div>
+                )}
+              </>
+            )}
+          </Card>
+        )}
 
         {/* INFO */}
         <Card className="bg-blue-50 border-blue-200">
@@ -1159,12 +1272,23 @@ export default function DashboardPage() {
               <div className="text-xs space-y-1">
                 <p className="font-semibold text-blue-900">Dashboard Info</p>
                 <ul className="text-blue-700 space-y-0.5">
-                  <li>• Filtro por período: Día, Semana, Mes o Todos</li>
                   <li>
-                    • Permisos: "view" = Solo tus asignaciones | "viewall" = Todo
+                    • <strong>Tarjetas Totales:</strong> OPO y Leads por
+                    separado
                   </li>
-                  <li>• Tablas expandibles: Haz click en los headers</li>
-                  <li>• Temperatura: Promedio de oportunidades activas</li>
+                  <li>
+                    • <strong>Tarjetas Por Etapa:</strong> Suma de OPO + Leads
+                    con desglose
+                  </li>
+                  <li>
+                    • <strong>Tabla Agenda:</strong> Filtra por fecha_agenda
+                    (Hoy, Semana, Mes)
+                  </li>
+                  <li>
+                    • <strong>Tablas OPO y Leads:</strong> Filtros independientes
+                    (Todos, Hoy, Semana, Mes)
+                  </li>
+                  <li>• 15 registros por página con paginación</li>
                 </ul>
               </div>
             </div>
