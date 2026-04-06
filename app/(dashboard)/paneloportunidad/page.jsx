@@ -6,8 +6,6 @@ import {
   Calendar,
   TrendingUp,
   Zap,
-  ChevronDown,
-  ChevronUp,
   Eye,
   Edit2,
   Clock,
@@ -97,11 +95,6 @@ export default function DashboardPage() {
     etapas: [],
     detallesOpo: {},
     detallesLeads: {},
-  });
-
-  const [expandedTables, setExpandedTables] = useState({
-    oportunidades: true,
-    leads: true,
   });
 
   // Paginación
@@ -302,7 +295,7 @@ export default function DashboardPage() {
         const leadCount = leadsVisibles.filter(
           (lead) => lead.etapasconversion_id === etapa.id
         ).length;
-        
+
         oposPorEtapa[etapa.id] = opoCount;
         leadsPorEtapa[etapa.id] = leadCount;
       });
@@ -824,85 +817,73 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* TABLA OPORTUNIDADES */}
+        {/* TABLA OPORTUNIDADES - SIN DESPLEGAR */}
         {oportunidadesOrdenadas.length > 0 && (
           <Card>
-            <CardHeader
-              className="pb-2 cursor-pointer hover:bg-gray-50"
-              onClick={() =>
-                setExpandedTables({
-                  ...expandedTables,
-                  oportunidades: !expandedTables.oportunidades,
-                })
-              }
-            >
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
                     Oportunidades - {oportunidadesOrdenadas.length} registros
                   </CardTitle>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1 text-xs h-7"
-                      >
-                        <Calendar className="h-3 w-3" />
-                        {filterOposPeriodo === FILTER_ALL
-                          ? "Todos"
-                          : filterOposPeriodo === FILTER_TODAY
-                          ? "Hoy"
-                          : filterOposPeriodo === FILTER_THIS_WEEK
-                          ? "Semana"
-                          : "Mes"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[200px] p-0" align="end">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {[
-                              { value: FILTER_ALL, label: "Todos" },
-                              { value: FILTER_TODAY, label: "Hoy" },
-                              {
-                                value: FILTER_THIS_WEEK,
-                                label: "Esta semana",
-                              },
-                              { value: FILTER_THIS_MONTH, label: "Este mes" },
-                            ].map((item) => (
-                              <CommandItem
-                                key={item.value}
-                                value={item.value}
-                                onSelect={() => {
-                                  setFilterOposPeriodo(item.value);
-                                  setPagOportunidades(0);
-                                }}
-                                className="cursor-pointer text-xs sm:text-sm"
-                              >
-                                {filterOposPeriodo === item.value && "✓ "}
-                                {item.label}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-
-                  {expandedTables.oportunidades ? (
-                    <ChevronUp size={16} />
-                  ) : (
-                    <ChevronDown size={16} />
-                  )}
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 text-xs h-7"
+                    >
+                      <Calendar className="h-3 w-3" />
+                      {filterOposPeriodo === FILTER_ALL
+                        ? "Todos"
+                        : filterOposPeriodo === FILTER_TODAY
+                        ? "Hoy"
+                        : filterOposPeriodo === FILTER_THIS_WEEK
+                        ? "Semana"
+                        : "Mes"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[200px] p-0" align="end">
+                    <Command>
+                      <CommandList>
+                        <CommandGroup>
+                          {[
+                            { value: FILTER_ALL, label: "Todos" },
+                            { value: FILTER_TODAY, label: "Hoy" },
+                            {
+                              value: FILTER_THIS_WEEK,
+                              label: "Esta semana",
+                            },
+                            { value: FILTER_THIS_MONTH, label: "Este mes" },
+                          ].map((item) => (
+                            <CommandItem
+                              key={item.value}
+                              value={item.value}
+                              onSelect={() => {
+                                setFilterOposPeriodo(item.value);
+                                setPagOportunidades(0);
+                              }}
+                              className="cursor-pointer text-xs sm:text-sm"
+                            >
+                              {filterOposPeriodo === item.value && "✓ "}
+                              {item.label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </CardHeader>
-            {expandedTables.oportunidades && (
-              <>
-                <CardContent className="p-0 overflow-x-auto">
+            <CardContent className="p-0 overflow-x-auto">
+              {opoPaginada.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-500">
+                  No hay oportunidades para este período
+                </div>
+              ) : (
+                <>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -947,7 +928,7 @@ export default function DashboardPage() {
                               {item.oportunidad_id || `OPO-${item.id}`}
                             </TableCell>
                             <TableCell className="text-xs px-3 py-2 max-w-xs truncate">
-                              {cliente?.fullname || "-"}
+                              {item?.cliente_nombre || "-"}
                             </TableCell>
                             <TableCell className="text-xs px-3 py-2">
                               {usuario?.fullname || "Sin asignar"}
@@ -1009,122 +990,110 @@ export default function DashboardPage() {
                       })}
                     </TableBody>
                   </Table>
-                </CardContent>
-                {totalPagOpo > 1 && (
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
-                    <span className="text-gray-600">
-                      Página {pagOportunidades + 1} de {totalPagOpo}
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2"
-                        disabled={pagOportunidades === 0}
-                        onClick={() =>
-                          setPagOportunidades(pagOportunidades - 1)
-                        }
-                      >
-                        <ChevronLeft size={14} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2"
-                        disabled={pagOportunidades === totalPagOpo - 1}
-                        onClick={() =>
-                          setPagOportunidades(pagOportunidades + 1)
-                        }
-                      >
-                        <ChevronRight size={14} />
-                      </Button>
+                  {totalPagOpo > 1 && (
+                    <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
+                      <span className="text-gray-600">
+                        Página {pagOportunidades + 1} de {totalPagOpo}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2"
+                          disabled={pagOportunidades === 0}
+                          onClick={() =>
+                            setPagOportunidades(pagOportunidades - 1)
+                          }
+                        >
+                          <ChevronLeft size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2"
+                          disabled={pagOportunidades === totalPagOpo - 1}
+                          onClick={() =>
+                            setPagOportunidades(pagOportunidades + 1)
+                          }
+                        >
+                          <ChevronRight size={14} />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
+                  )}
+                </>
+              )}
+            </CardContent>
           </Card>
         )}
 
-        {/* TABLA LEADS */}
+        {/* TABLA LEADS - SIN DESPLEGAR */}
         {leadsOrdenados.length > 0 && (
           <Card>
-            <CardHeader
-              className="pb-2 cursor-pointer hover:bg-gray-50"
-              onClick={() =>
-                setExpandedTables({
-                  ...expandedTables,
-                  leads: !expandedTables.leads,
-                })
-              }
-            >
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <CardTitle className="text-sm" style={{ color: BRAND_PRIMARY }}>
                     Leads - {leadsOrdenados.length} registros
                   </CardTitle>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Popover>
-                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="gap-1 text-xs h-7"
-                      >
-                        <Calendar className="h-3 w-3" />
-                        {filterLeadsPeriodo === FILTER_ALL
-                          ? "Todos"
-                          : filterLeadsPeriodo === FILTER_TODAY
-                          ? "Hoy"
-                          : filterLeadsPeriodo === FILTER_THIS_WEEK
-                          ? "Semana"
-                          : "Mes"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-[200px] p-0" align="end">
-                      <Command>
-                        <CommandList>
-                          <CommandGroup>
-                            {[
-                              { value: FILTER_ALL, label: "Todos" },
-                              { value: FILTER_TODAY, label: "Hoy" },
-                              {
-                                value: FILTER_THIS_WEEK,
-                                label: "Esta semana",
-                              },
-                              { value: FILTER_THIS_MONTH, label: "Este mes" },
-                            ].map((item) => (
-                              <CommandItem
-                                key={item.value}
-                                value={item.value}
-                                onSelect={() => {
-                                  setFilterLeadsPeriodo(item.value);
-                                  setPagLeads(0);
-                                }}
-                                className="cursor-pointer text-xs sm:text-sm"
-                              >
-                                {filterLeadsPeriodo === item.value && "✓ "}
-                                {item.label}
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-
-                  {expandedTables.leads ? (
-                    <ChevronUp size={16} />
-                  ) : (
-                    <ChevronDown size={16} />
-                  )}
-                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1 text-xs h-7"
+                    >
+                      <Calendar className="h-3 w-3" />
+                      {filterLeadsPeriodo === FILTER_ALL
+                        ? "Todos"
+                        : filterLeadsPeriodo === FILTER_TODAY
+                        ? "Hoy"
+                        : filterLeadsPeriodo === FILTER_THIS_WEEK
+                        ? "Semana"
+                        : "Mes"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[200px] p-0" align="end">
+                    <Command>
+                      <CommandList>
+                        <CommandGroup>
+                          {[
+                            { value: FILTER_ALL, label: "Todos" },
+                            { value: FILTER_TODAY, label: "Hoy" },
+                            {
+                              value: FILTER_THIS_WEEK,
+                              label: "Esta semana",
+                            },
+                            { value: FILTER_THIS_MONTH, label: "Este mes" },
+                          ].map((item) => (
+                            <CommandItem
+                              key={item.value}
+                              value={item.value}
+                              onSelect={() => {
+                                setFilterLeadsPeriodo(item.value);
+                                setPagLeads(0);
+                              }}
+                              className="cursor-pointer text-xs sm:text-sm"
+                            >
+                              {filterLeadsPeriodo === item.value && "✓ "}
+                              {item.label}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
             </CardHeader>
-            {expandedTables.leads && (
-              <>
-                <CardContent className="p-0 overflow-x-auto">
+            <CardContent className="p-0 overflow-x-auto">
+              {leadsPaginada.length === 0 ? (
+                <div className="p-4 text-center text-xs text-gray-500">
+                  No hay leads para este período
+                </div>
+              ) : (
+                <>
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -1154,7 +1123,7 @@ export default function DashboardPage() {
                           (u) => u.id === item.asignado_a
                         );
                         const cliente = rawData.usuarios.find(
-                          (c) => c.id === item.cliente_id
+                          (c) => c.id === item.cliente_nombre
                         );
                         const etapa = rawData.etapas.find(
                           (e) => e.id === item.etapasconversion_id
@@ -1169,7 +1138,7 @@ export default function DashboardPage() {
                               {item.oportunidad_id || `LD-${item.id}`}
                             </TableCell>
                             <TableCell className="text-xs px-3 py-2 max-w-xs truncate">
-                              {cliente?.fullname || "-"}
+                              {item?.cliente_nombre || "-"}
                             </TableCell>
                             <TableCell className="text-xs px-3 py-2">
                               {usuario?.fullname || "Sin asignar"}
@@ -1231,36 +1200,36 @@ export default function DashboardPage() {
                       })}
                     </TableBody>
                   </Table>
-                </CardContent>
-                {totalPagLeads > 1 && (
-                  <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
-                    <span className="text-gray-600">
-                      Página {pagLeads + 1} de {totalPagLeads}
-                    </span>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2"
-                        disabled={pagLeads === 0}
-                        onClick={() => setPagLeads(pagLeads - 1)}
-                      >
-                        <ChevronLeft size={14} />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-6 px-2"
-                        disabled={pagLeads === totalPagLeads - 1}
-                        onClick={() => setPagLeads(pagLeads + 1)}
-                      >
-                        <ChevronRight size={14} />
-                      </Button>
+                  {totalPagLeads > 1 && (
+                    <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-t text-xs">
+                      <span className="text-gray-600">
+                        Página {pagLeads + 1} de {totalPagLeads}
+                      </span>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2"
+                          disabled={pagLeads === 0}
+                          onClick={() => setPagLeads(pagLeads - 1)}
+                        >
+                          <ChevronLeft size={14} />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2"
+                          disabled={pagLeads === totalPagLeads - 1}
+                          onClick={() => setPagLeads(pagLeads + 1)}
+                        >
+                          <ChevronRight size={14} />
+                        </Button>
+                      </div>
                     </div>
-                  </div>
-                )}
-              </>
-            )}
+                  )}
+                </>
+              )}
+            </CardContent>
           </Card>
         )}
 
@@ -1273,21 +1242,15 @@ export default function DashboardPage() {
                 <p className="font-semibold text-blue-900">Dashboard Info</p>
                 <ul className="text-blue-700 space-y-0.5">
                   <li>
-                    • <strong>Tarjetas Totales:</strong> OPO y Leads por
-                    separado
+                    • <strong>Tablas Oportunidades y Leads:</strong> NO son desplegables, siempre visibles
                   </li>
                   <li>
-                    • <strong>Tarjetas Por Etapa:</strong> Suma de OPO + Leads
-                    con desglose
+                    • <strong>Sin registros:</strong> Muestra mensaje "No hay..." si el filtro no tiene resultados
                   </li>
                   <li>
-                    • <strong>Tabla Agenda:</strong> Filtra por fecha_agenda
-                    (Hoy, Semana, Mes)
+                    • <strong>Tablas desaparecen:</strong> Si el total es 0 (sin filtrar), la tabla no se muestra
                   </li>
-                  <li>
-                    • <strong>Tablas OPO y Leads:</strong> Filtros independientes
-                    (Todos, Hoy, Semana, Mes)
-                  </li>
+                  <li>• Filtros independientes (Todos, Hoy, Semana, Mes)</li>
                   <li>• 15 registros por página con paginación</li>
                 </ul>
               </div>
