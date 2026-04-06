@@ -56,6 +56,57 @@ export async function POST(req) {
       return NextResponse.json({ message: "tipo_identificacion inválido" }, { status: 400 });
     }
 
+    // ✅ Validar que no existan duplicados
+    const [existing] = await db.query(
+      `
+      SELECT id, 
+        CASE 
+          WHEN identificacion_fiscal = ? AND identificacion_fiscal != '' THEN 'identificacion_fiscal'
+          WHEN email = ? AND email != '' THEN 'email'
+          WHEN celular = ? AND celular != '' THEN 'celular'
+        END as field
+      FROM clientes
+      WHERE (
+        (identificacion_fiscal = ? AND identificacion_fiscal != '') OR
+        (email = ? AND email != '') OR
+        (celular = ? AND celular != '')
+      )
+      LIMIT 1
+      `,
+      [
+        identificacion_fiscal,
+        email,
+        celular,
+        identificacion_fiscal,
+        email,
+        celular,
+      ]
+    );
+
+    if (existing.length > 0) {
+      const fieldName = existing[0].field;
+      let mensaje = "";
+
+      switch (fieldName) {
+        case "identificacion_fiscal":
+          mensaje = `Ya existe un cliente con la identificación fiscal: ${identificacion_fiscal}`;
+          break;
+        case "email":
+          mensaje = `Ya existe un cliente con el email: ${email}`;
+          break;
+        case "celular":
+          mensaje = `Ya existe un cliente con el celular: ${celular}`;
+          break;
+        default:
+          mensaje = "Este cliente ya existe";
+      }
+
+      return NextResponse.json(
+        { message: mensaje, field: fieldName },
+        { status: 409 } // Conflict
+      );
+    }
+
     const [result] = await db.query(
       `
       INSERT INTO clientes(
@@ -75,7 +126,7 @@ export async function POST(req) {
       ]
     );
 
-    return NextResponse.json({ message: "Cliente creado", id: result.insertId });
+    return NextResponse.json({ message: "Cliente creado", id: result.insertId }, { status: 201 });
   } catch (e) {
     console.log(e);
     return NextResponse.json({ message: "Error" }, { status: 500 });

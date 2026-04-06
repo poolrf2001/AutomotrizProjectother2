@@ -126,7 +126,25 @@ export default function ClientesPage() {
     loadVehiculos(cliente.id);
   }
 
-  // ---------------- SAVE CLIENTE ----------------
+  // ✅ CALLBACK CUANDO SE CREA CLIENTE
+  function handleClienteCreated(newCliente) {
+    console.log("Cliente creado:", newCliente);
+    loadClientes();
+    loadAllVehiculos();
+    setClienteDialog({ open: false });
+  }
+
+  // ✅ CALLBACK CUANDO SE CREA VEHICULO
+  function handleVehiculoCreated(newVehiculo) {
+    console.log("Vehículo creado:", newVehiculo);
+    if (selectedCliente) {
+      loadVehiculos(selectedCliente.id);
+    }
+    loadAllVehiculos();
+    setVehiculoDialog({ open: false });
+  }
+
+  // ---------------- SAVE CLIENTE (PARA EDITAR) ----------------
 
   async function saveCliente(data) {
     const method = clienteDialog.mode === "edit" ? "PUT" : "POST";
@@ -137,21 +155,30 @@ export default function ClientesPage() {
         : `/api/clientes`;
 
     try {
-      await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
 
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.message || "Error guardando cliente");
+        return;
+      }
+
       toast.success(
         clienteDialog.mode === "edit"
-          ? "Cliente actualizado"
-          : "Cliente creado"
+          ? "✓ Cliente actualizado"
+          : "✓ Cliente creado"
       );
 
       setClienteDialog({ open: false });
       loadClientes();
-    } catch {
+      loadAllVehiculos();
+    } catch (error) {
+      console.error(error);
       toast.error("Error guardando cliente");
     }
   }
@@ -169,7 +196,7 @@ export default function ClientesPage() {
         : `/api/vehiculos`;
 
     try {
-      await fetch(url, {
+      const response = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -178,35 +205,50 @@ export default function ClientesPage() {
         }),
       });
 
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.message || "Error guardando vehículo");
+        return;
+      }
+
       toast.success(
         vehiculoDialog.mode === "edit"
-          ? "Vehículo actualizado"
-          : "Vehículo creado"
+          ? "✓ Vehículo actualizado"
+          : "✓ Vehículo creado"
       );
 
       setVehiculoDialog({ open: false });
       loadVehiculos(selectedCliente.id);
       loadAllVehiculos();
-    } catch {
+    } catch (error) {
+      console.error(error);
       toast.error("Error guardando vehículo");
     }
   }
 
-  // ---------------- DELETE CLIENTE ----------------
-
+  // ✅ DELETE CLIENTE MEJORADO
   async function deleteCliente() {
     try {
-      await fetch(`/api/clientes/${deleteDialog.item.id}`, {
+      const response = await fetch(`/api/clientes/${deleteDialog.item.id}`, {
         method: "DELETE",
       });
 
-      toast.success("Cliente eliminado");
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.message || "Error eliminando cliente");
+        return;
+      }
+
+      toast.success("✓ Cliente eliminado");
 
       setDeleteDialog({ open: false });
       loadClientes();
       loadAllVehiculos();
       setSelectedCliente(null);
-    } catch {
+    } catch (error) {
+      console.error(error);
       toast.error("Error eliminando cliente");
     }
   }
@@ -317,6 +359,24 @@ export default function ClientesPage() {
                 </div>
               </div>
 
+              {permCreate && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      onClick={() =>
+                        setClienteDialog({ open: true, mode: "create", data: null })
+                      }
+                      className="bg-[#5d16ec] hover:bg-[#4a12c8]/70 text-white shadow-md gap-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span className="hidden sm:inline">Nuevo Cliente</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    Crear un nuevo cliente
+                  </TooltipContent>
+                </Tooltip>
+              )}
             </div>
 
           </CardHeader>
@@ -348,7 +408,7 @@ export default function ClientesPage() {
                 onVehiculos={openVehiculos}
                 onCreate={
                   permCreate
-                    ? () => setClienteDialog({ open: true, mode: "create" })
+                    ? () => setClienteDialog({ open: true, mode: "create", data: null })
                     : undefined
                 }
                 onEdit={
@@ -383,7 +443,7 @@ export default function ClientesPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <CardTitle className="text-lg font-bold text-gray-900">
-                        Vehículos de {selectedCliente.name}
+                        Vehículos de {selectedCliente.nombre}
                       </CardTitle>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -405,7 +465,7 @@ export default function ClientesPage() {
                     <TooltipTrigger asChild>
                       <Button
                         onClick={() =>
-                          setVehiculoDialog({ open: true, mode: "create" })
+                          setVehiculoDialog({ open: true, mode: "create", data: null })
                         }
                         className="bg-[#5d16ec] hover:bg-[#4a12c8]/70 text-white shadow-md gap-2"
                       >
@@ -455,6 +515,7 @@ export default function ClientesPage() {
                           setVehiculoDialog({
                             open: true,
                             mode: "create",
+                            data: null,
                           })
                       : undefined
                   }
@@ -488,7 +549,7 @@ export default function ClientesPage() {
                               return;
                             }
 
-                            toast.success("Vehículo eliminado");
+                            toast.success("✓ Vehículo eliminado");
 
                             loadVehiculos(selectedCliente.id);
                             loadAllVehiculos();
@@ -529,8 +590,9 @@ export default function ClientesPage() {
         open={clienteDialog.open}
         mode={clienteDialog.mode}
         cliente={clienteDialog.data}
+        onOpenChange={(v) => setClienteDialog((prev) => ({ ...prev, open: v }))}
+        onClienteCreated={handleClienteCreated}
         onSave={saveCliente}
-        onOpenChange={(v) => setClienteDialog({ open: v })}
       />
 
       <VehiculoDialog
@@ -538,7 +600,8 @@ export default function ClientesPage() {
         mode={vehiculoDialog.mode}
         vehiculo={vehiculoDialog.data}
         onSave={saveVehiculo}
-        onOpenChange={(v) => setVehiculoDialog({ open: v })}
+        onOpenChange={(v) => setVehiculoDialog((prev) => ({ ...prev, open: v }))}
+        onVehiculoCreated={handleVehiculoCreated}
       />
 
       <ConfirmDeleteDialog

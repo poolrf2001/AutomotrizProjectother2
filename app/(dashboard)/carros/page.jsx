@@ -19,10 +19,14 @@ import {
   AlertCircle,
   DollarSign,
   FileUp,
-  Info,
   CheckCircle,
   TrendingUp,
+  History,
+  File,
 } from "lucide-react";
+
+import HistorialCarrosImportGlobal from "@/app/components/carros/HistorialCarrosImportGlobal";
+import HistorialCarrosSheet from "@/app/components/carros/HistorialCarrosSheet";
 
 export default function PreciosPage() {
   const [precios, setPrecios] = useState([]);
@@ -58,24 +62,17 @@ export default function PreciosPage() {
         ),
       ]);
 
-      // Manejar respuestas con paginación
       const marcasData = Array.isArray(m) ? m : [];
       const modelosData = Array.isArray(mo) ? mo : [];
-      
-      // Las versiones pueden venir con paginación
+
       let versionesData = [];
       if (v.data && Array.isArray(v.data)) {
         versionesData = v.data;
       } else if (Array.isArray(v)) {
         versionesData = v;
       }
-      
-      const preciosData = Array.isArray(p) ? p : [];
 
-      console.log("Marcas:", marcasData);
-      console.log("Modelos:", modelosData);
-      console.log("Versiones:", versionesData);
-      console.log("Precios:", preciosData);
+      const preciosData = Array.isArray(p) ? p : [];
 
       setMarcas(marcasData);
       setModelos(modelosData);
@@ -135,7 +132,6 @@ export default function PreciosPage() {
     loadData();
   }, []);
 
-  // Descargar plantilla
   async function handleDownloadTemplate() {
     try {
       const response = await fetch(
@@ -159,7 +155,41 @@ export default function PreciosPage() {
     }
   }
 
-  // Importar precios
+  async function handleDownloadCarrosTemplate() {
+    try {
+      const headers = [
+        "vin",
+        "marca_id",
+        "modelo_id",
+        "version_id",
+        "numerofactura",
+        "preciocompra",
+        "created_at_facturacion",
+        "created_at_entrega",
+      ];
+      const exampleData = [
+        headers.join(","),
+        'WBADT43452G917604,8,11,1,FAC-001,25000,2024-01-15,2024-01-20',
+        'JTHBP5C2XA5034186,8,11,1,FAC-002,28000,2024-01-16,2024-01-21',
+      ].join("\n");
+
+      const blob = new Blob([exampleData], { type: "text/csv;charset=utf-8;" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", "plantilla-carros.csv");
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast.success("Plantilla de carros descargada");
+    } catch (e) {
+      console.error(e);
+      toast.error("Error descargando plantilla de carros");
+    }
+  }
+
   async function handleImport() {
     if (!importFile) {
       toast.error("Selecciona un archivo");
@@ -200,7 +230,6 @@ export default function PreciosPage() {
     }
   }
 
-  // Cambiar precio y guardar automáticamente
   function handlePriceChange(marcaId, modeloId, versionId, value) {
     const key = `${marcaId}_${modeloId}`;
     setPreciosPorMarcaModeloVersion((prev) => ({
@@ -260,7 +289,6 @@ export default function PreciosPage() {
     }, 500);
   }
 
-  // Guardar precio individual
   async function savePrice(marcaId, modeloId, versionId, cell) {
     try {
       const res = await fetch("/api/precios-region-version", {
@@ -287,7 +315,6 @@ export default function PreciosPage() {
     }
   }
 
-  // Agrupar modelos por marca
   const modelosPorMarca = {};
   modelos.forEach((modelo) => {
     if (!modelosPorMarca[modelo.marca_id]) {
@@ -504,13 +531,44 @@ export default function PreciosPage() {
                     className="border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400 gap-2"
                   >
                     <Download size={16} />
-                    Descargar Plantilla
+                    Plantilla Precios
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
                   Descarga la plantilla de Excel para importar precios
                 </TooltipContent>
               </Tooltip>
+
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={handleDownloadCarrosTemplate}
+                    variant="outline"
+                    className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 gap-2"
+                  >
+                    <File size={16} />
+                    Plantilla Carros
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  Descarga la plantilla CSV para importar carros en masa
+                </TooltipContent>
+              </Tooltip>
+
+              <div onClick={(e) => e.stopPropagation()}>
+                <HistorialCarrosImportGlobal
+                  onSuccess={loadData}
+                  trigger={
+                    <Button
+                      variant="outline"
+                      className="border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 gap-2"
+                    >
+                      <Upload size={16} />
+                      Importar Carros
+                    </Button>
+                  }
+                />
+              </div>
 
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -641,7 +699,6 @@ export default function PreciosPage() {
           <CardContent className="p-0">
             <div className="overflow-x-auto rounded-lg border border-gray-200">
               <table className="w-full text-sm border-collapse">
-                {/* HEADER */}
                 <thead>
                   <tr className="bg-slate-50 border-b-2 border-slate-300">
                     <th className="border-r border-slate-300 p-3 text-left font-bold bg-slate-100 sticky left-0 z-10 min-w-max">
@@ -650,8 +707,10 @@ export default function PreciosPage() {
                     <th className="border-r border-slate-300 p-3 text-left font-bold bg-slate-100 sticky left-32 z-10 min-w-max">
                       Modelo
                     </th>
+                    <th className="border-r border-slate-300 p-3 text-center font-bold bg-slate-100 w-12">
+                      Acciones
+                    </th>
 
-                {/* Columnas de versiones: 3 sub-cols cada una */}
                     {versiones.map((version) => (
                       <Tooltip key={version.id}>
                         <TooltipTrigger asChild>
@@ -668,21 +727,26 @@ export default function PreciosPage() {
                       </Tooltip>
                     ))}
                   </tr>
-                  {/* Sub-headers */}
                   <tr className="bg-slate-50 border-b border-slate-300">
                     <th className="border-r border-slate-300 p-2 text-left text-xs font-semibold text-slate-500 bg-slate-100 sticky left-0 z-10 min-w-[128px]"></th>
                     <th className="border-r border-slate-300 p-2 text-left text-xs font-semibold text-slate-500 bg-slate-100 sticky left-32 z-10 min-w-[128px]"></th>
+                    <th className="border-r border-slate-300 p-2 text-center text-xs font-semibold text-slate-500 bg-slate-100 w-12"></th>
                     {versiones.map((version) => (
                       <React.Fragment key={version.id}>
-                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-blue-700 bg-blue-50 w-[95px]">Precio</th>
-                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-green-700 bg-green-50 w-[60px]">Stock</th>
-                        <th className="border-r border-slate-300 p-2 text-center text-xs font-semibold text-orange-700 bg-orange-50 w-[65px]">Días</th>
+                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-blue-700 bg-blue-50 w-[95px]">
+                          Precio
+                        </th>
+                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-green-700 bg-green-50 w-[60px]">
+                          Stock
+                        </th>
+                        <th className="border-r border-slate-300 p-2 text-center text-xs font-semibold text-orange-700 bg-orange-50 w-[65px]">
+                          Días
+                        </th>
                       </React.Fragment>
                     ))}
                   </tr>
                 </thead>
 
-                {/* BODY */}
                 <tbody>
                   {Object.entries(modelosPorMarca).map(
                     ([marcaId, modelosList]) => {
@@ -706,7 +770,6 @@ export default function PreciosPage() {
                                     : "bg-slate-50/30"
                                 }`}
                               >
-                                {/* Marca (solo en la primera fila del grupo) */}
                                 {idx === 0 && (
                                   <td
                                     rowSpan={modelosList.length}
@@ -716,17 +779,23 @@ export default function PreciosPage() {
                                   </td>
                                 )}
 
-                                {/* Modelo */}
                                 <td className="border-r border-slate-300 p-3 font-semibold text-slate-900 sticky left-32 z-5 min-w-max">
                                   {modelo.name}
                                 </td>
 
-                                {/* Precios/Stock/Días por versión */}
+                                <td className="border-r border-slate-300 p-2 text-center">
+                                  <HistorialCarrosSheet
+                                    marcaId={modelo.marca_id}
+                                    modeloId={modelo.id}
+                                    marcaNombre={marca?.name || ""}
+                                    modeloNombre={modelo.name}
+                                  />
+                                </td>
+
                                 {versiones.map((version) => {
                                   const cell = preciosData[version.id] || {};
                                   return (
                                     <React.Fragment key={version.id}>
-                                      {/* Precio */}
                                       <td className="border-r border-slate-200 p-1.5 text-center bg-blue-50/30">
                                         <input
                                           type="number"
@@ -743,7 +812,6 @@ export default function PreciosPage() {
                                           className="w-full h-8 border border-slate-300 rounded px-1.5 py-1 text-center text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
                                         />
                                       </td>
-                                      {/* Stock toggle */}
                                       <td className="border-r border-slate-200 p-1.5 text-center bg-green-50/30">
                                         <Tooltip>
                                           <TooltipTrigger asChild>
@@ -767,11 +835,12 @@ export default function PreciosPage() {
                                             </button>
                                           </TooltipTrigger>
                                           <TooltipContent side="top">
-                                            {cell.en_stock !== false ? "En stock — clic para marcar sin stock" : "Sin stock — clic para marcar en stock"}
+                                            {cell.en_stock !== false
+                                              ? "En stock — clic para marcar sin stock"
+                                              : "Sin stock — clic para marcar en stock"}
                                           </TooltipContent>
                                         </Tooltip>
                                       </td>
-                                      {/* Días de entrega */}
                                       <td className="border-r border-slate-300 p-1.5 text-center bg-orange-50/30">
                                         <input
                                           type="number"
@@ -806,7 +875,6 @@ export default function PreciosPage() {
 
         {/* STATUS Y LEYENDA */}
         <div className="space-y-3">
-          {/* Estado de guardado */}
           {isSaving && (
             <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 border border-blue-200 px-4 py-3 rounded-lg">
               <Loader2 size={16} className="animate-spin" />
@@ -814,7 +882,6 @@ export default function PreciosPage() {
             </div>
           )}
 
-          {/* Leyenda */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
             <div className="flex items-start gap-3">
               <DollarSign
@@ -844,16 +911,16 @@ export default function PreciosPage() {
             </div>
 
             <div className="flex items-start gap-3">
-              <AlertCircle
+              <History
                 size={16}
-                className="text-amber-600 flex-shrink-0 mt-1"
+                className="text-purple-600 flex-shrink-0 mt-1"
               />
               <div>
                 <p className="font-medium text-sm text-slate-900">
-                  Validación
+                  Historial
                 </p>
                 <p className="text-xs text-gray-600">
-                  Verifica que todos los campos requeridos estén completos
+                  Ver, agregar e importar carros por marca y modelo
                 </p>
               </div>
             </div>
