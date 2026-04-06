@@ -45,7 +45,7 @@ function mapSession(session) {
     cliente_nombre: session.cliente_nombre ?? session.client_name ?? session.meta?.sender?.name ?? "Cliente",
     phone: session.phone ?? session.celular ?? session.meta?.sender?.phone_number ?? "",
     celular: session.celular ?? session.phone ?? session.meta?.sender?.phone_number ?? "",
-    source_channel: session.source_channel ?? channelFromInbox(session.channel ?? session.inbox?.channel_type),
+    source_channel: session.source_channel ?? channelFromInbox(session.meta?.channel ?? session.channel ?? session.inbox?.channel_type),
     assignment_status: session.assignment_status ?? session.status ?? "open",
     resumen: session.resumen ?? "",
   };

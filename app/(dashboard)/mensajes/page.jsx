@@ -60,7 +60,7 @@ async function fetchConversations(status = "open") {
     cliente_nombre: conv.meta?.sender?.name || "Cliente",
     phone: conv.meta?.sender?.phone_number || "",
     celular: conv.meta?.sender?.phone_number || "",
-    source_channel: channelFromInbox(conv.channel),
+    source_channel: channelFromInbox(conv.meta?.channel),
     assignment_status: conv.status,
     unread_count: conv.unread_count || 0,
     last_activity_at: conv.last_activity_at
