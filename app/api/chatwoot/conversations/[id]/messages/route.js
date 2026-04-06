@@ -18,8 +18,15 @@ export async function GET(req, { params }) {
 }
 
 export async function POST(req, { params }) {
-  const auth = authorizeConversation(req, "edit");
-  if (!auth.ok) return auth.response;
+  // Soportar auth por webhook secret (para llamadas desde n8n)
+  const providedSecret = req.headers.get("x-conversations-webhook-secret") || "";
+  const expectedSecret = process.env.CONVERSATIONS_WEBHOOK_SECRET || "";
+  const isWebhookAuth = expectedSecret && providedSecret === expectedSecret;
+
+  if (!isWebhookAuth) {
+    const auth = authorizeConversation(req, "edit");
+    if (!auth.ok) return auth.response;
+  }
 
   const { id } = await params;
 
