@@ -96,6 +96,7 @@ export async function GET(request, { params }) {
         rd.glp,
         rd.tc_referencial,
         rd.total,
+        rd.descripcion,
         -- Cotización
         ca.id as cotizacion_id
       FROM reserva_detalles rd

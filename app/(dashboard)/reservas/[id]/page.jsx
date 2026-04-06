@@ -271,7 +271,6 @@ export default function ReservaDetailPage() {
           "valores_tc_ref",
           "cuota_inicial",
           "monto_aprobado",
-          "observaciones",
         ];
 
         const cleanData = {};
@@ -280,6 +279,13 @@ export default function ReservaDetailPage() {
             cleanData[key] = data[key] === "" ? null : data[key];
           }
         });
+
+        // ✅ MAPEAR observaciones -> descripcion
+        if (data.observaciones !== undefined) {
+          cleanData.descripcion = data.observaciones === "" ? null : data.observaciones;
+        }
+
+        console.log("Datos a guardar:", cleanData); // ✅ DEBUG
 
         const response = await fetch(`/api/reserva-detalles/${detalles.detalle_id}`, {
           method: "PUT",
@@ -332,7 +338,7 @@ export default function ReservaDetailPage() {
 
       setReserva(data);
       setDetalles(data.detalles);
-      setCotizacion(data.cotizaciones?.[0] || null); // ✅ USAR COTIZACION
+      setCotizacion(data.cotizaciones?.[0] || null);
       setAccesorios(data.accesorios || []);
 
       if (data.detalles) {
@@ -396,7 +402,7 @@ export default function ReservaDetailPage() {
           valores_tc_ref: data.detalles.tc_referencial?.toString() || "",
           cuota_inicial: "",
           monto_aprobado: data.detalles.total?.toString() || "",
-          observaciones: "",
+          observaciones: data.detalles.descripcion || "", // ✅ USAR DESCRIPCION
           identificacion_fiscal: data.detalles.identificacion_fiscal || "",
           nombre_comercial: data.detalles.nombre_comercial || "",
           email: data.detalles.email || "",
@@ -1290,14 +1296,14 @@ export default function ReservaDetailPage() {
             {/* OBSERVACIONES */}
             <div>
               <label className="text-xs font-medium text-gray-600 block mb-2">
-                Observaciones
+                Observaciones / Descripción
               </label>
               <Textarea
                 value={formData.observaciones}
                 onChange={(e) =>
                   handleFieldChange("observaciones", e.target.value)
                 }
-                placeholder="Observaciones adicionales..."
+                placeholder="Observaciones adicionales o descripción de la reserva..."
                 rows={4}
                 className="text-sm"
               />

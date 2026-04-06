@@ -74,24 +74,24 @@ export const NAV_TREE = [
     key: "pyp",
     label: "Planchado y Pintura",
     items: [
-      { to: "/ordenes/pyp", label: "OT´s", icon: ClipboardList, perm: ["ordenes", "view"] },
-      { to: "/cotizacion/pyp", label: "Cotización", icon: Receipt, perm: ["cotizacion", "view"] },
-      { to: "/picaje/pyp", label: "Picaje", icon: SquareDashedMousePointer, perm: ["picaje", "view"] },
+      { to: "/ordenes/pyp", label: "OT´s", icon: ClipboardList, perm: ["oportunidadespv", "view"] },
+      { to: "/cotizacion/pyp", label: "Cotización", icon: Receipt, perm: ["oportunidadespv", "view"] },
+      { to: "/picaje/pyp", label: "Picaje", icon: SquareDashedMousePointer, perm: ["oportunidadespv", "view"] },
     ],
   },
   {
     key: "general",
     label: "Taller",
     items: [
-      { to: "/ordenes/taller", label: "OT´s", icon: ClipboardList, perm: ["ordenes", "view"] },
-      { to: "/cotizacion/taller", label: "Cotización", icon: Receipt, perm: ["cotizacion", "view"] },
-      { to: "/picaje/taller", label: "Picaje", icon: SquareDashedMousePointer, perm: ["picaje", "view"] },
+      { to: "/ordenes/taller", label: "OT´s", icon: ClipboardList, perm: ["oportunidadespv", "view"] },
+      { to: "/cotizacion/taller", label: "Cotización", icon: Receipt, perm: ["oportunidadespv", "view"] },
+      { to: "/picaje/taller", label: "Picaje", icon: SquareDashedMousePointer, perm: ["oportunidadespv", "view"] },
     ],
   },
   {
     key: "comercial",
     label: "Reportes",
-    items: [{ to: "/reportes", label: "Reportes", icon: FileText, perm: ["reportes", "view"] }],
+    items: [{ to: "/reportes", label: "Reportes", icon: FileText, perm: ["oportunidadespv", "view"] }],
   },
   {
     key: "configuracion",
