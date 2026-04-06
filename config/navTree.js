@@ -61,7 +61,7 @@ export const NAV_TREE = [
       { to: "/mensajes", label: "Mensajes", icon: MessageCircle, perm: ["mensajes", "view"] },
       { to: "/followups", label: "Follow-up 3-3-3", icon: MessageCircle, perm: ["mensajes", "view"] },
       { to: "/enviosmasivos", label: "Envíos masivos", icon: MessageCircle, perm: ["mensajes", "view"] },
-      { to: "/ventas/leads", label: "Leads / Cotizaciones", icon: ShoppingCart, perm: ["mensajes", "view"] },
+      { to: "/ventas/leads", label: "Leads Capturados", icon: ShoppingCart, perm: ["mensajes", "view"] },
     ],
   },
   {
