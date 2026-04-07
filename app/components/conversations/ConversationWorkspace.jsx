@@ -575,7 +575,7 @@ export default function ConversationWorkspace({
               }`}
             >
               <Lock className="w-3 h-3" />
-              {isPrivateNote ? "Nota interna" : "Nota interna"}
+              {isPrivateNote ? "Nota interna activa" : "Nota interna"}
             </button>
             {isPrivateNote && (
               <span className="text-[10px] text-amber-600">Solo visible para el equipo</span>
