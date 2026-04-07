@@ -71,8 +71,14 @@ export async function POST(req) {
   const body = await req.json().catch(() => ({}));
   const channel = body?.channel || "whatsapp";
 
-  // Ventas IA y menú solo aplican para WhatsApp — retornar antes de validar phone
+  // Para canales IG/FB via Chatwoot: verificar si hay selección de menú pendiente
   if (channel !== "whatsapp") {
+    const phoneForMenu = normalizePhone(body?.phone);
+    const textForMenu = body?.text || "";
+    if (phoneForMenu) {
+      const pendingRoute = await resolvePendingMenuRoute(phoneForMenu, textForMenu);
+      if (pendingRoute) return NextResponse.json(pendingRoute);
+    }
     return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
   }
 
@@ -326,5 +332,51 @@ async function createVentasSession(phone) {
      ON DUPLICATE KEY UPDATE source = 'ventas_ia', updated_at = NOW()`,
     [phone]
   );
+}
+
+// ── Resolver ruta para menú pendiente (canales IG/FB via Chatwoot) ────────
+async function resolvePendingMenuRoute(phone, text) {
+  try {
+    const [rows] = await db.query(
+      `SELECT source FROM conversation_sessions
+       WHERE REPLACE(REPLACE(REPLACE(phone, '+',''),' ',''),'-','') = ?
+         AND source = 'pending_menu'
+         AND updated_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+       LIMIT 1`,
+      [phone]
+    );
+    if (!rows?.[0]) return null; // Sin menú pendiente → flujo normal
+
+    const selection = detectMenuSelection(text);
+    if (selection === "1") {
+      await createVentasSession(phone);
+      await clearPendingMenu(phone);
+      return { route: "ventas_ia", dispatched: false, is_new_client: true };
+    }
+    if (selection === "taller") {
+      await clearPendingMenu(phone);
+      return { route: "default", reason: "taller_selected" };
+    }
+    // Sin selección válida → limpiar y continuar con taller
+    await clearPendingMenu(phone);
+    return { route: "default", reason: "taller_default" };
+  } catch (e) {
+    console.error("[resolvePendingMenuRoute] error:", e.message);
+    return null;
+  }
+}
+
+// ── Limpiar estado de menú pendiente ──────────────────────────────────────
+async function clearPendingMenu(phone) {
+  try {
+    await db.query(
+      `UPDATE conversation_sessions SET source='manual', updated_at=NOW()
+       WHERE REPLACE(REPLACE(REPLACE(phone, '+',''),' ',''),'-','') = ?
+         AND source='pending_menu'`,
+      [phone]
+    );
+  } catch (e) {
+    console.error("[clearPendingMenu] error:", e.message);
+  }
 }
 
