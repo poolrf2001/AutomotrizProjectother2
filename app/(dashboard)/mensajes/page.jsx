@@ -468,7 +468,14 @@ export default function ConversationsPage() {
   }, [sessions]);
 
   function handleOpenTimeline(session) {
-    setSelectedSession(session);
+    setSelectedSession({ ...session, unread_count: 0 });
+    if (Number(session.unread_count) > 0) {
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.session_id === session.session_id ? { ...s, unread_count: 0 } : s
+        )
+      );
+    }
   }
 
   function handleToggleChannel(ch) {

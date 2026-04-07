@@ -113,9 +113,17 @@ export default function ConversationWorkspace({
   const lastMessageIdRef = useRef(null);
 
 
-  async function markAsRead(/* lastMessageId */) {
-    // TODO: implement via Chatwoot API POST /conversations/:id/update_last_seen
-    // Legacy /api/conversations/mark-read removed — was writing to MySQL with wrong IDs
+  async function markAsRead() {
+    if (!sess?.session_id) return;
+    try {
+      const token = getAuthToken();
+      await fetch(`/api/chatwoot/conversations/${sess.session_id}/mark-read`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch (err) {
+      console.error("Error marcando como leído:", err);
+    }
   }
 
   async function loadTimeline() {
@@ -160,7 +168,7 @@ export default function ConversationWorkspace({
         .find((m) => m?.message_direction === "inbound");
 
       if (latestInbound?.id) {
-        await markAsRead(latestInbound.id);
+        markAsRead();
       }
     } catch (e) {
       console.error("Error cargando timeline:", e);
