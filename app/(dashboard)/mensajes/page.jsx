@@ -311,6 +311,7 @@ export default function ConversationsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
+  const [botAlerts, setBotAlerts] = useState([]);
   const [metrics, setMetrics] = useState({
     total_conversations: 0,
     active_conversations: 0,
@@ -425,6 +426,17 @@ export default function ConversationsPage() {
     });
     evtSource.addEventListener("conversation_status", () => {
       fetchConversations(activeStatus).then(setSessions).catch(console.error);
+    });
+    evtSource.addEventListener("bot_alert", (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setBotAlerts((prev) => [
+          data,
+          ...prev.filter((a) => a.conversation_id !== data.conversation_id),
+        ]);
+      } catch (err) {
+        console.error("SSE bot_alert parse error:", err);
+      }
     });
     evtSource.onerror = () => {
       console.warn("Chatwoot SSE: connection error — browser will auto-reconnect. readyState:", evtSource.readyState);
@@ -932,6 +944,7 @@ export default function ConversationsPage() {
             <h1 className="text-base font-semibold text-gray-800">Mensajes</h1>
             <NotificationPanel
               conversations={sessions}
+              botAlerts={botAlerts}
               onOpenConversation={handleOpenConversationById}
             />
           </div>
