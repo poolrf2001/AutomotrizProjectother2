@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle,
+  Clock,
   FileText,
   CornerUpLeft,
   Lock,
@@ -159,6 +160,8 @@ export default function ConversationWorkspace({
   const [agents, setAgents] = useState([]);
   const [assignOpen, setAssignOpen] = useState(false);
   const [resolving, setResolving] = useState(false);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
+  const [snoozing, setSnoozing] = useState(false);
   const [contact, setContact] = useState(null);
   const [contactOpen, setContactOpen] = useState(false);
   const scrollRef = useRef(null);
@@ -244,7 +247,7 @@ export default function ConversationWorkspace({
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/chatwoot/conversations/${sess.session_id}/status`, {
-        method: "POST",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -259,6 +262,32 @@ export default function ConversationWorkspace({
       setError(err?.message || "Error resolviendo conversación");
     } finally {
       setResolving(false);
+    }
+  }
+
+  async function handleSnooze(minutes) {
+    if (!sess?.session_id || snoozing) return;
+    setSnoozing(true);
+    setSnoozeOpen(false);
+    try {
+      const token = getAuthToken();
+      const snoozedUntil = Math.floor(Date.now() / 1000) + minutes * 60;
+      const res = await fetch(`/api/chatwoot/conversations/${sess.session_id}/status`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ status: "snoozed", snoozed_until: snoozedUntil }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.message || "No se pudo posponer la conversación");
+      if (onConversationUpdated) onConversationUpdated();
+    } catch (err) {
+      console.error("Error posponiendo conversación:", err);
+      setError(err?.message || "Error posponiendo conversación");
+    } finally {
+      setSnoozing(false);
     }
   }
 
@@ -607,6 +636,52 @@ export default function ConversationWorkspace({
                 </Popover>
               </TooltipTrigger>
               <TooltipContent>Asignar conversación a un agente</TooltipContent>
+            </Tooltip>
+
+            {/* Snooze */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Popover open={snoozeOpen} onOpenChange={setSnoozeOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8 text-amber-600 hover:bg-amber-50 hover:border-amber-300"
+                      disabled={snoozing}
+                    >
+                      <Clock className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="end" className="w-52 p-2 space-y-1">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide px-1 pb-1">Posponer por</p>
+                    {[
+                      { label: "30 minutos", minutes: 30 },
+                      { label: "1 hora", minutes: 60 },
+                      { label: "3 horas", minutes: 180 },
+                      { label: "Mañana (9 AM)", minutes: null },
+                    ].map(({ label, minutes }) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => {
+                          if (minutes !== null) {
+                            handleSnooze(minutes);
+                          } else {
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            tomorrow.setHours(9, 0, 0, 0);
+                            handleSnooze(Math.round((tomorrow.getTime() - Date.now()) / 60000));
+                          }
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-50 text-xs text-gray-700 transition-colors"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </PopoverContent>
+                </Popover>
+              </TooltipTrigger>
+              <TooltipContent>Posponer conversación</TooltipContent>
             </Tooltip>
 
             {/* Resolver */}
