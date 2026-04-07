@@ -5,11 +5,11 @@ import { normalizePhone } from "@/lib/phoneUtils";
 /**
  * PUT /api/ventas/route-dispatch
  *
- * Limpia la sesión ventas_ia de un teléfono para que el siguiente mensaje
- * sea atendido por el taller (ruta default). Llamado por el flujo de ventas
- * cuando el agente devuelve redirect_taller.
+ * Limpia la sesión ventas_ia de un teléfono (+ conversación) para que el
+ * siguiente mensaje sea atendido por el taller (ruta default).
+ * Llamado por el flujo de ventas cuando el agente devuelve redirect_taller.
  *
- * Body: { phone: "51912528990" }
+ * Body: { phone: "51912528990", conversation_id?: 12345 }
  * Auth: x-conversations-webhook-secret
  */
 export async function PUT(req) {
@@ -23,6 +23,7 @@ export async function PUT(req) {
 
   const body = await req.json().catch(() => ({}));
   const phone = normalizePhone(body?.phone);
+  const conversationId = Number(body?.conversation_id) || 0;
 
   if (!phone) {
     return NextResponse.json({ message: "phone requerido" }, { status: 400 });
@@ -33,15 +34,16 @@ export async function PUT(req) {
       `UPDATE conversation_sessions
        SET source = 'manual', updated_at = NOW()
        WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+         AND conversation_id = ?
          AND source = 'ventas_ia'`,
-      [phone]
+      [phone, conversationId]
     );
   } catch (e) {
     console.error("[route-dispatch PUT] DB error:", e.message);
     return NextResponse.json({ ok: false, message: "Error actualizando sesión" }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, phone, cleared: true });
+  return NextResponse.json({ ok: true, phone, conversation_id: conversationId, cleared: true });
 }
 
 /**
@@ -70,13 +72,14 @@ export async function POST(req) {
 
   const body = await req.json().catch(() => ({}));
   const channel = body?.channel || "whatsapp";
+  const conversationId = Number(body?.conversation_id) || 0;
 
   // Para canales IG/FB via Chatwoot: verificar si hay selección de menú pendiente
   if (channel !== "whatsapp") {
     const phoneForMenu = normalizePhone(body?.phone);
     const textForMenu = body?.text || "";
     if (phoneForMenu) {
-      const pendingRoute = await resolvePendingMenuRoute(phoneForMenu, textForMenu);
+      const pendingRoute = await resolvePendingMenuRoute(phoneForMenu, textForMenu, conversationId);
       if (pendingRoute) return NextResponse.json(pendingRoute);
     }
     return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
@@ -89,93 +92,93 @@ export async function POST(req) {
   }
 
   try {
-  // ── Forzar sesión ventas_ia (llamado desde bot taller tras redirect_ventas) ──
-  if (body?.force_ventas === true) {
-    await createVentasSession(phone);
-    return NextResponse.json({ ok: true, route: "ventas_ia", forced: true });
-  }
-
-  const text = body?.text || "";
-
-  // ── Si el mensaje es claramente de taller, ignorar sesión de ventas ───────
-  const esMensajeTaller = detectMenuSelection(text) === "taller";
-
-  // ── Verificar si hay sesión de ventas activa (últimas 24h) ────────────────
-  // IMPORTANTE: solo retornamos la ruta, NO despachamos aquí.
-  // El Taller v14 es quien hace el dispatch a Ventas IA para evitar doble envío.
-  if (!esMensajeTaller) {
-    const ventasRoute = await resolveVentasRoute(phone);
-    if (ventasRoute === "ventas_ia") {
-      return NextResponse.json({ route: "ventas_ia", dispatched: false });
+    // ── Forzar sesión ventas_ia (llamado desde bot taller tras redirect_ventas) ──
+    if (body?.force_ventas === true) {
+      await createVentasSession(phone, conversationId);
+      return NextResponse.json({ ok: true, route: "ventas_ia", forced: true });
     }
-  }
 
-  // ── Verificar si hay sesión de taller activa reciente (últimas 4h) ────────
-  // Si el cliente lleva menos de 4h en el taller, continuar sin mostrar menú
-  const tallerActivo = await checkTallerActivo(phone);
-  if (tallerActivo) {
-    return NextResponse.json({ route: "default", reason: "taller_activo" });
-  }
+    const text = body?.text || "";
 
-  // ── Sin sesión activa reciente → detectar selección o mostrar menú ────────
-  const selection = detectMenuSelection(text);
-  const clienteRow = await lookupCliente(phone);
-  const clienteNombre = clienteRow
-    ? [clienteRow.nombre, clienteRow.apellido].filter(Boolean).join(" ").trim()
-    : null;
+    // ── Si el mensaje es claramente de taller, ignorar sesión de ventas ───────
+    const esMensajeTaller = detectMenuSelection(text) === "taller";
 
-  if (selection === "1") {
-    // Opción 1: Comprar vehículo → flujo Ventas IA
-    // Solo creamos la sesión; el Taller v14 hace el dispatch para evitar doble envío.
-    await createVentasSession(phone);
+    // ── Verificar si hay sesión de ventas activa (últimas 24h) ────────────────
+    // IMPORTANTE: solo retornamos la ruta, NO despachamos aquí.
+    // El Taller v14 es quien hace el dispatch a Ventas IA para evitar doble envío.
+    if (!esMensajeTaller) {
+      const ventasRoute = await resolveVentasRoute(phone, conversationId);
+      if (ventasRoute === "ventas_ia") {
+        return NextResponse.json({ route: "ventas_ia", dispatched: false });
+      }
+    }
+
+    // ── Verificar si hay sesión de taller activa reciente (últimas 4h) ────────
+    // Si el cliente lleva menos de 4h en el taller, continuar sin mostrar menú
+    const tallerActivo = await checkTallerActivo(phone, conversationId);
+    if (tallerActivo) {
+      return NextResponse.json({ route: "default", reason: "taller_activo" });
+    }
+
+    // ── Sin sesión activa reciente → detectar selección o mostrar menú ────────
+    const selection = detectMenuSelection(text);
+    const clienteRow = await lookupCliente(phone);
+    const clienteNombre = clienteRow
+      ? [clienteRow.nombre, clienteRow.apellido].filter(Boolean).join(" ").trim()
+      : null;
+
+    if (selection === "1") {
+      // Opción 1: Comprar vehículo → flujo Ventas IA
+      // Solo creamos la sesión; el Taller v14 hace el dispatch para evitar doble envío.
+      await createVentasSession(phone, conversationId);
+      return NextResponse.json({
+        route: "ventas_ia",
+        dispatched: false,
+        is_new_client: !clienteRow,
+      });
+    }
+
+    if (selection === "taller") {
+      // Opción 2: Taller/mantenimiento → flujo Taller normal
+      return NextResponse.json({ route: "default", reason: "taller_selected" });
+    }
+
+    if (selection === "asesor") {
+      // Opción 3: Hablar con asesor → taller responde (agente lo puede escalar)
+      return NextResponse.json({ route: "default", reason: "asesor_selected" });
+    }
+
+    // ── Sin selección válida → mostrar menú de bienvenida ────────────────────
+    // El texto del menú es configurable via env var VENTAS_MENU_TEXT.
+    // Usar {nombre} como placeholder para el nombre del cliente.
+    const saludo = clienteNombre
+      ? `¡Hola, ${clienteNombre}! 😊 ¡Qué gusto saludarte de nuevo!`
+      : "¡Hola! 😊 ¡Bienvenido/a!";
+
+    const agentCfg = await getAgentMenuConfig();
+    const agentName = agentCfg.agent_name || "Carlos";
+    const dealerName = agentCfg.dealer_name || "Taller Automotriz";
+
+    const defaultMenuBody =
+      `Soy *${agentName}* 🤖, tu asesor virtual de *${dealerName}* 🔧🚗\n` +
+      `Estoy aquí para ayudarte con todo lo que necesites. ¿En qué te puedo ayudar hoy?\n\n` +
+      `Por favor, elige una opción:\n\n` +
+      `1️⃣ *Comprar un vehículo nuevo* 🚘\n` +
+      `2️⃣ *Mantenimiento, citas o taller* 🔩\n\n` +
+      `Responde con el *número* de tu opción. ¡Estamos para servirte! ✅`;
+
+    const menuBody = process.env.VENTAS_MENU_TEXT
+      ? process.env.VENTAS_MENU_TEXT.replace(/\{nombre\}/g, clienteNombre || "")
+      : defaultMenuBody;
+
+    const menuText = `${saludo}\n\n${menuBody}`;
+
     return NextResponse.json({
-      route: "ventas_ia",
-      dispatched: false,
-      is_new_client: !clienteRow,
+      route: "new_client_menu",
+      menu_text: menuText,
+      phone,
+      cliente_nombre: clienteNombre,
     });
-  }
-
-  if (selection === "taller") {
-    // Opción 2: Taller/mantenimiento → flujo Taller normal
-    return NextResponse.json({ route: "default", reason: "taller_selected" });
-  }
-
-  if (selection === "asesor") {
-    // Opción 3: Hablar con asesor → taller responde (agente lo puede escalar)
-    return NextResponse.json({ route: "default", reason: "asesor_selected" });
-  }
-
-  // ── Sin selección válida → mostrar menú de bienvenida ────────────────────
-  // El texto del menú es configurable via env var VENTAS_MENU_TEXT.
-  // Usar {nombre} como placeholder para el nombre del cliente.
-  const saludo = clienteNombre
-    ? `¡Hola, ${clienteNombre}! 😊 ¡Qué gusto saludarte de nuevo!`
-    : "¡Hola! 😊 ¡Bienvenido/a!";
-
-  const agentCfg = await getAgentMenuConfig();
-  const agentName = agentCfg.agent_name || "Carlos";
-  const dealerName = agentCfg.dealer_name || "Taller Automotriz";
-
-  const defaultMenuBody =
-    `Soy *${agentName}* 🤖, tu asesor virtual de *${dealerName}* 🔧🚗\n` +
-    `Estoy aquí para ayudarte con todo lo que necesites. ¿En qué te puedo ayudar hoy?\n\n` +
-    `Por favor, elige una opción:\n\n` +
-    `1️⃣ *Comprar un vehículo nuevo* 🚘\n` +
-    `2️⃣ *Mantenimiento, citas o taller* 🔩\n\n` +
-    `Responde con el *número* de tu opción. ¡Estamos para servirte! ✅`;
-
-  const menuBody = process.env.VENTAS_MENU_TEXT
-    ? process.env.VENTAS_MENU_TEXT.replace(/\{nombre\}/g, clienteNombre || "")
-    : defaultMenuBody;
-
-  const menuText = `${saludo}\n\n${menuBody}`;
-
-  return NextResponse.json({
-    route: "new_client_menu",
-    menu_text: menuText,
-    phone,
-    cliente_nombre: clienteNombre,
-  });
   } catch (error) {
     console.error("ERROR POST /api/ventas/route-dispatch:", error);
     return NextResponse.json({ route: "default", reason: "server_error" }, { status: 500 });
@@ -238,15 +241,18 @@ async function lookupCliente(phone) {
 }
 
 // ── Verificar si tiene sesión de ventas_ia activa en las últimas 24h ──────
-async function resolveVentasRoute(phone) {
+// Prioriza la conversación exacta (conversation_id); si no existe, busca
+// por teléfono (campaña de ventas reciente).
+async function resolveVentasRoute(phone, conversationId = 0) {
   try {
     const [rows] = await db.query(
       `SELECT id FROM conversation_sessions
        WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+         AND conversation_id = ?
          AND source = 'ventas_ia'
          AND updated_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR)
        ORDER BY updated_at DESC LIMIT 1`,
-      [phone]
+      [phone, conversationId]
     );
     if (rows?.[0]?.id) return "ventas_ia";
   } catch (e) {
@@ -278,21 +284,23 @@ async function resolveVentasRoute(phone) {
 }
 
 // ── Verificar si tiene actividad de taller reciente (últimas 4h) ──────────
-// Evita mostrar el menú en medio de una conversación activa del taller
-async function checkTallerActivo(phone) {
+// Evita mostrar el menú en medio de una conversación activa del taller.
+// Filtra por conversation_id cuando está disponible.
+async function checkTallerActivo(phone, conversationId = 0) {
   try {
     const [rows] = await db.query(
       `SELECT id FROM conversation_sessions
        WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+         AND conversation_id = ?
          AND (source IS NULL OR source NOT IN ('ventas_ia'))
          AND updated_at >= DATE_SUB(NOW(), INTERVAL 4 HOUR)
        ORDER BY updated_at DESC LIMIT 1`,
-      [phone]
+      [phone, conversationId]
     );
     return rows.length > 0;
   } catch (e) {
     if (e?.code === "ER_BAD_FIELD_ERROR" || e?.errno === 1054) {
-      // Columna source no existe, fallback: verificar solo updated_at
+      // Columna source o conversation_id no existe, fallback sin ellas
       try {
         const [rows] = await db.query(
           `SELECT id FROM conversation_sessions
@@ -325,40 +333,41 @@ async function getAgentMenuConfig() {
 }
 
 // ── Crear/actualizar sesión ventas_ia ─────────────────────────────────────
-async function createVentasSession(phone) {
+async function createVentasSession(phone, conversationId = 0) {
   await db.query(
-    `INSERT INTO conversation_sessions (phone, source, created_at, updated_at)
-     VALUES (?, 'ventas_ia', NOW(), NOW())
+    `INSERT INTO conversation_sessions (phone, conversation_id, source, created_at, updated_at)
+     VALUES (?, ?, 'ventas_ia', NOW(), NOW())
      ON DUPLICATE KEY UPDATE source = 'ventas_ia', updated_at = NOW()`,
-    [phone]
+    [phone, conversationId]
   );
 }
 
 // ── Resolver ruta para menú pendiente (canales IG/FB via Chatwoot) ────────
-async function resolvePendingMenuRoute(phone, text) {
+async function resolvePendingMenuRoute(phone, text, conversationId = 0) {
   try {
     const [rows] = await db.query(
       `SELECT source FROM conversation_sessions
        WHERE REPLACE(REPLACE(REPLACE(phone, '+',''),' ',''),'-','') = ?
+         AND conversation_id = ?
          AND source = 'pending_menu'
          AND updated_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
        LIMIT 1`,
-      [phone]
+      [phone, conversationId]
     );
     if (!rows?.[0]) return null; // Sin menú pendiente → flujo normal
 
     const selection = detectMenuSelection(text);
     if (selection === "1") {
-      await createVentasSession(phone);
-      await clearPendingMenu(phone);
+      await createVentasSession(phone, conversationId);
+      await clearPendingMenu(phone, conversationId);
       return { route: "ventas_ia", dispatched: false, is_new_client: true };
     }
     if (selection === "taller") {
-      await clearPendingMenu(phone);
+      await clearPendingMenu(phone, conversationId);
       return { route: "default", reason: "taller_selected" };
     }
     // Sin selección válida → limpiar y continuar con taller
-    await clearPendingMenu(phone);
+    await clearPendingMenu(phone, conversationId);
     return { route: "default", reason: "taller_default" };
   } catch (e) {
     console.error("[resolvePendingMenuRoute] error:", e.message);
@@ -367,16 +376,16 @@ async function resolvePendingMenuRoute(phone, text) {
 }
 
 // ── Limpiar estado de menú pendiente ──────────────────────────────────────
-async function clearPendingMenu(phone) {
+async function clearPendingMenu(phone, conversationId = 0) {
   try {
     await db.query(
       `UPDATE conversation_sessions SET source='manual', updated_at=NOW()
        WHERE REPLACE(REPLACE(REPLACE(phone, '+',''),' ',''),'-','') = ?
+         AND conversation_id = ?
          AND source='pending_menu'`,
-      [phone]
+      [phone, conversationId]
     );
   } catch (e) {
     console.error("[clearPendingMenu] error:", e.message);
   }
 }
-
