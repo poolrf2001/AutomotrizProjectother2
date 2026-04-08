@@ -366,9 +366,10 @@ async function clearVentasHistory(phone) {
   ]);
   try {
     await db.query(
-      `UPDATE ventas_sessions SET history_json = ?, paso_actual = 2
-       WHERE phone = ?`,
-      [seedHistory, phone]
+      `INSERT INTO ventas_sessions (phone, history_json, paso_actual)
+       VALUES (?, ?, 2)
+       ON DUPLICATE KEY UPDATE history_json = VALUES(history_json), paso_actual = 2`,
+      [phone, seedHistory]
     );
   } catch (e) {
     if (e?.code === "ER_NO_SUCH_TABLE" || e?.errno === 1146) {
