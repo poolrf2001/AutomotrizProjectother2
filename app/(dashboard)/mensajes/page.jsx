@@ -327,6 +327,7 @@ export default function ConversationsPage() {
   const router = useRouter();
   const { user } = useAuth();
   const [sessions, setSessions] = useState([]);
+  const [myTeam, setMyTeam] = useState(null);
   const [botAlerts, setBotAlerts] = useState([]);
   const [metrics, setMetrics] = useState({
     total_conversations: 0,
@@ -378,8 +379,8 @@ export default function ConversationsPage() {
 
       const [newSessions, metricsRes, interactionRes, agentsRes] = await Promise.all([
         fetchConversations("open"),
-        fetch(`/api/conversations/metrics?user_id=${user?.id || 0}`, { cache: "no-store" }),
-        fetch("/api/conversations/interaction-metrics", { cache: "no-store" }),
+        fetch(`/api/conversations/metrics?user_id=${user?.id || 0}`, { cache: "no-store", headers: authHeaders }),
+        fetch("/api/conversations/interaction-metrics", { cache: "no-store", headers: authHeaders }),
         fetch("/api/chatwoot/agents", { cache: "no-store", headers: authHeaders }),
       ]);
 
@@ -422,6 +423,18 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     load();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const token = getAuthToken();
+    fetch("/api/chatwoot/my-team", {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+      .then((r) => r.json())
+      .then((d) => { if (d?.team) setMyTeam(d.team); })
+      .catch((err) => console.error("Error cargando equipo:", err));
   }, [user?.id]);
 
   // ── Server-side search (debounced 400ms) ──────────────────────────────────────
@@ -546,7 +559,7 @@ export default function ConversationsPage() {
       // Mapear "closed" → "resolved" para compatibilidad con Chatwoot
       const chatwootStatus = nextStatus === "closed" ? "resolved" : nextStatus;
       const res = await fetch(`/api/chatwoot/conversations/${sessionId}/status`, {
-        method: "POST",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -638,9 +651,10 @@ export default function ConversationsPage() {
 
     try {
       // Intentar obtener conversation_summary real desde el timeline
+      const token = getAuthToken();
       const res = await fetch(
         `/api/conversations/timeline?session_id=${session.session_id}`,
-        { cache: "no-store" }
+        { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
       if (res.ok) {
         const data = await res.json();
@@ -942,9 +956,10 @@ export default function ConversationsPage() {
         phone: s.celular || s.phone || null,
       }));
 
+      const bulkToken = getAuthToken();
       const res = await fetch("/api/conversations/bulk-messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(bulkToken ? { Authorization: `Bearer ${bulkToken}` } : {}) },
         body: JSON.stringify({
           text,
           source_channel: bulkChannel,
@@ -984,7 +999,15 @@ export default function ConversationsPage() {
         {/* Panel de filtros */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <h1 className="text-base font-semibold text-gray-800">Mensajes</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-semibold text-gray-800">Mensajes</h1>
+              {myTeam ? (
+                <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-violet-100 text-violet-700 border border-violet-200">
+                  <Users className="w-2.5 h-2.5" />
+                  {myTeam.name}
+                </span>
+              ) : user?.role && !String(user.role).toLowerCase().includes("admin") ? null : null}
+            </div>
             <NotificationPanel
               conversations={sessions}
               botAlerts={botAlerts}
