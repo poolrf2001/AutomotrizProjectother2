@@ -100,6 +100,8 @@ export async function POST(req) {
     }
 
     const text = body?.text || "";
+    const _dbg = process.env.DEBUG_ROUTE_DISPATCH === "1";
+    if (_dbg) console.error("[route-dispatch] phone=%s convId=%s text=%s", phone, conversationId, text?.substring(0, 50));
 
     // ── Si el mensaje es claramente de taller, ignorar sesión de ventas ───────
     const esMensajeTaller = detectMenuSelection(text) === "taller";
@@ -108,7 +110,7 @@ export async function POST(req) {
     // IMPORTANTE: solo retornamos la ruta, NO despachamos aquí.
     // El Taller v14 es quien hace el dispatch a Ventas IA para evitar doble envío.
     if (!esMensajeTaller) {
-      const ventasRoute = await resolveVentasRoute(phone, conversationId);
+      const ventasRoute = await resolveVentasRoute(phone, conversationId, _dbg);
       if (ventasRoute === "ventas_ia") {
         return NextResponse.json({ route: "ventas_ia", dispatched: false });
       }
@@ -246,8 +248,19 @@ async function lookupCliente(phone) {
 // ── Verificar si tiene sesión de ventas_ia activa en las últimas 24h ──────
 // Prioriza la conversación exacta (conversation_id); si no existe, busca
 // por teléfono (campaña de ventas reciente).
-async function resolveVentasRoute(phone, conversationId = 0) {
+async function resolveVentasRoute(phone, conversationId = 0, debug = false) {
   try {
+    if (debug) {
+      const [allRows] = await db.query(
+        `SELECT id, phone, conversation_id, source, updated_at
+         FROM conversation_sessions
+         WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+         ORDER BY updated_at DESC LIMIT 5`,
+        [phone]
+      );
+      console.error("[resolveVentasRoute] phone=%s convId=%s allSessions=%j", phone, conversationId, allRows);
+    }
+
     const [rows] = await db.query(
       `SELECT id FROM conversation_sessions
        WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
@@ -257,6 +270,7 @@ async function resolveVentasRoute(phone, conversationId = 0) {
        ORDER BY updated_at DESC LIMIT 1`,
       [phone, conversationId]
     );
+    if (debug) console.error("[resolveVentasRoute] ventasMatch=%j", rows);
     if (rows?.[0]?.id) return "ventas_ia";
   } catch (e) {
     if (e?.code !== "ER_BAD_FIELD_ERROR" && e?.errno !== 1054) throw e;
@@ -277,10 +291,12 @@ async function resolveVentasRoute(phone, conversationId = 0) {
     );
     if (rows?.[0]?.id) return "ventas_ia";
   } catch (e) {
-    if (
-      e?.code !== "ER_NO_SUCH_TABLE" && e?.errno !== 1146 &&
-      e?.code !== "ER_BAD_FIELD_ERROR" && e?.errno !== 1054
-    ) throw e;
+    if (e?.code === "ER_NO_SUCH_TABLE" || e?.errno === 1146 ||
+        e?.code === "ER_BAD_FIELD_ERROR" || e?.errno === 1054) {
+      console.error("[resolveVentasRoute] campaign table/field missing:", e.code);
+    } else {
+      throw e;
+    }
   }
 
   return "default";
@@ -362,8 +378,10 @@ async function resolvePendingMenuRoute(phone, text, conversationId = 0) {
     const selection = detectMenuSelection(text);
     if (selection === "1") {
       await createVentasSession(phone, conversationId);
+      await clearVentasHistory(phone);
       await clearPendingMenu(phone, conversationId);
-      return { route: "ventas_ia", dispatched: false, is_new_client: true };
+      const clienteRow = await lookupCliente(phone);
+      return { route: "ventas_ia", dispatched: false, is_new_client: !clienteRow };
     }
     if (selection === "taller") {
       await clearPendingMenu(phone, conversationId);
@@ -394,8 +412,9 @@ async function clearVentasHistory(phone) {
       [seedHistory, phone]
     );
   } catch (e) {
-    // Si la tabla no existe o no hay fila, ignorar silenciosamente
-    if (e?.code !== "ER_NO_SUCH_TABLE" && e?.errno !== 1146) {
+    if (e?.code === "ER_NO_SUCH_TABLE" || e?.errno === 1146) {
+      console.warn("[clearVentasHistory] ventas_sessions table not found, skipping");
+    } else {
       console.error("[clearVentasHistory] error:", e.message);
     }
   }
