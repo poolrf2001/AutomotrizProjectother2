@@ -9,7 +9,25 @@ import { verifyToken } from "@/lib/auth";
 // Esto es una desviación aprobada del estándar solo para endpoints SSE.
 
 async function resolveUserTeams(decoded) {
-  const role = String(decoded?.role || "").toLowerCase();
+  // El campo role viene en el JWT desde el login. Si falta (sesión antigua),
+  // hacemos lookup en DB por id.
+  let roleName = decoded?.role || null;
+
+  if (!roleName && decoded?.id) {
+    try {
+      const [rows] = await db.query(
+        `SELECT r.name FROM usuarios u JOIN roles r ON r.id = u.role_id WHERE u.id = ? LIMIT 1`,
+        [decoded.id]
+      );
+      roleName = rows[0]?.name || null;
+    } catch (err) {
+      console.error("SSE: error resolviendo rol por id:", err.message);
+    }
+  }
+
+  if (!roleName) return { isAdmin: false, chatwootTeamIds: [] };
+
+  const role = roleName.toLowerCase();
   if (role.includes("admin")) {
     return { isAdmin: true, chatwootTeamIds: [] };
   }
@@ -21,7 +39,7 @@ async function resolveUserTeams(decoded) {
        JOIN roles r ON r.id = rcm.role_id
        WHERE LOWER(r.name) = LOWER(?)
        LIMIT 1`,
-      [decoded.role || ""]
+      [roleName]
     );
     const teamId = rows[0]?.chatwoot_team_id;
     return {

@@ -8,7 +8,11 @@ export async function POST(req) {
     const { username, password } = await req.json();
 
     const [rows] = await db.query(
-      "SELECT * FROM usuarios WHERE username=? AND is_active=1",
+      `SELECT u.*, r.name AS role
+       FROM usuarios u
+       LEFT JOIN roles r ON r.id = u.role_id
+       WHERE u.username = ? AND u.is_active = 1
+       LIMIT 1`,
       [username]
     );
 

@@ -4,7 +4,25 @@ import { getConversations } from "@/lib/chatwoot";
 import { authorizeConversation } from "@/lib/conversationsAuth";
 
 async function resolveTeamId(decoded) {
-  const role = String(decoded?.role || "").toLowerCase();
+  // El campo role viene en el JWT desde el login. Si por alguna razón falta,
+  // hacemos lookup en DB por id (sesiones antiguas antes del fix del login).
+  let roleName = decoded?.role || null;
+
+  if (!roleName && decoded?.id) {
+    try {
+      const [rows] = await db.query(
+        `SELECT r.name FROM usuarios u JOIN roles r ON r.id = u.role_id WHERE u.id = ? LIMIT 1`,
+        [decoded.id]
+      );
+      roleName = rows[0]?.name || null;
+    } catch (err) {
+      console.error("[conversations] error resolviendo rol por id:", err.message);
+    }
+  }
+
+  if (!roleName) return { teamId: null, isAdmin: false };
+
+  const role = roleName.toLowerCase();
   if (role.includes("admin")) return { teamId: null, isAdmin: true };
 
   try {
@@ -14,7 +32,7 @@ async function resolveTeamId(decoded) {
        JOIN roles r ON r.id = rcm.role_id
        WHERE LOWER(r.name) = LOWER(?)
        LIMIT 1`,
-      [decoded.role || ""]
+      [roleName]
     );
     return { teamId: rows[0]?.chatwoot_team_id ?? null, isAdmin: false };
   } catch (err) {
@@ -45,7 +63,7 @@ export async function GET(req) {
 
   // Si no es admin y no tiene equipo mapeado y no pidió team_id explícito → sin acceso
   if (!isAdmin && resolvedTeamId === null && !explicitTeamId) {
-    console.warn(`[conversations GET] usuario sin equipo mapeado: role="${auth.user?.role}"`);
+    console.warn(`[conversations GET] usuario sin equipo mapeado: role="${auth.user?.role}", id=${auth.user?.id}`);
     return NextResponse.json({ data: [], meta: { all_count: 0, assigned_count: 0, unassigned_count: 0 } });
   }
 
