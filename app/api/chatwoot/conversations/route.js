@@ -5,7 +5,7 @@ import { authorizeConversation } from "@/lib/conversationsAuth";
 
 async function resolveTeamId(decoded) {
   const role = String(decoded?.role || "").toLowerCase();
-  if (role.includes("admin")) return null; // admin ve todo
+  if (role.includes("admin")) return { teamId: null, isAdmin: true };
 
   try {
     const [rows] = await db.query(
@@ -16,10 +16,10 @@ async function resolveTeamId(decoded) {
        LIMIT 1`,
       [decoded.role || ""]
     );
-    return rows[0]?.chatwoot_team_id ?? null;
+    return { teamId: rows[0]?.chatwoot_team_id ?? null, isAdmin: false };
   } catch (err) {
     console.error("[conversations GET] error resolviendo equipo:", err.message);
-    return null;
+    return { teamId: null, isAdmin: false };
   }
 }
 
@@ -40,9 +40,16 @@ export async function GET(req) {
     );
   }
 
-  // Determinar team_id efectivo: query param explícito > mapping del rol > sin filtro (admin)
   const explicitTeamId = searchParams.get("team_id") ?? null;
-  const teamId = explicitTeamId ?? (await resolveTeamId(auth.user))?.toString() ?? undefined;
+  const { teamId: resolvedTeamId, isAdmin } = await resolveTeamId(auth.user);
+
+  // Si no es admin y no tiene equipo mapeado y no pidió team_id explícito → sin acceso
+  if (!isAdmin && resolvedTeamId === null && !explicitTeamId) {
+    console.warn(`[conversations GET] usuario sin equipo mapeado: role="${auth.user?.role}"`);
+    return NextResponse.json({ data: [], meta: { all_count: 0, assigned_count: 0, unassigned_count: 0 } });
+  }
+
+  const teamId = explicitTeamId ?? resolvedTeamId?.toString() ?? undefined;
 
   try {
     const data = await getConversations({

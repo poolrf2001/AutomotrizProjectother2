@@ -136,13 +136,35 @@ const CANNED_RESPONSES = [
   { label: "Seguimiento", text: "Te escribo para hacer un seguimiento de tu consulta. ¿Pudiste revisar la información que te enviamos?" },
 ];
 
+function hasMensajesPerm(permissions, action) {
+  const mod = permissions?.mensajes;
+  if (!mod) return false;
+  if (Array.isArray(mod)) {
+    const actionMap = {
+      view: ["read", "view"],
+      create: ["create", "write"],
+      edit: ["edit", "update", "write"],
+    };
+    return (actionMap[action] || [action]).some((a) => mod.includes(a));
+  }
+  if (typeof mod === "object") {
+    if (mod.viewall === true || mod.all === true) return true;
+    return mod?.[action] === true;
+  }
+  return false;
+}
+
 export default function ConversationWorkspace({
   session,
   onConversationUpdated,
   onBack,
   focusComposerSignal = 0,
 }) {
-  const { user } = useAuth();
+  const { user, permissions } = useAuth();
+
+  const isAdmin = String(user?.role || "").toLowerCase().includes("admin");
+  const canEdit = isAdmin || hasMensajesPerm(permissions, "edit");
+  const canWrite = isAdmin || hasMensajesPerm(permissions, "create") || hasMensajesPerm(permissions, "edit");
 
   // ── Normalizar session prop (soporta CRM viejo y Chatwoot) ──
   const sess = mapSession(session);
@@ -612,8 +634,8 @@ export default function ConversationWorkspace({
           </div>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {/* Asignar agente */}
-            <Popover open={assignOpen} onOpenChange={(o) => { setAssignOpen(o); if (o) loadAgents(); }}>
+            {/* Asignar agente — solo usuarios con permiso edit */}
+            {canEdit && <Popover open={assignOpen} onOpenChange={(o) => { setAssignOpen(o); if (o) loadAgents(); }}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PopoverTrigger asChild>
@@ -646,10 +668,10 @@ export default function ConversationWorkspace({
                   </button>
                 ))}
               </PopoverContent>
-            </Popover>
+            </Popover>}
 
-            {/* Snooze */}
-            <Popover open={snoozeOpen} onOpenChange={setSnoozeOpen}>
+            {/* Snooze — solo usuarios con permiso edit */}
+            {canEdit && <Popover open={snoozeOpen} onOpenChange={setSnoozeOpen}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PopoverTrigger asChild>
@@ -692,23 +714,25 @@ export default function ConversationWorkspace({
                   </button>
                 ))}
               </PopoverContent>
-            </Popover>
+            </Popover>}
 
-            {/* Resolver */}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8 text-green-600 hover:bg-green-50 hover:border-green-300"
-                  onClick={() => handleResolve()}
-                  disabled={resolving}
-                >
-                  <CheckCircle className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Marcar conversación como resuelta</TooltipContent>
-            </Tooltip>
+            {/* Resolver — solo usuarios con permiso edit */}
+            {canEdit && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 text-green-600 hover:bg-green-50 hover:border-green-300"
+                    onClick={() => handleResolve()}
+                    disabled={resolving}
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Marcar conversación como resuelta</TooltipContent>
+              </Tooltip>
+            )}
 
             {/* Resumen */}
             <Popover>
@@ -828,8 +852,8 @@ export default function ConversationWorkspace({
           ))}
         </div>
 
-        {/* ── Compositor ──────────────────────────────────────── */}
-        <div className="border-t p-3 space-y-2">
+        {/* ── Compositor — solo usuarios con permiso write ──────── */}
+        {canWrite && <div className="border-t p-3 space-y-2">
 
           {/* Cita de mensaje */}
           {quotedMessage && (
@@ -958,7 +982,13 @@ export default function ConversationWorkspace({
           </div>
 
           {error && <p className="text-sm text-red-600">{error}</p>}
-        </div>
+        </div>}
+
+        {!canWrite && (
+          <div className="border-t px-4 py-3 bg-gray-50 text-xs text-gray-400 text-center">
+            Solo lectura — no tenés permisos para enviar mensajes
+          </div>
+        )}
 
       </div>
     </TooltipProvider>
