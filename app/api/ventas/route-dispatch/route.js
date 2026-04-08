@@ -379,12 +379,19 @@ async function resolvePendingMenuRoute(phone, text, conversationId = 0) {
 }
 
 // ── Limpiar historial de ventas_sessions para empezar conversación desde cero ─
+// Seteamos paso_actual=2 porque el menú de bienvenida (paso 1) ya lo muestra
+// route-dispatch. Inicializamos el historial con contexto para que el LLM sepa
+// que el usuario ya eligió "comprar vehículo" y arranque con el perfilamiento.
 async function clearVentasHistory(phone) {
+  const seedHistory = JSON.stringify([
+    { role: "user", content: "Quiero comprar un vehículo nuevo" },
+    { role: "assistant", content: "¡Excelente elección! 🚗✨ Me encantaría ayudarte a encontrar el vehículo perfecto. ¿Me permite hacerle algunas preguntas para encontrar el vehículo ideal para usted? 😊" }
+  ]);
   try {
     await db.query(
-      `UPDATE ventas_sessions SET history_json = '[]', paso_actual = 1
+      `UPDATE ventas_sessions SET history_json = ?, paso_actual = 2
        WHERE phone = ?`,
-      [phone]
+      [seedHistory, phone]
     );
   } catch (e) {
     // Si la tabla no existe o no hay fila, ignorar silenciosamente
