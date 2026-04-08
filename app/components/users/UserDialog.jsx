@@ -58,6 +58,7 @@ const EMPTY_FORM = {
   centros: [],
   talleres: [],
   mostradores: [],
+  chatwoot_agent_id: null,
 };
 
 function normalizeIds(value) {
@@ -115,6 +116,8 @@ export default function UserDialog({
 
   const [rolesOptions, setRolesOptions] = useState([]);
   const [loadingRoles, setLoadingRoles] = useState(false);
+  const [chatwootAgents, setChatwootAgents] = useState([]);
+  const [loadingAgents, setLoadingAgents] = useState(false);
 
   const [centrosOptions, setCentrosOptions] = useState([]);
   const [talleresOptions, setTalleresOptions] = useState([]);
@@ -123,7 +126,7 @@ export default function UserDialog({
   const [loadingCentros, setLoadingCentros] = useState(false);
   const [loadingDependientes, setLoadingDependientes] = useState(false);
 
-  // ✅ Cargar roles
+  // ✅ Cargar roles y agentes de Chatwoot
   useEffect(() => {
     if (!open) return;
 
@@ -134,7 +137,6 @@ export default function UserDialog({
         setLoadingRoles(true);
         const res = await fetch("/api/roles", { cache: "no-store" });
         const data = await res.json();
-
         if (!active) return;
         setRolesOptions(Array.isArray(data) ? data : []);
       } catch (error) {
@@ -145,7 +147,28 @@ export default function UserDialog({
       }
     }
 
+    async function loadAgents() {
+      try {
+        setLoadingAgents(true);
+        const match = typeof document !== "undefined" ? document.cookie.match(/(?:^|;\s*)token=([^;]+)/) : null;
+        const token = match ? match[1] : "";
+        const res = await fetch("/api/chatwoot/agents", {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!active) return;
+        const data = await res.json();
+        setChatwootAgents(Array.isArray(data) ? data : []);
+      } catch (error) {
+        console.error("Error cargando agentes Chatwoot:", error);
+        if (active) setChatwootAgents([]);
+      } finally {
+        if (active) setLoadingAgents(false);
+      }
+    }
+
     loadRoles();
+    loadAgents();
 
     return () => {
       active = false;
@@ -568,6 +591,50 @@ export default function UserDialog({
                                 ({rol.description})
                               </span>
                             )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Agente Chatwoot */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1 text-[#5d16ec]">
+                    Agente en Chatwoot
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <AlertCircle size={14} className="text-gray-400 cursor-help" />
+                      </TooltipTrigger>
+                      <TooltipContent side="top">
+                        Vincula este usuario con su cuenta de agente en Chatwoot
+                      </TooltipContent>
+                    </Tooltip>
+                  </Label>
+                  <Select
+                    value={form.chatwoot_agent_id ? String(form.chatwoot_agent_id) : "none"}
+                    onValueChange={(v) => updateField("chatwoot_agent_id", v === "none" ? null : Number(v))}
+                    disabled={isView || loadingAgents}
+                  >
+                    <SelectTrigger className="h-9">
+                      {loadingAgents ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 size={16} className="animate-spin" />
+                          <span>Cargando agentes...</span>
+                        </div>
+                      ) : (
+                        <SelectValue placeholder="Sin vínculo con Chatwoot" />
+                      )}
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        <span className="text-gray-500">— Sin vínculo —</span>
+                      </SelectItem>
+                      {chatwootAgents.map((a) => (
+                        <SelectItem key={a.id} value={String(a.id)}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{a.name}</span>
+                            <span className="text-xs text-gray-400">{a.email}</span>
                           </div>
                         </SelectItem>
                       ))}
