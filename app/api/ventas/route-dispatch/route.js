@@ -103,17 +103,12 @@ export async function POST(req) {
     const _dbg = process.env.DEBUG_ROUTE_DISPATCH === "1";
     if (_dbg) console.error("[route-dispatch] phone=%s convId=%s text=%s", phone, conversationId, text?.substring(0, 50));
 
-    // ── Si el mensaje es claramente de taller, ignorar sesión de ventas ───────
-    const esMensajeTaller = detectMenuSelection(text) === "taller";
-
-    // ── Verificar si hay sesión de ventas activa (últimas 24h) ────────────────
-    // IMPORTANTE: solo retornamos la ruta, NO despachamos aquí.
-    // El Taller v14 es quien hace el dispatch a Ventas IA para evitar doble envío.
-    if (!esMensajeTaller) {
-      const ventasRoute = await resolveVentasRoute(phone, conversationId, _dbg);
-      if (ventasRoute === "ventas_ia") {
-        return NextResponse.json({ route: "ventas_ia", dispatched: false });
-      }
+    // ── Verificar sesión de ventas activa PRIMERO (últimas 24h) ─────────────
+    // Si el usuario ya está en ventas_ia, TODOS sus mensajes van a ventas
+    // sin importar si parecen selecciones de menú ("2", "servicio", etc.)
+    const ventasRoute = await resolveVentasRoute(phone, conversationId, _dbg);
+    if (ventasRoute === "ventas_ia") {
+      return NextResponse.json({ route: "ventas_ia", dispatched: false });
     }
 
     // ── Verificar si hay sesión de taller activa reciente (últimas 4h) ────────
