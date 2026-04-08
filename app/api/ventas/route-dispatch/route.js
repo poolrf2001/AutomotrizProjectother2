@@ -71,20 +71,7 @@ export async function POST(req) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const channel = body?.channel || "whatsapp";
   const conversationId = Number(body?.conversation_id) || 0;
-
-  // Para canales IG/FB via Chatwoot: verificar si hay selección de menú pendiente
-  if (channel !== "whatsapp") {
-    const phoneForMenu = normalizePhone(body?.phone);
-    const textForMenu = body?.text || "";
-    if (phoneForMenu) {
-      const pendingRoute = await resolvePendingMenuRoute(phoneForMenu, textForMenu, conversationId);
-      if (pendingRoute) return NextResponse.json(pendingRoute);
-    }
-    return NextResponse.json({ route: "default", reason: "channel_not_whatsapp" });
-  }
-
   const phone = normalizePhone(body?.phone);
 
   if (!phone) {
@@ -367,40 +354,6 @@ async function createVentasSession(phone, conversationId = 0) {
   );
 }
 
-// ── Resolver ruta para menú pendiente (canales IG/FB via Chatwoot) ────────
-async function resolvePendingMenuRoute(phone, text, conversationId = 0) {
-  try {
-    const [rows] = await db.query(
-      `SELECT source FROM conversation_sessions
-       WHERE REPLACE(REPLACE(REPLACE(phone, '+',''),' ',''),'-','') = ?
-         AND conversation_id = ?
-         AND source = 'pending_menu'
-         AND updated_at >= DATE_SUB(NOW(), INTERVAL 30 MINUTE)
-       LIMIT 1`,
-      [phone, conversationId]
-    );
-    if (!rows?.[0]) return null; // Sin menú pendiente → flujo normal
-
-    const selection = detectMenuSelection(text);
-    if (selection === "1") {
-      await createVentasSession(phone, conversationId);
-      await clearVentasHistory(phone);
-      await clearPendingMenu(phone, conversationId);
-      const clienteRow = await lookupCliente(phone);
-      return { route: "ventas_ia", dispatched: false, is_new_client: !clienteRow };
-    }
-    if (selection === "taller") {
-      await clearPendingMenu(phone, conversationId);
-      return { route: "default", reason: "taller_selected" };
-    }
-    // Sin selección válida → limpiar y continuar con taller
-    await clearPendingMenu(phone, conversationId);
-    return { route: "default", reason: "taller_default" };
-  } catch (e) {
-    console.error("[resolvePendingMenuRoute] error:", e.message);
-    return null;
-  }
-}
 
 // ── Limpiar historial de ventas_sessions para empezar conversación desde cero ─
 // Seteamos paso_actual=2 porque el menú de bienvenida (paso 1) ya lo muestra
@@ -426,17 +379,3 @@ async function clearVentasHistory(phone) {
   }
 }
 
-// ── Limpiar estado de menú pendiente ──────────────────────────────────────
-async function clearPendingMenu(phone, conversationId = 0) {
-  try {
-    await db.query(
-      `UPDATE conversation_sessions SET source='manual', updated_at=NOW()
-       WHERE REPLACE(REPLACE(REPLACE(phone, '+',''),' ',''),'-','') = ?
-         AND conversation_id = ?
-         AND source='pending_menu'`,
-      [phone, conversationId]
-    );
-  } catch (e) {
-    console.error("[clearPendingMenu] error:", e.message);
-  }
-}
