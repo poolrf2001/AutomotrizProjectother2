@@ -95,6 +95,7 @@ export async function POST(req) {
     // sin importar si parecen selecciones de menú ("2", "servicio", etc.)
     const ventasRoute = await resolveVentasRoute(phone, conversationId, _dbg);
     if (ventasRoute === "ventas_ia") {
+      await touchSession(phone, conversationId, "ventas_ia");
       return NextResponse.json({ route: "ventas_ia", dispatched: false });
     }
 
@@ -102,6 +103,7 @@ export async function POST(req) {
     // Si el cliente lleva menos de 4h en el taller, continuar sin mostrar menú
     const tallerActivo = await checkTallerActivo(phone, conversationId);
     if (tallerActivo) {
+      await touchSession(phone, conversationId);
       return NextResponse.json({ route: "default", reason: "taller_activo" });
     }
 
@@ -380,3 +382,22 @@ async function clearVentasHistory(phone) {
   }
 }
 
+// ── Actualizar updated_at en cada mensaje para mantener la sesión viva ────
+async function touchSession(phone, conversationId = 0, source = null) {
+  try {
+    const sourceClause = source ? "AND source = ?" : "";
+    const params = source
+      ? [phone, conversationId, source]
+      : [phone, conversationId];
+    await db.query(
+      `UPDATE conversation_sessions SET updated_at = NOW()
+       WHERE REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', '') = ?
+         AND (conversation_id = ? OR conversation_id = 0)
+         ${sourceClause}
+       ORDER BY updated_at DESC LIMIT 1`,
+      params
+    );
+  } catch (e) {
+    console.error("[touchSession] error:", e.message);
+  }
+}
