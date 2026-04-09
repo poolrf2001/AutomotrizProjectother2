@@ -142,7 +142,10 @@ export default function AlertasConfigPage() {
       const alertData = await alertRes.json();
       setRows(alertData.alertas || []);
       if (teamRes.ok)  setTeams(await teamRes.json());
-      if (agentRes.ok) setAgents(await agentRes.json());
+      if (agentRes.ok) {
+        const agentData = await agentRes.json();
+        setAgents(Array.isArray(agentData?.data) ? agentData.data : []);
+      }
     } catch {
       toast.error("Error al cargar configuración de alertas");
     } finally {
