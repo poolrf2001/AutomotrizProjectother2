@@ -62,7 +62,6 @@ function getAuthToken() {
   if (typeof document === "undefined") return "";
   const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
   const token = match ? match[1] : "";
-  if (!token) console.error("ConversationWorkspace: no auth token found in cookies");
   return token;
 }
 
@@ -207,7 +206,8 @@ export default function ConversationWorkspace({
       const data = await res.json();
       setLabels(data?.labels ?? []);
     } catch (err) {
-      console.error("Error cargando labels:", err);
+      console.error("Error cargando labels:", err.message);
+      setError("No se pudieron cargar las etiquetas");
     }
   }
 
@@ -223,7 +223,8 @@ export default function ConversationWorkspace({
       const data = await res.json();
       setContact(data);
     } catch (err) {
-      console.error("Error cargando perfil de contacto:", err);
+      console.error("Error cargando perfil de contacto:", err.message);
+      setError("No se pudo cargar el perfil del contacto");
     }
   }
 
@@ -237,9 +238,10 @@ export default function ConversationWorkspace({
       });
       if (!res.ok) return;
       const data = await res.json();
-      setAgents(Array.isArray(data) ? data : []);
+      setAgents(Array.isArray(data?.data) ? data.data : []);
     } catch (err) {
-      console.error("Error cargando agentes:", err);
+      console.error("Error cargando agentes:", err.message);
+      setError("No se pudo cargar la lista de agentes");
     }
   }
 
@@ -255,7 +257,8 @@ export default function ConversationWorkspace({
       const data = await res.json();
       setTeams(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error("Error cargando equipos:", err);
+      console.error("Error cargando equipos:", err.message);
+      setError("No se pudo cargar la lista de equipos");
     }
   }
 
@@ -264,7 +267,7 @@ export default function ConversationWorkspace({
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/chatwoot/conversations/${sess.session_id}/assign`, {
-        method: "POST",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -286,7 +289,7 @@ export default function ConversationWorkspace({
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/chatwoot/conversations/${sess.session_id}/assign`, {
-        method: "POST",
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -723,11 +726,17 @@ export default function ConversationWorkspace({
                       className="w-full text-left px-3 py-2 rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-2"
                     >
                       <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 flex-shrink-0">
-                        {(a.name || "?")[0].toUpperCase()}
+                        {(a.crm_user?.fullname || a.name || "?")[0].toUpperCase()}
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-medium text-gray-800 truncate">{a.name}</p>
-                        <p className="text-[10px] text-gray-400 truncate">{a.role}</p>
+                        <p className="text-xs font-medium text-gray-800 truncate">
+                          {a.crm_user?.fullname || a.name}
+                        </p>
+                        <p className="text-[10px] text-gray-400 truncate">
+                          {a.crm_user
+                            ? `@${a.crm_user.username} · ${a.crm_user.role_name || a.role}`
+                            : a.role}
+                        </p>
                       </div>
                     </button>
                   ))}
