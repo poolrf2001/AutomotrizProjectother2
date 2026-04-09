@@ -129,8 +129,9 @@ function formatRelativeTime(dateStr) {
 function assignmentColorClass(status) {
   if (status === "open") return "bg-green-500";
   if (status === "pending") return "bg-amber-400";
-  if (status === "closed") return "bg-gray-400";
-  return "bg-gray-300";
+  if (status === "closed" || status === "resolved") return "bg-gray-400";
+  if (status === "snoozed") return "bg-blue-400";
+  return "bg-green-500";
 }
 
 function ChannelPill({ channel }) {
@@ -494,7 +495,7 @@ export default function ConversationsPage() {
       }
     });
     evtSource.onerror = () => {
-      console.warn("Chatwoot SSE: connection error — browser will auto-reconnect. readyState:", evtSource.readyState);
+      console.error("Chatwoot SSE: connection error — browser will auto-reconnect. readyState:", evtSource.readyState);
     };
 
     return () => evtSource.close();
@@ -986,10 +987,6 @@ export default function ConversationsPage() {
     }
   }
 
-  // Detectar si hay filtros activos (para mostrar etiqueta en indicadores)
-  const hasActiveFilters = channelFilter !== "all" || statusFilter !== "all"
-    || ownerFilter !== "all" || assignmentFilter !== "all" || priorityFilter !== "all"
-    || search.trim() !== "";
 
   return (
     <TooltipProvider>
@@ -1333,16 +1330,16 @@ export default function ConversationsPage() {
                           <div className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
                             <div className="relative flex items-center">
                               <select
-                                value={s.assignment_status || "unassigned"}
+                                value={s.assignment_status === "resolved" ? "closed" : (s.assignment_status || "open")}
                                 onChange={(e) => handleQuickStatusChange(s.session_id, e.target.value)}
                                 className={`appearance-none text-[10px] pr-4 pl-1.5 py-0.5 rounded-full border font-medium cursor-pointer transition-colors ${
                                   s.assignment_status === "open" ? "bg-green-50 border-green-300 text-green-700" :
                                   s.assignment_status === "pending" ? "bg-amber-50 border-amber-300 text-amber-700" :
-                                  s.assignment_status === "closed" ? "bg-gray-100 border-gray-300 text-gray-500" :
-                                  "bg-gray-50 border-gray-200 text-gray-400"
+                                  (s.assignment_status === "closed" || s.assignment_status === "resolved") ? "bg-gray-100 border-gray-300 text-gray-500" :
+                                  s.assignment_status === "snoozed" ? "bg-blue-50 border-blue-300 text-blue-600" :
+                                  "bg-green-50 border-green-300 text-green-700"
                                 }`}
                               >
-                                <option value="unassigned">Sin asignar</option>
                                 <option value="open">Abierta</option>
                                 <option value="pending">Pendiente</option>
                                 <option value="closed">Cerrada</option>
@@ -1350,8 +1347,12 @@ export default function ConversationsPage() {
                               <ChevronDown className="absolute right-1 w-2.5 h-2.5 pointer-events-none text-current opacity-60" />
                             </div>
                           </div>
-                          <span className="group-hover:hidden text-[10px] text-gray-400 capitalize">
-                            {s.assignment_status || "sin asignar"}
+                          <span className="group-hover:hidden text-[10px] font-medium">
+                            {s.assignment_status === "open" ? <span className="text-green-600">Abierta</span> :
+                             s.assignment_status === "pending" ? <span className="text-amber-600">Pendiente</span> :
+                             (s.assignment_status === "resolved" || s.assignment_status === "closed") ? <span className="text-gray-400">Cerrada</span> :
+                             s.assignment_status === "snoozed" ? <span className="text-blue-500">Pospuesta</span> :
+                             <span className="text-green-600">Abierta</span>}
                           </span>
                           {/* Agente asignado — siempre visible si existe */}
                           {s.assigned_agent_name && (
