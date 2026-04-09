@@ -7,28 +7,29 @@ export async function GET(req, { params }) {
 
     const [rows] = await db.query(
       `SELECT 
-        ca.id,
-        ca.cotizacion_id,
-        ca.accesorio_id,
-        ca.cantidad,
-        ca.precio_unitario,
-        ca.moneda_id,
-        ca.subtotal,
-        ca.descuento_porcentaje,
-        ca.descuento_monto,
-        ca.total,
-        ca.notas,
-        ca.created_at,
-        ca.updated_at,
-        aa.detalle,
-        aa.numero_parte,
+        cr.id,
+        cr.cotizacion_id,
+        cr.regalo_id,
+        cr.cantidad,
+        cr.precio_unitario,
+        cr.moneda_id,
+        cr.subtotal,
+        cr.descuento_porcentaje,
+        cr.descuento_monto,
+        cr.total,
+        cr.notas,
+        cr.created_at,
+        cr.updated_at,
+        rg.detalle,
+        rg.lote,
+        rg.regalo_tienda,
         m.codigo as moneda_codigo,
         m.nombre as moneda_nombre,
         m.simbolo as moneda_simbolo
-       FROM cotizaciones_accesorios ca
-       INNER JOIN accesorios_disponibles aa ON ca.accesorio_id = aa.id
-       INNER JOIN monedas m ON ca.moneda_id = m.id
-       WHERE ca.id = ?`,
+       FROM cotizaciones_regalos cr
+       INNER JOIN regalos_disponibles rg ON cr.regalo_id = rg.id
+       INNER JOIN monedas m ON cr.moneda_id = m.id
+       WHERE cr.id = ?`,
       [id]
     );
 
@@ -47,8 +48,9 @@ export async function GET(req, { params }) {
       precio_unitario: parseFloat(row.precio_unitario),
       subtotal: parseFloat(row.subtotal),
       descuento_porcentaje: row.descuento_porcentaje ? parseFloat(row.descuento_porcentaje) : null,
-      descuento_monto: parseFloat(row.descuento_monto),
-      total: parseFloat(row.total),
+      descuento_monto: row.descuento_monto ? parseFloat(row.descuento_monto) : 0,
+      total: row.total ? parseFloat(row.total) : null,
+      regalo_tienda: Boolean(row.regalo_tienda),
     };
 
     return NextResponse.json(rowFormateado);
@@ -80,7 +82,7 @@ export async function PUT(req, { params }) {
 
     // ✅ Obtener registro actual
     const [current] = await db.query(
-      `SELECT precio_unitario, cantidad as cantidad_actual FROM cotizaciones_accesorios WHERE id = ?`,
+      `SELECT precio_unitario, cantidad as cantidad_actual FROM cotizaciones_regalos WHERE id = ?`,
       [id]
     );
 
@@ -118,7 +120,7 @@ export async function PUT(req, { params }) {
 
     // ✅ Actualizar registro
     const [result] = await db.query(
-      `UPDATE cotizaciones_accesorios
+      `UPDATE cotizaciones_regalos
        SET cantidad = ?,
            subtotal = ?,
            descuento_porcentaje = ?,
@@ -146,7 +148,7 @@ export async function PUT(req, { params }) {
     }
 
     return NextResponse.json({
-      message: "Accesorio actualizado",
+      message: "Regalo actualizado",
       id,
     });
   } catch (e) {
@@ -163,7 +165,7 @@ export async function DELETE(req, { params }) {
     const { id } = await params;
 
     const [result] = await db.query(
-      `DELETE FROM cotizaciones_accesorios WHERE id = ?`,
+      `DELETE FROM cotizaciones_regalos WHERE id = ?`,
       [id]
     );
 
@@ -175,7 +177,7 @@ export async function DELETE(req, { params }) {
     }
 
     return NextResponse.json({
-      message: "Accesorio eliminado",
+      message: "Regalo eliminado",
       id,
     });
   } catch (e) {

@@ -1,6 +1,8 @@
+// File: app/(dashboard)/cotizaciones/[id]/CotizacionRow.jsx
+
 "use client";
 
-import { Copy, Edit, Eye, FileText, Link, MoreVertical, Send, Trash2, Loader2, CheckCircle } from "lucide-react";
+import { Copy, Edit, Eye, FileText, Link as LinkIcon, MoreVertical, Send, Trash2, Loader2, CheckCircle, Package, EyeIcon, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,6 +20,9 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { useUserScope } from "@/hooks/useUserScope";
+import AgregarAccesoriosDialog from "./AgregarAccesoriosDialog";
+import CotizacionRegalosDialog from "./CotizacionRegalosDialog";
+import Link from "next/link";
 
 function getRowBgColor(estado) {
   if (estado === "aceptada") {
@@ -46,6 +51,8 @@ export default function CotizacionRow({
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [loadingHistorial, setLoadingHistorial] = useState(false);
   const [creatingReserva, setCreatingReserva] = useState(false);
+  const [openAccesoriosDialog, setOpenAccesoriosDialog] = useState(false);
+  const [openRegalosDialog, setOpenRegalosDialog] = useState(false);
 
   async function generatePDF() {
     try {
@@ -314,219 +321,298 @@ export default function CotizacionRow({
   }
 
   return (
-    <tr
-      className={`border-b transition-colors ${getRowBgColor(cot.estado)} ${
-        idx % 2 === 1 ? "" : "opacity-95"
-      }`}
-    >
-      <td className="py-3 px-4">
-        <div className="flex items-center gap-2">
-          <span className="font-bold text-blue-600">
-            Q-{String(cot.id).padStart(6, "0")}
-          </span>
-          <span className="text-sm text-gray-500">
-            {cot.marca} {cot.modelo}
-          </span>
-        </div>
-      </td>
-      <td className="py-3 px-4">
-        <span
-          className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
-            cot.estado === "aceptada"
-              ? "bg-green-100 text-green-700 border border-green-300"
+    <>
+      <tr
+        className={`border-b transition-colors ${getRowBgColor(cot.estado)} ${
+          idx % 2 === 1 ? "" : "opacity-95"
+        }`}
+      >
+        <td className="py-3 px-4">
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-blue-600">
+              Q-{String(cot.id).padStart(6, "0")}
+            </span>
+          </div>
+        </td>
+        <td className="py-3 px-4">
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-500">
+              {cot.marca} {cot.modelo}
+            </span>
+          </div>
+        </td>
+        <td className="py-3 px-4">
+          <span
+            className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${
+              cot.estado === "aceptada"
+                ? "bg-green-100 text-green-700 border border-green-300"
+                : cot.estado === "enviada"
+                ? "bg-green-200 text-green-800 border border-green-400 animate-pulse"
+                : cot.estado === "reservada"
+                ? "bg-green-200 text-green-800 border border-green-400 animate-pulse"
+                : cot.estado === "cancelado"
+                ? "bg-red-100 text-red-700 border border-red-300"
+                : "bg-gray-100 text-gray-700 border border-gray-300"
+            }`}
+          >
+            {cot.estado === "borrador"
+              ? "Abierto"
               : cot.estado === "enviada"
-              ? "bg-green-200 text-green-800 border border-green-400 animate-pulse"
+              ? "✓ Enviado"
+              : cot.estado === "aceptada"
+              ? "✓ Aceptado"
               : cot.estado === "reservada"
-              ? "bg-green-200 text-green-800 border border-green-400 animate-pulse"
+              ? "✓ Reservada"
               : cot.estado === "cancelado"
-              ? "bg-red-100 text-red-700 border border-red-300"
-              : "bg-gray-100 text-gray-700 border border-gray-300"
-          }`}
-        >
-          {cot.estado === "borrador"
-            ? "Abierto"
-            : cot.estado === "enviada"
-            ? "✓ Enviado"
-            : cot.estado === "aceptada"
-            ? "✓ Aceptado"
-            : cot.estado === "reservada"
-            ? "✓ Reservada"
-            : cot.estado === "cancelado"
-            ? "✗ Cancelado"
-            : cot.estado}
-        </span>
-      </td>
-      <td className="py-3 px-4 text-sm text-gray-600">
-        {new Date(cot.created_at).toLocaleDateString("es-ES", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-        })}
-      </td>
-      <td className="py-3 px-4">
-        <div className="flex items-center justify-center">
-          {cot.enlace_publico_token ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="text-xs text-blue-600 hover:text-blue-700 gap-1 cursor-help"
-                  onClick={handleVerHistorial}
-                  disabled={loadingHistorial}
-                >
-                  {loadingHistorial ? (
-                    <>
-                      <Loader2 size={14} className="animate-spin" />
-                      Cargando...
-                    </>
-                  ) : (
-                    <>
-                      <Eye size={14} />
-                      Ver historial
-                    </>
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                Ver estadísticas de aperturas
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <span className="text-xs text-gray-500">Sin compartir</span>
-          )}
-        </div>
-      </td>
-      <td className="py-3 px-4">
-        <div className="flex items-center justify-center gap-2">
-          {cot.enlace_publico_token ? (
-            <>
+              ? "✗ Cancelado"
+              : cot.estado}
+          </span>
+        </td>
+        <td className="py-3 px-4 text-sm text-gray-600">
+          {new Date(cot.created_at).toLocaleDateString("es-ES", {
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          })}
+        </td>
+        <td className="py-3 px-4">
+          <div className="flex items-center justify-center">
+            {cot.enlace_publico_token ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
-                    size="icon"
+                    size="sm"
                     variant="ghost"
-                    className="h-6 w-6 text-green-600 hover:text-green-700"
-                    onClick={() => {
-                      window.open(
-                        `${window.location.origin}/cotizacion-publica/${cot.enlace_publico_token}`,
-                        "_blank"
-                      );
-                    }}
+                    className="text-xs text-blue-600 hover:text-blue-700 gap-1 cursor-help"
+                    onClick={handleVerHistorial}
+                    disabled={loadingHistorial}
                   >
-                    <Eye size={14} />
+                    {loadingHistorial ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Cargando...
+                      </>
+                    ) : (
+                      <>
+                        <Eye size={14} />
+                        Ver historial
+                      </>
+                    )}
                   </Button>
                 </TooltipTrigger>
-                <TooltipContent side="top">Ver enlace público</TooltipContent>
-              </Tooltip>
-            </>
-          ) : (
-            <span className="text-xs text-gray-500">Sin compartir</span>
-          )}
-        </div>
-      </td>
-      <td className="py-3 px-4">
-        <div className="flex justify-center">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                size="icon"
-                variant="outline"
-                className="h-8 w-8"
-                disabled={saving || creatingReserva || userScopeLoading}
-              >
-                <MoreVertical size={16} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem
-                onClick={() => onEdit(cot)}
-                disabled={saving}
-              >
-                <Edit size={14} className="mr-2" />
-                Modificar
-              </DropdownMenuItem>
-
-              <DropdownMenuSeparator />
-
-              {/* ✅ ENVIAR NOTA DE PEDIDO */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuItem
-                    onClick={handleEnviarNotaPedido}
-                    disabled={saving || creatingReserva || userScopeLoading}
-                    className="cursor-help"
-                  >
-                    <Send size={14} className="mr-2" />
-                    {creatingReserva ? "Procesando..." : "Enviar Nota de Pedido"}
-                  </DropdownMenuItem>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  Cambia estado a "Enviada" + crea reserva + cambia etapa
+                <TooltipContent side="top">
+                  Ver estadísticas de aperturas
                 </TooltipContent>
               </Tooltip>
-
-              {/* ✅ CREAR RESERVA */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <DropdownMenuItem
-                    onClick={handleCrearReserva}
-                    disabled={saving || creatingReserva || userScopeLoading}
-                    className="cursor-help"
+            ) : (
+              <span className="text-xs text-gray-500">Sin compartir</span>
+            )}
+          </div>
+        </td>
+        <td className="py-3 px-4">
+          <div className="flex items-center justify-center">
+            {/* ✅ BOTÓN PREVISUALIZACIÓN - LLEVA A LA PÁGINA */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link href={`/cotizaciones/${cot.id}/resumen`}>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs text-purple-600 hover:text-purple-700 gap-1"
                   >
-                    <CheckCircle size={14} className="mr-2" />
-                    {creatingReserva ? "Procesando..." : "Crear Reserva"}
-                  </DropdownMenuItem>
-                </TooltipTrigger>
-                <TooltipContent side="left">
-                  Cambia estado a "Reservada" + crea reserva + cambia etapa
-                </TooltipContent>
-              </Tooltip>
+                    <EyeIcon size={16} />
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                Ver resumen de cotización
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </td>
+        <td className="py-3 px-4">
+          <div className="flex items-center justify-center gap-2">
+            {cot.enlace_publico_token ? (
+              <>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-6 w-6 text-green-600 hover:text-green-700"
+                      onClick={() => {
+                        window.open(
+                          `${window.location.origin}/cotizacion-publica/${cot.enlace_publico_token}`,
+                          "_blank"
+                        );
+                      }}
+                    >
+                      <Eye size={14} />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">Ver enlace público</TooltipContent>
+                </Tooltip>
+              </>
+            ) : (
+              <span className="text-xs text-gray-500">Sin compartir</span>
+            )}
+          </div>
+        </td>
+        <td className="py-3 px-4">
+          <div className="flex justify-center">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-8 w-8"
+                  disabled={saving || creatingReserva || userScopeLoading}
+                >
+                  <MoreVertical size={16} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuItem
+                  onClick={() => onEdit(cot)}
+                  disabled={saving}
+                >
+                  <Edit size={14} className="mr-2" />
+                  Modificar
+                </DropdownMenuItem>
 
-              <DropdownMenuSeparator />
+                <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                onClick={() => onDuplicate(cot)}
-                disabled={saving}
-              >
-                <Copy size={14} className="mr-2" />
-                Duplicar
-              </DropdownMenuItem>
+                {/* ✅ AGREGAR ACCESORIOS */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuItem
+                      onClick={() => setOpenAccesoriosDialog(true)}
+                      disabled={saving}
+                      className="cursor-help"
+                    >
+                      <Package size={14} className="mr-2" />
+                      Agregar Accesorios
+                    </DropdownMenuItem>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    Agregar accesorios disponibles a esta cotización
+                  </TooltipContent>
+                </Tooltip>
 
-              <DropdownMenuItem
-                onClick={generatePDF}
-                disabled={generatingPdf}
-              >
-                <FileText size={14} className="mr-2" />
-                Descargar PDF
-              </DropdownMenuItem>
+                {/* ✅ AGREGAR REGALOS */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuItem
+                      onClick={() => setOpenRegalosDialog(true)}
+                      disabled={saving}
+                      className="cursor-help"
+                    >
+                      <Gift size={14} className="mr-2" />
+                      Agregar Regalos
+                    </DropdownMenuItem>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    Agregar regalos disponibles a esta cotización
+                  </TooltipContent>
+                </Tooltip>
 
-              <DropdownMenuSeparator />
+                <DropdownMenuSeparator />
 
-              <DropdownMenuItem
-                onClick={generarEnlacePublico}
-                disabled={saving}
-              >
-                <Link size={14} className="mr-2" />
-                {cot.enlace_publico_token
-                  ? "Compartir enlace"
-                  : "Generar enlace público"}
-              </DropdownMenuItem>
+                {/* ✅ ENVIAR NOTA DE PEDIDO */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuItem
+                      onClick={handleEnviarNotaPedido}
+                      disabled={saving || creatingReserva || userScopeLoading}
+                      className="cursor-help"
+                    >
+                      <Send size={14} className="mr-2" />
+                      {creatingReserva ? "Procesando..." : "Enviar Nota de Pedido"}
+                    </DropdownMenuItem>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    Cambia estado a "Enviada" + crea reserva + cambia etapa
+                  </TooltipContent>
+                </Tooltip>
 
-              <DropdownMenuSeparator />
+                {/* ✅ CREAR RESERVA */}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuItem
+                      onClick={handleCrearReserva}
+                      disabled={saving || creatingReserva || userScopeLoading}
+                      className="cursor-help"
+                    >
+                      <CheckCircle size={14} className="mr-2" />
+                      {creatingReserva ? "Procesando..." : "Crear Reserva"}
+                    </DropdownMenuItem>
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    Cambia estado a "Reservada" + crea reserva + cambia etapa
+                  </TooltipContent>
+                </Tooltip>
 
-              <DropdownMenuItem
-                onClick={() => onChangeStatus(cot, "cancelado")}
-                disabled={saving}
-                className="text-red-600"
-              >
-                <Trash2 size={14} className="mr-2" />
-                Cancelar
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </td>
-    </tr>
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onClick={() => onDuplicate(cot)}
+                  disabled={saving}
+                >
+                  <Copy size={14} className="mr-2" />
+                  Duplicar
+                </DropdownMenuItem>
+
+                <DropdownMenuItem
+                  onClick={generatePDF}
+                  disabled={generatingPdf}
+                >
+                  <FileText size={14} className="mr-2" />
+                  Descargar PDF
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onClick={generarEnlacePublico}
+                  disabled={saving}
+                >
+                  <LinkIcon size={14} className="mr-2" />
+                  {cot.enlace_publico_token
+                    ? "Compartir enlace"
+                    : "Generar enlace público"}
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onClick={() => onChangeStatus(cot, "cancelado")}
+                  disabled={saving}
+                  className="text-red-600"
+                >
+                  <Trash2 size={14} className="mr-2" />
+                  Cancelar
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </td>
+      </tr>
+
+      {/* ✅ DIÁLOGO DE ACCESORIOS */}
+      <AgregarAccesoriosDialog
+        open={openAccesoriosDialog}
+        onOpenChange={setOpenAccesoriosDialog}
+        cotizacion={cot}
+        marcaId={cot.marca_id}
+        modeloId={cot.modelo_id}
+      />
+
+      {/* ✅ DIÁLOGO DE REGALOS */}
+      <CotizacionRegalosDialog
+        open={openRegalosDialog}
+        onOpenChange={setOpenRegalosDialog}
+        cotizacion={cot}
+      />
+    </>
   );
 }

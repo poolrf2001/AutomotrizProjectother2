@@ -1,11 +1,68 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 
+export async function GET(req) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const cotizacion_id = searchParams.get("cotizacion_id");
+    const moneda_id = searchParams.get("moneda_id");
+
+    let sql = `SELECT 
+      cr.*,
+      rg.detalle,
+      rg.lote,
+      rg.regalo_tienda,
+      m.codigo as moneda_codigo,
+      m.nombre as moneda_nombre,
+      m.simbolo as moneda_simbolo
+     FROM cotizaciones_regalos cr
+     INNER JOIN regalos_disponibles rg ON cr.regalo_id = rg.id
+     INNER JOIN monedas m ON cr.moneda_id = m.id
+     WHERE 1=1`;
+
+    const params = [];
+
+    if (cotizacion_id) {
+      sql += " AND cr.cotizacion_id = ?";
+      params.push(cotizacion_id);
+    }
+
+    if (moneda_id) {
+      sql += " AND cr.moneda_id = ?";
+      params.push(moneda_id);
+    }
+
+    sql += " ORDER BY cr.created_at DESC";
+
+    const [rows] = await db.query(sql, params);
+
+    // ✅ Formatear respuesta
+    const regalosFormateados = rows.map(regalo => ({
+      ...regalo,
+      cantidad: parseInt(regalo.cantidad),
+      precio_unitario: parseFloat(regalo.precio_unitario),
+      subtotal: parseFloat(regalo.subtotal),
+      descuento_porcentaje: regalo.descuento_porcentaje ? parseFloat(regalo.descuento_porcentaje) : null,
+      descuento_monto: regalo.descuento_monto ? parseFloat(regalo.descuento_monto) : 0,
+      total: regalo.total ? parseFloat(regalo.total) : null,
+      regalo_tienda: Boolean(regalo.regalo_tienda),
+    }));
+
+    return NextResponse.json(regalosFormateados);
+  } catch (e) {
+    console.log(e);
+    return NextResponse.json(
+      { message: "Error: " + e.message },
+      { status: 500 }
+    );
+  }
+}
+
 export async function POST(req) {
   try {
     const {
       cotizacion_id,
-      accesorio_id,
+      regalo_id,
       cantidad,
       descuento_porcentaje,
       descuento_monto,
@@ -13,9 +70,9 @@ export async function POST(req) {
     } = await req.json();
 
     // ✅ Validar campos requeridos
-    if (!cotizacion_id || !accesorio_id || !cantidad) {
+    if (!cotizacion_id || !regalo_id || !cantidad) {
       return NextResponse.json(
-        { message: "Campos requeridos: cotizacion_id, accesorio_id, cantidad" },
+        { message: "Campos requeridos: cotizacion_id, regalo_id, cantidad" },
         { status: 400 }
       );
     }
@@ -28,21 +85,21 @@ export async function POST(req) {
       );
     }
 
-    // ✅ Obtener accesorio para copiar precio y moneda
-    const [accesorio] = await db.query(
-      `SELECT precio, moneda_id FROM accesorios_disponibles WHERE id = ?`,
-      [accesorio_id]
+    // ✅ Obtener regalo para copiar precio y moneda
+    const [regalo] = await db.query(
+      `SELECT precio_venta, precio_compra, moneda_id FROM regalos_disponibles WHERE id = ?`,
+      [regalo_id]
     );
 
-    if (!accesorio || accesorio.length === 0) {
+    if (!regalo || regalo.length === 0) {
       return NextResponse.json(
-        { message: "Accesorio no encontrado" },
+        { message: "Regalo no encontrado" },
         { status: 404 }
       );
     }
 
-    const precio_unitario = parseFloat(accesorio[0].precio);
-    const moneda_id = accesorio[0].moneda_id;
+    const precio_unitario = parseFloat(regalo[0].precio_venta || regalo[0].precio_compra);
+    const moneda_id = regalo[0].moneda_id;
     const subtotal = cantidad * precio_unitario;
 
     // ✅ Calcular descuento y total
@@ -68,12 +125,12 @@ export async function POST(req) {
 
     // ✅ Insertar con valores congelados
     const [result] = await db.query(
-      `INSERT INTO cotizaciones_accesorios 
-       (cotizacion_id, accesorio_id, cantidad, precio_unitario, moneda_id, subtotal, descuento_porcentaje, descuento_monto, total, notas)
+      `INSERT INTO cotizaciones_regalos 
+       (cotizacion_id, regalo_id, cantidad, precio_unitario, moneda_id, subtotal, descuento_porcentaje, descuento_monto, total, notas)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         cotizacion_id,
-        accesorio_id,
+        regalo_id,
         cantidad,
         precio_unitario,
         moneda_id,
@@ -87,7 +144,7 @@ export async function POST(req) {
 
     return NextResponse.json(
       {
-        message: "Accesorio agregado a cotización",
+        message: "Regalo agregado a cotización",
         id: result.insertId,
       },
       { status: 201 }
@@ -101,69 +158,6 @@ export async function POST(req) {
   }
 }
 
-// ✅ GET todos los accesorios de una cotización
-export async function GET(req) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const cotizacion_id = searchParams.get("cotizacion_id");
-
-    if (!cotizacion_id) {
-      return NextResponse.json(
-        { message: "cotizacion_id es requerido" },
-        { status: 400 }
-      );
-    }
-
-    const [rows] = await db.query(
-      `SELECT 
-        ca.id,
-        ca.cotizacion_id,
-        ca.accesorio_id,
-        ca.cantidad,
-        ca.precio_unitario,
-        ca.moneda_id,
-        ca.subtotal,
-        ca.descuento_porcentaje,
-        ca.descuento_monto,
-        ca.total,
-        ca.notas,
-        ca.created_at,
-        ca.updated_at,
-        aa.detalle,
-        aa.numero_parte,
-        m.codigo as moneda_codigo,
-        m.nombre as moneda_nombre,
-        m.simbolo as moneda_simbolo
-       FROM cotizaciones_accesorios ca
-       INNER JOIN accesorios_disponibles aa ON ca.accesorio_id = aa.id
-       INNER JOIN monedas m ON ca.moneda_id = m.id
-       WHERE ca.cotizacion_id = ?
-       ORDER BY ca.created_at DESC`,
-      [cotizacion_id]
-    );
-
-    // ✅ Formatear números
-    const rowsFormateados = rows.map(row => ({
-      ...row,
-      cantidad: parseInt(row.cantidad),
-      precio_unitario: parseFloat(row.precio_unitario),
-      subtotal: parseFloat(row.subtotal),
-      descuento_porcentaje: row.descuento_porcentaje ? parseFloat(row.descuento_porcentaje) : null,
-      descuento_monto: parseFloat(row.descuento_monto),
-      total: parseFloat(row.total),
-    }));
-
-    return NextResponse.json(rowsFormateados);
-  } catch (e) {
-    console.log(e);
-    return NextResponse.json(
-      { message: "Error: " + e.message },
-      { status: 500 }
-    );
-  }
-}
-
-// ✅ PUT para actualizar un accesorio en cotización
 export async function PUT(req) {
   try {
     const {
@@ -190,7 +184,7 @@ export async function PUT(req) {
 
     // ✅ Obtener registro actual
     const [current] = await db.query(
-      `SELECT precio_unitario, cantidad as cantidad_actual FROM cotizaciones_accesorios WHERE id = ?`,
+      `SELECT precio_unitario, cantidad as cantidad_actual FROM cotizaciones_regalos WHERE id = ?`,
       [id]
     );
 
@@ -228,7 +222,7 @@ export async function PUT(req) {
 
     // ✅ Actualizar registro
     const [result] = await db.query(
-      `UPDATE cotizaciones_accesorios
+      `UPDATE cotizaciones_regalos
        SET cantidad = ?,
            subtotal = ?,
            descuento_porcentaje = ?,
@@ -256,7 +250,7 @@ export async function PUT(req) {
     }
 
     return NextResponse.json({
-      message: "Accesorio actualizado",
+      message: "Regalo actualizado",
       id,
     });
   } catch (e) {
@@ -268,7 +262,6 @@ export async function PUT(req) {
   }
 }
 
-// ✅ DELETE para eliminar un accesorio de una cotización
 export async function DELETE(req) {
   try {
     const { searchParams } = new URL(req.url);
@@ -282,7 +275,7 @@ export async function DELETE(req) {
     }
 
     const [result] = await db.query(
-      `DELETE FROM cotizaciones_accesorios WHERE id = ?`,
+      `DELETE FROM cotizaciones_regalos WHERE id = ?`,
       [id]
     );
 
@@ -294,7 +287,7 @@ export async function DELETE(req) {
     }
 
     return NextResponse.json({
-      message: "Accesorio eliminado",
+      message: "Regalo eliminado",
       id,
     });
   } catch (e) {

@@ -29,24 +29,22 @@ import { Input } from "@/components/ui/input";
 import { Loader, Plus, Trash2, Check, X } from "lucide-react";
 import { toast } from "sonner";
 
-export default function CotizacionAccesoriosDialog({
+export default function CotizacionRegalosDialog({
   open,
   onOpenChange,
   cotizacion,
-  marcaId,
-  modeloId,
-  onAccesoriosUpdated,
+  onRegalosUpdated,
 }) {
-  const [accesorios, setAccesorios] = useState([]);
-  const [cotizacionAcsesorios, setCotizacionAcsesorios] = useState([]);
+  const [regalos, setRegalos] = useState([]);
+  const [cotizacionRegalos, setCotizacionRegalos] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [selectedAccesorios, setSelectedAccesorios] = useState([]);
+  const [selectedRegalos, setSelectedRegalos] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
   const [activeTab, setActiveTab] = useState("agregar");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
-  
+
   // ✅ Estados para descuento total
   const [descuentoTotal, setDescuentoTotal] = useState(0);
   const [descuentoInput, setDescuentoInput] = useState(0);
@@ -57,63 +55,64 @@ export default function CotizacionAccesoriosDialog({
   // ✅ Cargar datos cuando se abre el dialog
   useEffect(() => {
     if (!open || !cotizacion) {
-      setSelectedAccesorios([]);
+      setSelectedRegalos([]);
       return;
     }
 
     loadData();
-  }, [open, cotizacion, marcaId, modeloId]);
+  }, [open, cotizacion]);
 
   async function loadData() {
     try {
       setLoading(true);
-      
-      // Cargar accesorios disponibles
-      if (marcaId && modeloId) {
-        const resAccesorios = await fetch(
-          `/api/accesorios-disponibles?marca_id=${marcaId}&modelo_id=${modeloId}`,
-          { cache: "no-store" }
-        );
-        if (resAccesorios.ok) {
-          const data = await resAccesorios.json();
-          setAccesorios(Array.isArray(data) ? data : []);
-        }
+
+      // Cargar regalos disponibles
+      const resRegalos = await fetch("/api/regalos-disponibles", {
+        cache: "no-store",
+      });
+      if (resRegalos.ok) {
+        const data = await resRegalos.json();
+        setRegalos(Array.isArray(data) ? data : []);
       }
 
-      // Cargar accesorios de la cotización
+      // Cargar regalos de la cotización
       const resCotizacion = await fetch(
-        `/api/cotizaciones-accesorios/by-cotizacion/${cotizacion.id}`,
+        `/api/cotizaciones-regalos/by-cotizacion/${cotizacion.id}`,
         { cache: "no-store" }
       );
       if (resCotizacion.ok) {
         const data = await resCotizacion.json();
         const formateados = Array.isArray(data)
-          ? data.map((acc) => ({
-              ...acc,
-              cantidad: Number(acc.cantidad),
-              precio_unitario: Number(acc.precio_unitario),
-              subtotal: Number(acc.subtotal),
-              descuento_porcentaje: acc.descuento_porcentaje ? Number(acc.descuento_porcentaje) : 0,
-              descuento_monto: acc.descuento_monto ? Number(acc.descuento_monto) : 0,
-              total: Number(acc.total),
+          ? data.map((regalo) => ({
+              ...regalo,
+              cantidad: Number(regalo.cantidad),
+              precio_unitario: Number(regalo.precio_unitario),
+              subtotal: Number(regalo.subtotal),
+              descuento_porcentaje: regalo.descuento_porcentaje
+                ? Number(regalo.descuento_porcentaje)
+                : 0,
+              descuento_monto: regalo.descuento_monto
+                ? Number(regalo.descuento_monto)
+                : 0,
+              total: Number(regalo.total),
             }))
           : [];
-        setCotizacionAcsesorios(formateados);
-        
+        setCotizacionRegalos(formateados);
+
         if (formateados.length > 0) {
           setActiveTab("ver");
         }
       }
 
-      // ✅ Cargar descuento total de accesorios
+      // ✅ Cargar descuento total de regalos
       const resDescuento = await fetch(
-        `/api/cotizacionesagenda/${cotizacion.id}/descuento-accesorios`,
+        `/api/cotizacionesagenda/${cotizacion.id}/descuento-regalos`,
         { cache: "no-store" }
       );
       if (resDescuento.ok) {
         const data = await resDescuento.json();
-        setDescuentoTotal(data.descuento_total_accesorios || 0);
-        setDescuentoInput(data.descuento_total_accesorios || 0);
+        setDescuentoTotal(data.descuento_total_regalos || 0);
+        setDescuentoInput(data.descuento_total_regalos || 0);
       }
     } catch (error) {
       console.error(error);
@@ -136,12 +135,12 @@ export default function CotizacionAccesoriosDialog({
       }
 
       const res = await fetch(
-        `/api/cotizacionesagenda/${cotizacion.id}/descuento-accesorios`,
+        `/api/cotizacionesagenda/${cotizacion.id}/descuento-regalos`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            descuento_total_accesorios: parseFloat(valor),
+            descuento_total_regalos: parseFloat(valor),
           }),
         }
       );
@@ -152,8 +151,8 @@ export default function CotizacionAccesoriosDialog({
       }
 
       const data = await res.json();
-      setDescuentoTotal(data.descuento_total_accesorios);
-      setDescuentoInput(data.descuento_total_accesorios);
+      setDescuentoTotal(data.descuento_total_regalos);
+      setDescuentoInput(data.descuento_total_regalos);
       setIsEditingDescuento(false);
       toast.success("Descuento guardado");
     } catch (error) {
@@ -166,16 +165,16 @@ export default function CotizacionAccesoriosDialog({
   }
 
   // ✅ Calcular totales
-  const calculateTotals = (accesorio) => {
-    const precio = parseFloat(accesorio.precio) || 0;
-    const cantidad = accesorio.cantidad || 1;
+  const calculateTotals = (regalo) => {
+    const precio = parseFloat(regalo.precio_venta || regalo.precio_compra) || 0;
+    const cantidad = regalo.cantidad || 1;
     const subtotal = precio * cantidad;
 
     let descuento = 0;
-    if (accesorio.descuento_porcentaje) {
-      descuento = subtotal * (parseFloat(accesorio.descuento_porcentaje) / 100);
-    } else if (accesorio.descuento_monto) {
-      descuento = parseFloat(accesorio.descuento_monto);
+    if (regalo.descuento_porcentaje) {
+      descuento = subtotal * (parseFloat(regalo.descuento_porcentaje) / 100);
+    } else if (regalo.descuento_monto) {
+      descuento = parseFloat(regalo.descuento_monto);
     }
 
     const total = subtotal - descuento;
@@ -191,49 +190,49 @@ export default function CotizacionAccesoriosDialog({
   const agruparPorMoneda = (items) => {
     const grupos = {};
 
-    items.forEach((acc) => {
-      const monedaCodigo = acc.moneda_codigo || "SIN_MONEDA";
+    items.forEach((regalo) => {
+      const monedaCodigo = regalo.moneda_codigo || "SIN_MONEDA";
 
       if (!grupos[monedaCodigo]) {
         grupos[monedaCodigo] = {
-          simbolo: acc.moneda_simbolo,
+          simbolo: regalo.moneda_simbolo,
           codigo: monedaCodigo,
           subtotal: 0,
           descuento: 0,
           total: 0,
-          accesorios: [],
+          regalos: [],
         };
       }
 
-      grupos[monedaCodigo].subtotal += acc.subtotal || 0;
-      grupos[monedaCodigo].descuento += acc.descuento_monto || 0;
-      grupos[monedaCodigo].total += acc.total || 0;
-      grupos[monedaCodigo].accesorios.push(acc);
+      grupos[monedaCodigo].subtotal += regalo.subtotal || 0;
+      grupos[monedaCodigo].descuento += regalo.descuento_monto || 0;
+      grupos[monedaCodigo].total += regalo.total || 0;
+      grupos[monedaCodigo].regalos.push(regalo);
     });
 
     return Object.values(grupos);
   };
 
-  // ✅ Agregar accesorios
-  async function handleAgregarAccesorios() {
-    if (selectedAccesorios.length === 0) {
-      toast.warning("Selecciona al menos un accesorio");
+  // ✅ Agregar regalos
+  async function handleAgregarRegalos() {
+    if (selectedRegalos.length === 0) {
+      toast.warning("Selecciona al menos un regalo");
       return;
     }
 
     setSaving(true);
     try {
-      const promises = selectedAccesorios.map((accesorio) =>
-        fetch(`/api/cotizaciones-accesorios`, {
+      const promises = selectedRegalos.map((regalo) =>
+        fetch(`/api/cotizaciones-regalos`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             cotizacion_id: cotizacion.id,
-            accesorio_id: accesorio.id,
-            cantidad: accesorio.cantidad || 1,
-            descuento_porcentaje: accesorio.descuento_porcentaje || null,
-            descuento_monto: accesorio.descuento_monto || null,
-            notas: accesorio.notas || null,
+            regalo_id: regalo.id,
+            cantidad: regalo.cantidad || 1,
+            descuento_porcentaje: regalo.descuento_porcentaje || null,
+            descuento_monto: regalo.descuento_monto || null,
+            notas: regalo.notas || null,
           }),
         })
       );
@@ -242,48 +241,48 @@ export default function CotizacionAccesoriosDialog({
       const allOk = responses.every((r) => r.ok);
 
       if (!allOk) {
-        throw new Error("Error agregando algunos accesorios");
+        throw new Error("Error agregando algunos regalos");
       }
 
-      toast.success(`${selectedAccesorios.length} accesorio(s) agregado(s)`);
-      setSelectedAccesorios([]);
+      toast.success(`${selectedRegalos.length} regalo(s) agregado(s)`);
+      setSelectedRegalos([]);
       await loadData();
       setActiveTab("ver");
-      onAccesoriosUpdated?.();
+      onRegalosUpdated?.();
     } catch (error) {
       console.error(error);
-      toast.error(error.message || "Error agregando accesorios");
+      toast.error(error.message || "Error agregando regalos");
     } finally {
       setSaving(false);
     }
   }
 
-  // ✅ Eliminar accesorio con AlertDialog
+  // ✅ Eliminar regalo con AlertDialog
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
 
     setSaving(true);
     try {
-      const res = await fetch(`/api/cotizaciones-accesorios/${deleteTarget.id}`, {
+      const res = await fetch(`/api/cotizaciones-regalos/${deleteTarget.id}`, {
         method: "DELETE",
       });
 
-      if (!res.ok) throw new Error("Error eliminando accesorio");
+      if (!res.ok) throw new Error("Error eliminando regalo");
 
-      toast.success("Accesorio eliminado");
+      toast.success("Regalo eliminado");
       setDeleteDialogOpen(false);
       setDeleteTarget(null);
       await loadData();
-      onAccesoriosUpdated?.();
+      onRegalosUpdated?.();
     } catch (error) {
       console.error(error);
-      toast.error("Error eliminando accesorio");
+      toast.error("Error eliminando regalo");
     } finally {
       setSaving(false);
     }
   }
 
-  const gruposMonedaActual = agruparPorMoneda(cotizacionAcsesorios);
+  const gruposMonedaActual = agruparPorMoneda(cotizacionRegalos);
 
   return (
     <>
@@ -291,7 +290,7 @@ export default function CotizacionAccesoriosDialog({
         <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              Gestionar Accesorios - Cotización Q-{String(cotizacion?.id).padStart(6, "0")}
+              Gestionar Regalos - Cotización Q-{String(cotizacion?.id).padStart(6, "0")}
             </DialogTitle>
           </DialogHeader>
 
@@ -301,12 +300,12 @@ export default function CotizacionAccesoriosDialog({
             </div>
           ) : (
             <>
-              {/* ✅ SECCIÓN DESCUENTO TOTAL DE ACCESORIOS */}
-              <div className="bg-gradient-to-r from-blue-50 to-cyan-50 p-4 rounded-lg border-2 border-blue-200">
+              {/* ✅ SECCIÓN DESCUENTO TOTAL DE REGALOS */}
+              <div className="bg-gradient-to-r from-pink-50 to-rose-50 p-4 rounded-lg border-2 border-pink-200">
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1">
                     <label className="text-xs font-semibold text-gray-700 block mb-1">
-                      Descuento Total de Accesorios
+                      Descuento Total de Regalos
                     </label>
                     {isEditingDescuento ? (
                       <div className="flex items-center gap-2">
@@ -354,7 +353,7 @@ export default function CotizacionAccesoriosDialog({
                       </div>
                     ) : (
                       <div className="flex items-center gap-2">
-                        <p className="text-lg font-bold text-blue-600">
+                        <p className="text-lg font-bold text-pink-600">
                           ${descuentoTotal.toFixed(2)}
                         </p>
                         <button
@@ -362,7 +361,7 @@ export default function CotizacionAccesoriosDialog({
                             setIsEditingDescuento(true);
                             setDescuentoInput(descuentoTotal);
                           }}
-                          className="text-xs px-3 py-1 rounded bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+                          className="text-xs px-3 py-1 rounded bg-pink-500 hover:bg-pink-600 text-white transition-colors"
                         >
                           Editar
                         </button>
@@ -385,7 +384,7 @@ export default function CotizacionAccesoriosDialog({
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  Ver Accesorios ({cotizacionAcsesorios.length})
+                  Ver Regalos ({cotizacionRegalos.length})
                 </button>
                 <button
                   onClick={() => setActiveTab("agregar")}
@@ -395,31 +394,19 @@ export default function CotizacionAccesoriosDialog({
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  Agregar Accesorios
+                  Agregar Regalos
                 </button>
               </div>
 
-              {/* ✅ TAB: VER ACCESORIOS */}
+              {/* ✅ TAB: VER REGALOS */}
               {activeTab === "ver" ? (
                 <div className="space-y-6">
-                  {cotizacionAcsesorios.length === 0 ? (
+                  {cotizacionRegalos.length === 0 ? (
                     <div className="flex justify-center items-center py-12">
-                      <p className="text-gray-500">No hay accesorios en esta cotización</p>
+                      <p className="text-gray-500">No hay regalos en esta cotización</p>
                     </div>
                   ) : (
                     <>
-                      {/* Información General */}
-                      <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 rounded-lg">
-                        <div>
-                          <p className="text-sm text-gray-600">Marca</p>
-                          <p className="font-semibold text-gray-900">{cotizacion?.marca || "N/A"}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-600">Modelo</p>
-                          <p className="font-semibold text-gray-900">{cotizacion?.modelo || "N/A"}</p>
-                        </div>
-                      </div>
-
                       {/* Tablas por Moneda */}
                       {gruposMonedaActual.map((grupo) => (
                         <div key={grupo.codigo} className="space-y-4">
@@ -434,7 +421,8 @@ export default function CotizacionAccesoriosDialog({
                               <thead>
                                 <tr className="bg-gray-100 border-b">
                                   <th className="text-left p-3 font-semibold">Descripción</th>
-                                  <th className="text-left p-3 font-semibold">N° Parte</th>
+                                  <th className="text-left p-3 font-semibold">Lote</th>
+                                  <th className="text-center p-3 font-semibold">Tienda</th>
                                   <th className="text-right p-3 font-semibold">Cantidad</th>
                                   <th className="text-right p-3 font-semibold">Unitario</th>
                                   <th className="text-right p-3 font-semibold">Subtotal</th>
@@ -444,28 +432,41 @@ export default function CotizacionAccesoriosDialog({
                                 </tr>
                               </thead>
                               <tbody>
-                                {grupo.accesorios.map((acc) => (
+                                {grupo.regalos.map((regalo) => (
                                   <tr
-                                    key={acc.id}
+                                    key={regalo.id}
                                     className="border-b hover:bg-gray-50 transition-colors"
                                   >
-                                    <td className="p-3">{acc.detalle}</td>
-                                    <td className="p-3 text-gray-600">{acc.numero_parte}</td>
-                                    <td className="text-right p-3">{acc.cantidad}</td>
+                                    <td className="p-3">{regalo.detalle}</td>
+                                    <td className="p-3 text-gray-600">{regalo.lote}</td>
+                                    <td className="p-3 text-center">
+                                      <span
+                                        className={`text-xs font-semibold px-2 py-1 rounded ${
+                                          regalo.regalo_tienda
+                                            ? "bg-green-100 text-green-800"
+                                            : "bg-gray-100 text-gray-800"
+                                        }`}
+                                      >
+                                        {regalo.regalo_tienda ? "✓ Sí" : "No"}
+                                      </span>
+                                    </td>
+                                    <td className="text-right p-3">{regalo.cantidad}</td>
                                     <td className="text-right p-3">
-                                      {acc.precio_unitario.toFixed(2)} {acc.moneda_simbolo}
+                                      {regalo.precio_unitario.toFixed(2)} {regalo.moneda_simbolo}
                                     </td>
                                     <td className="text-right p-3 font-medium">
-                                      {acc.subtotal.toFixed(2)}
+                                      {regalo.subtotal.toFixed(2)}
                                     </td>
                                     <td className="text-right p-3">
-                                      {acc.descuento_monto > 0 ? (
+                                      {regalo.descuento_monto > 0 ? (
                                         <div className="text-xs">
-                                          {acc.descuento_porcentaje > 0 && (
-                                            <p className="text-gray-500">{acc.descuento_porcentaje}%</p>
+                                          {regalo.descuento_porcentaje > 0 && (
+                                            <p className="text-gray-500">
+                                              {regalo.descuento_porcentaje}%
+                                            </p>
                                           )}
                                           <p className="font-medium text-red-600">
-                                            -{acc.descuento_monto.toFixed(2)}
+                                            -{regalo.descuento_monto.toFixed(2)}
                                           </p>
                                         </div>
                                       ) : (
@@ -473,13 +474,13 @@ export default function CotizacionAccesoriosDialog({
                                       )}
                                     </td>
                                     <td className="text-right p-3 font-bold text-blue-600">
-                                      {acc.total.toFixed(2)}
+                                      {regalo.total.toFixed(2)}
                                     </td>
                                     <td className="text-center p-3">
                                       <button
                                         onClick={() => {
                                           setDeleteDialogOpen(true);
-                                          setDeleteTarget(acc);
+                                          setDeleteTarget(regalo);
                                         }}
                                         disabled={saving}
                                         className="text-red-600 hover:text-red-700 disabled:opacity-50 transition-colors"
@@ -558,32 +559,24 @@ export default function CotizacionAccesoriosDialog({
                   )}
                 </div>
               ) : (
-                /* ✅ TAB: AGREGAR ACCESORIOS */
+                /* ✅ TAB: AGREGAR REGALOS */
                 <div className="space-y-4">
-                  {accesorios.length === 0 ? (
+                  {regalos.length === 0 ? (
                     <div className="flex justify-center items-center py-8">
                       <p className="text-gray-500">
-                        No hay accesorios disponibles para esta marca y modelo
+                        No hay regalos disponibles
                       </p>
                     </div>
                   ) : (
                     <>
-                      <div className="text-sm text-gray-600">
-                        <p>
-                          <strong>Marca:</strong> {accesorios[0]?.marca_nombre || "N/A"}
-                        </p>
-                        <p>
-                          <strong>Modelo:</strong> {accesorios[0]?.modelo_nombre || "N/A"}
-                        </p>
-                      </div>
-
                       <div className="border rounded-lg overflow-x-auto">
                         <table className="w-full text-sm">
                           <thead>
                             <tr className="bg-gray-50 border-b">
                               <th className="text-left p-3 w-8">✓</th>
                               <th className="text-left p-3 min-w-[200px]">Detalle</th>
-                              <th className="text-left p-3 min-w-[120px]">N° Parte</th>
+                              <th className="text-left p-3 min-w-[100px]">Lote</th>
+                              <th className="text-center p-3 min-w-[80px]">Tienda</th>
                               <th className="text-right p-3 min-w-[100px]">Precio Unit.</th>
                               <th className="text-center p-3 min-w-[80px]">Cant.</th>
                               <th className="text-right p-3 min-w-[100px]">Subtotal</th>
@@ -593,19 +586,21 @@ export default function CotizacionAccesoriosDialog({
                             </tr>
                           </thead>
                           <tbody>
-                            {accesorios.map((accesorio) => {
-                              const isSelected = selectedAccesorios.some(
-                                (a) => a.id === accesorio.id
+                            {regalos.map((regalo) => {
+                              const isSelected = selectedRegalos.some(
+                                (r) => r.id === regalo.id
                               );
-                              const selectedItem = selectedAccesorios.find(
-                                (a) => a.id === accesorio.id
+                              const selectedItem = selectedRegalos.find(
+                                (r) => r.id === regalo.id
                               );
-                              const totals = selectedItem ? calculateTotals(selectedItem) : null;
-                              const isExpanded = expandedId === accesorio.id;
+                              const totals = selectedItem
+                                ? calculateTotals(selectedItem)
+                                : null;
+                              const isExpanded = expandedId === regalo.id;
 
                               return (
                                 <tr
-                                  key={`row-${accesorio.id}`}
+                                  key={`row-${regalo.id}`}
                                   className={`border-b transition-colors ${
                                     isSelected ? "bg-blue-50" : "hover:bg-gray-50"
                                   }`}
@@ -616,10 +611,10 @@ export default function CotizacionAccesoriosDialog({
                                       checked={isSelected}
                                       onChange={(e) => {
                                         if (e.target.checked) {
-                                          setSelectedAccesorios([
-                                            ...selectedAccesorios,
+                                          setSelectedRegalos([
+                                            ...selectedRegalos,
                                             {
-                                              ...accesorio,
+                                              ...regalo,
                                               cantidad: 1,
                                               descuento_tipo: "porcentaje",
                                               descuento_porcentaje: null,
@@ -628,9 +623,9 @@ export default function CotizacionAccesoriosDialog({
                                             },
                                           ]);
                                         } else {
-                                          setSelectedAccesorios(
-                                            selectedAccesorios.filter(
-                                              (a) => a.id !== accesorio.id
+                                          setSelectedRegalos(
+                                            selectedRegalos.filter(
+                                              (r) => r.id !== regalo.id
                                             )
                                           );
                                           setExpandedId(null);
@@ -638,12 +633,24 @@ export default function CotizacionAccesoriosDialog({
                                       }}
                                     />
                                   </td>
-                                  <td className="p-3 font-medium">{accesorio.detalle}</td>
-                                  <td className="p-3 text-gray-600">
-                                    {accesorio.numero_parte}
+                                  <td className="p-3 font-medium">{regalo.detalle}</td>
+                                  <td className="p-3 text-gray-600">{regalo.lote}</td>
+                                  <td className="p-3 text-center">
+                                    <span
+                                      className={`text-xs font-semibold px-2 py-1 rounded ${
+                                        regalo.regalo_tienda
+                                          ? "bg-green-100 text-green-800"
+                                          : "bg-gray-100 text-gray-800"
+                                      }`}
+                                    >
+                                      {regalo.regalo_tienda ? "✓" : "✗"}
+                                    </span>
                                   </td>
                                   <td className="p-3 text-right">
-                                    {accesorio.simbolo} {parseFloat(accesorio.precio).toFixed(2)}
+                                    {regalo.simbolo}{" "}
+                                    {parseFloat(
+                                      regalo.precio_venta || regalo.precio_compra
+                                    ).toFixed(2)}
                                   </td>
                                   <td className="p-3">
                                     {isSelected ? (
@@ -654,11 +661,11 @@ export default function CotizacionAccesoriosDialog({
                                         onChange={(e) => {
                                           const newQuantity =
                                             parseInt(e.target.value) || 1;
-                                          setSelectedAccesorios(
-                                            selectedAccesorios.map((a) =>
-                                              a.id === accesorio.id
-                                                ? { ...a, cantidad: newQuantity }
-                                                : a
+                                          setSelectedRegalos(
+                                            selectedRegalos.map((r) =>
+                                              r.id === regalo.id
+                                                ? { ...r, cantidad: newQuantity }
+                                                : r
                                             )
                                           );
                                         }}
@@ -671,7 +678,7 @@ export default function CotizacionAccesoriosDialog({
                                   <td className="p-3 text-right">
                                     {isSelected && totals ? (
                                       <span className="text-gray-700 font-medium">
-                                        {accesorio.simbolo} {totals.subtotal}
+                                        {regalo.simbolo} {totals.subtotal}
                                       </span>
                                     ) : (
                                       <span className="text-gray-400">-</span>
@@ -686,10 +693,13 @@ export default function CotizacionAccesoriosDialog({
                                           </div>
                                         ) : selectedItem.descuento_monto ? (
                                           <div className="text-blue-600 font-semibold">
-                                            {accesorio.simbolo} {selectedItem.descuento_monto}
+                                            {regalo.simbolo}{" "}
+                                            {selectedItem.descuento_monto}
                                           </div>
                                         ) : (
-                                          <span className="text-gray-400">Sin desc.</span>
+                                          <span className="text-gray-400">
+                                            Sin desc.
+                                          </span>
                                         )}
                                       </div>
                                     ) : (
@@ -699,7 +709,7 @@ export default function CotizacionAccesoriosDialog({
                                   <td className="p-3 text-right">
                                     {isSelected && totals ? (
                                       <span className="text-blue-600 font-bold text-lg">
-                                        {accesorio.simbolo} {totals.total}
+                                        {regalo.simbolo} {totals.total}
                                       </span>
                                     ) : (
                                       <span className="text-gray-400">-</span>
@@ -710,7 +720,7 @@ export default function CotizacionAccesoriosDialog({
                                       <button
                                         onClick={() =>
                                           setExpandedId(
-                                            isExpanded ? null : accesorio.id
+                                            isExpanded ? null : regalo.id
                                           )
                                         }
                                         className="text-blue-600 hover:text-blue-700 font-bold"
@@ -726,13 +736,13 @@ export default function CotizacionAccesoriosDialog({
                         </table>
 
                         {/* Filas Expandidas */}
-                        {selectedAccesorios.length > 0 && expandedId && (
+                        {selectedRegalos.length > 0 && expandedId && (
                           <div className="border-t">
-                            {selectedAccesorios
-                              .filter((acc) => acc.id === expandedId)
+                            {selectedRegalos
+                              .filter((r) => r.id === expandedId)
                               .map((selectedItem) => {
-                                const accesorio = accesorios.find(
-                                  (a) => a.id === selectedItem.id
+                                const regalo = regalos.find(
+                                  (r) => r.id === selectedItem.id
                                 );
                                 const totals = calculateTotals(selectedItem);
 
@@ -749,18 +759,21 @@ export default function CotizacionAccesoriosDialog({
                                             Tipo de Descuento
                                           </label>
                                           <Select
-                                            value={selectedItem.descuento_tipo || "porcentaje"}
+                                            value={
+                                              selectedItem.descuento_tipo ||
+                                              "porcentaje"
+                                            }
                                             onValueChange={(value) => {
-                                              setSelectedAccesorios(
-                                                selectedAccesorios.map((a) =>
-                                                  a.id === selectedItem.id
+                                              setSelectedRegalos(
+                                                selectedRegalos.map((r) =>
+                                                  r.id === selectedItem.id
                                                     ? {
-                                                        ...a,
+                                                        ...r,
                                                         descuento_tipo: value,
                                                         descuento_porcentaje: null,
                                                         descuento_monto: null,
                                                       }
-                                                    : a
+                                                    : r
                                                 )
                                               );
                                             }}
@@ -769,13 +782,22 @@ export default function CotizacionAccesoriosDialog({
                                               <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
-                                              <SelectItem value="porcentaje" className="text-sm">
+                                              <SelectItem
+                                                value="porcentaje"
+                                                className="text-sm"
+                                              >
                                                 Por Porcentaje (%)
                                               </SelectItem>
-                                              <SelectItem value="monto" className="text-sm">
-                                                Por Monto ({accesorio.simbolo})
+                                              <SelectItem
+                                                value="monto"
+                                                className="text-sm"
+                                              >
+                                                Por Monto ({regalo.simbolo})
                                               </SelectItem>
-                                              <SelectItem value="ninguno" className="text-sm">
+                                              <SelectItem
+                                                value="ninguno"
+                                                className="text-sm"
+                                              >
                                                 Sin Descuento
                                               </SelectItem>
                                             </SelectContent>
@@ -783,44 +805,59 @@ export default function CotizacionAccesoriosDialog({
                                         </div>
 
                                         {/* Valor de Descuento */}
-                                        {selectedItem.descuento_tipo !== "ninguno" && (
+                                        {selectedItem.descuento_tipo !==
+                                          "ninguno" && (
                                           <div>
                                             <label className="text-xs font-semibold text-gray-700 block mb-2">
-                                              {selectedItem.descuento_tipo === "porcentaje"
+                                              {selectedItem.descuento_tipo ===
+                                              "porcentaje"
                                                 ? "Porcentaje (%)"
-                                                : `Monto (${accesorio.simbolo})`}
+                                                : `Monto (${regalo.simbolo})`}
                                             </label>
                                             <Input
                                               type="number"
                                               min="0"
-                                              max={selectedItem.descuento_tipo === "porcentaje" ? "100" : undefined}
+                                              max={
+                                                selectedItem.descuento_tipo ===
+                                                "porcentaje"
+                                                  ? "100"
+                                                  : undefined
+                                              }
                                               step="0.01"
                                               placeholder="0.00"
                                               value={
-                                                selectedItem.descuento_tipo === "porcentaje"
-                                                  ? selectedItem.descuento_porcentaje || ""
-                                                  : selectedItem.descuento_monto || ""
+                                                selectedItem.descuento_tipo ===
+                                                "porcentaje"
+                                                  ? selectedItem.descuento_porcentaje ||
+                                                    ""
+                                                  : selectedItem.descuento_monto ||
+                                                    ""
                                               }
                                               onChange={(e) => {
                                                 const value = e.target.value
                                                   ? parseFloat(e.target.value)
                                                   : null;
-                                                setSelectedAccesorios(
-                                                  selectedAccesorios.map((a) =>
-                                                    a.id === selectedItem.id
+                                                setSelectedRegalos(
+                                                  selectedRegalos.map((r) =>
+                                                    r.id === selectedItem.id
                                                       ? {
-                                                          ...a,
-                                                          ...(selectedItem.descuento_tipo === "porcentaje"
+                                                          ...r,
+                                                          ...(selectedItem.descuento_tipo ===
+                                                          "porcentaje"
                                                             ? {
-                                                                descuento_porcentaje: value,
-                                                                descuento_monto: null,
+                                                                descuento_porcentaje:
+                                                                  value,
+                                                                descuento_monto:
+                                                                  null,
                                                               }
                                                             : {
-                                                                descuento_monto: value,
-                                                                descuento_porcentaje: null,
+                                                                descuento_monto:
+                                                                  value,
+                                                                descuento_porcentaje:
+                                                                  null,
                                                               }),
                                                         }
-                                                      : a
+                                                      : r
                                                   )
                                                 );
                                               }}
@@ -837,14 +874,17 @@ export default function CotizacionAccesoriosDialog({
                                         </label>
                                         <Input
                                           type="text"
-                                          placeholder="Agregue notas sobre este accesorio..."
+                                          placeholder="Agregue notas sobre este regalo..."
                                           value={selectedItem.notas || ""}
                                           onChange={(e) => {
-                                            setSelectedAccesorios(
-                                              selectedAccesorios.map((a) =>
-                                                a.id === selectedItem.id
-                                                  ? { ...a, notas: e.target.value }
-                                                  : a
+                                            setSelectedRegalos(
+                                              selectedRegalos.map((r) =>
+                                                r.id === selectedItem.id
+                                                  ? {
+                                                      ...r,
+                                                      notas: e.target.value,
+                                                    }
+                                                  : r
                                               )
                                             );
                                           }}
@@ -860,7 +900,8 @@ export default function CotizacionAccesoriosDialog({
                                               Subtotal
                                             </p>
                                             <p className="text-base font-bold text-gray-900">
-                                              {accesorio.simbolo} {totals.subtotal}
+                                              {regalo.simbolo}{" "}
+                                              {totals.subtotal}
                                             </p>
                                           </div>
                                           <div className="text-center">
@@ -868,13 +909,17 @@ export default function CotizacionAccesoriosDialog({
                                               Descuento
                                             </p>
                                             <p className="text-base font-bold text-red-600">
-                                              -{accesorio.simbolo} {totals.descuento}
+                                              -{regalo.simbolo}{" "}
+                                              {totals.descuento}
                                             </p>
                                           </div>
                                           <div className="text-center">
-                                            <p className="text-xs text-gray-600 font-medium">Total</p>
+                                            <p className="text-xs text-gray-600 font-medium">
+                                              Total
+                                            </p>
                                             <p className="text-base font-bold text-blue-600">
-                                              {accesorio.simbolo} {totals.total}
+                                              {regalo.simbolo}{" "}
+                                              {totals.total}
                                             </p>
                                           </div>
                                         </div>
@@ -887,28 +932,29 @@ export default function CotizacionAccesoriosDialog({
                         )}
                       </div>
 
-                      {selectedAccesorios.length > 0 && (
+                      {selectedRegalos.length > 0 && (
                         <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                           <p className="font-bold text-blue-900 mb-2">
-                            ✓ {selectedAccesorios.length} accesorio(s) seleccionado(s)
+                            ✓ {selectedRegalos.length} regalo(s) seleccionado(s)
                           </p>
                           <div className="space-y-1">
-                            {selectedAccesorios.map((acc) => {
-                              const totals = calculateTotals(acc);
+                            {selectedRegalos.map((regalo) => {
+                              const totals = calculateTotals(regalo);
                               return (
-                                <p key={acc.id} className="text-sm text-blue-700">
-                                  • <strong>{acc.detalle}</strong> x{acc.cantidad} =
+                                <p key={regalo.id} className="text-sm text-blue-700">
+                                  • <strong>{regalo.detalle}</strong> x{regalo.cantidad}{" "}
+                                  =
                                   <span className="font-bold text-blue-600 ml-1">
-                                    {acc.simbolo} {totals.total}
+                                    {regalo.simbolo} {totals.total}
                                   </span>
-                                  {acc.descuento_porcentaje && (
+                                  {regalo.descuento_porcentaje && (
                                     <span className="ml-2 text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">
-                                      {acc.descuento_porcentaje}% desc
+                                      {regalo.descuento_porcentaje}% desc
                                     </span>
                                   )}
-                                  {acc.descuento_monto && (
+                                  {regalo.descuento_monto && (
                                     <span className="ml-2 text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">
-                                      {acc.simbolo} {acc.descuento_monto} desc
+                                      {regalo.simbolo} {regalo.descuento_monto} desc
                                     </span>
                                   )}
                                 </p>
@@ -933,12 +979,14 @@ export default function CotizacionAccesoriosDialog({
                 </Button>
                 {activeTab === "agregar" && (
                   <Button
-                    onClick={handleAgregarAccesorios}
-                    disabled={saving || selectedAccesorios.length === 0}
+                    onClick={handleAgregarRegalos}
+                    disabled={saving || selectedRegalos.length === 0}
                     className="gap-2"
                   >
                     <Plus size={14} />
-                    {saving ? "Agregando..." : `Agregar ${selectedAccesorios.length} Accesorio(s)`}
+                    {saving
+                      ? "Agregando..."
+                      : `Agregar ${selectedRegalos.length} Regalo(s)`}
                   </Button>
                 )}
               </DialogFooter>
@@ -951,9 +999,9 @@ export default function CotizacionAccesoriosDialog({
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Eliminar Accesorio</AlertDialogTitle>
+            <AlertDialogTitle>Eliminar Regalo</AlertDialogTitle>
             <AlertDialogDescription>
-              ¿Estás seguro de que deseas eliminar el accesorio{" "}
+              ¿Estás seguro de que deseas eliminar el regalo{" "}
               <strong>{deleteTarget?.detalle}</strong>? Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
