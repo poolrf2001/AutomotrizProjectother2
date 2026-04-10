@@ -9,6 +9,7 @@ import {
   CornerUpLeft,
   Lock,
   MessageSquarePlus,
+  Paperclip,
   Send,
   Tag,
   UserCheck,
@@ -178,6 +179,8 @@ export default function ConversationWorkspace({
   const [quotedMessage, setQuotedMessage] = useState(null);
   const [cannedOpen, setCannedOpen] = useState(false);
   const [isPrivateNote, setIsPrivateNote] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const fileInputRef = useRef(null);
   const [labels, setLabels] = useState([]);
   const [agents, setAgents] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -430,28 +433,40 @@ export default function ConversationWorkspace({
 
   async function handleSendMessage() {
     const text = newMessage.trim();
-    if (!text || !sess?.session_id || sending) return;
+    if (!text && !selectedFile) return;
+    if (!sess?.session_id || sending) return;
 
     setSending(true);
     setError("");
 
-    const content = quotedMessage
+    const content = quotedMessage && text
       ? `> ${quotedMessage}\n\n${text}`
       : text;
 
     try {
       const token = getAuthToken();
-      const res = await fetch(
-        `/api/chatwoot/conversations/${sess.session_id}/messages`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          body: JSON.stringify({ content, private: isPrivateNote }),
-        }
-      );
+      const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+
+      let res;
+      if (selectedFile) {
+        const form = new FormData();
+        if (content) form.append("content", content);
+        form.append("private", String(isPrivateNote));
+        form.append("file", selectedFile, selectedFile.name);
+        res = await fetch(
+          `/api/chatwoot/conversations/${sess.session_id}/messages`,
+          { method: "POST", headers: authHeader, body: form }
+        );
+      } else {
+        res = await fetch(
+          `/api/chatwoot/conversations/${sess.session_id}/messages`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeader },
+            body: JSON.stringify({ content, private: isPrivateNote }),
+          }
+        );
+      }
 
       const data = await res.json();
 
@@ -462,6 +477,8 @@ export default function ConversationWorkspace({
       setNewMessage("");
       setQuotedMessage(null);
       setIsPrivateNote(false);
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await loadTimeline();
       if (onConversationUpdated) onConversationUpdated();
     } catch (e) {
@@ -945,7 +962,7 @@ export default function ConversationWorkspace({
           )}
 
           {/* Toggle nota privada */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -966,7 +983,67 @@ export default function ConversationWorkspace({
             {isPrivateNote && (
               <span className="text-[10px] text-amber-600">Solo visible para el equipo</span>
             )}
+            {/* Botón adjuntar archivo */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border bg-white border-gray-200 text-gray-500 hover:border-gray-300 transition-colors"
+                >
+                  <Paperclip className="w-3 h-3" />
+                  Adjuntar
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {channelToSend === "whatsapp"
+                  ? "Imágenes, audio, video o archivos"
+                  : "Solo imágenes (Instagram / Facebook)"}
+              </TooltipContent>
+            </Tooltip>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept={channelToSend === "whatsapp" ? "*/*" : "image/*"}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setSelectedFile(f);
+              }}
+            />
           </div>
+
+          {/* Preview del archivo seleccionado */}
+          {selectedFile && (
+            <div className="flex items-center gap-2 bg-gray-50 border rounded-lg px-3 py-2">
+              {selectedFile.type.startsWith("image/") ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={URL.createObjectURL(selectedFile)}
+                  alt={selectedFile.name}
+                  className="w-10 h-10 object-cover rounded"
+                />
+              ) : (
+                <FileText className="w-8 h-8 text-gray-400 flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-gray-700 truncate">{selectedFile.name}</p>
+                <p className="text-[10px] text-gray-400">
+                  {(selectedFile.size / 1024).toFixed(0)} KB
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFile(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col sm:flex-row gap-2 items-stretch">
             <div className="sm:flex-1 relative">
@@ -1045,7 +1122,7 @@ export default function ConversationWorkspace({
 
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Button className="w-full" onClick={() => handleSendMessage()} disabled={sending || !newMessage.trim()}>
+                  <Button className="w-full" onClick={() => handleSendMessage()} disabled={sending || (!newMessage.trim() && !selectedFile)}>
                     <Send className="h-4 w-4 mr-2" />
                     {sending ? "Enviando..." : "Enviar"}
                   </Button>
