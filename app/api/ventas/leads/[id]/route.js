@@ -7,25 +7,27 @@ export async function GET(req, { params }) {
   if (!auth.ok) return auth.response;
 
   const { id } = await params;
-  const [rows] = await db.query(
-    `SELECT l.*, o.oportunidad_id AS oportunidad_crm_codigo,
-            vm.nombre AS modelo_nombre_actual, vv.nombre_version AS version_nombre_actual
-     FROM ventas_leads l
-     LEFT JOIN oportunidades o ON o.id = l.oportunidad_crm_id
-     LEFT JOIN ventas_modelos vm ON vm.id = l.modelo_id
-     LEFT JOIN ventas_versiones vv ON vv.id = l.version_id
-     WHERE l.id = ? OR l.lead_uuid = ?`,
-    [isNaN(Number(id)) ? 0 : Number(id), id]
-  );
-
-  if (!rows[0]) {
-    return NextResponse.json({ message: "Lead no encontrado" }, { status: 404 });
+  try {
+    const [rows] = await db.query(
+      `SELECT l.*, o.oportunidad_id AS oportunidad_crm_codigo,
+              vm.nombre AS modelo_nombre_actual, vv.nombre_version AS version_nombre_actual
+       FROM ventas_leads l
+       LEFT JOIN oportunidades o ON o.id = l.oportunidad_crm_id
+       LEFT JOIN ventas_modelos vm ON vm.id = l.modelo_id
+       LEFT JOIN ventas_versiones vv ON vv.id = l.version_id
+       WHERE l.id = ? OR l.lead_uuid = ?`,
+      [isNaN(Number(id)) ? 0 : Number(id), id]
+    );
+    if (!rows[0]) {
+      return NextResponse.json({ message: "Lead no encontrado" }, { status: 404 });
+    }
+    return NextResponse.json({ lead: rows[0] });
+  } catch {
+    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 });
   }
-
-  return NextResponse.json({ lead: rows[0] });
 }
 
-export async function PATCH(req, { params }) {
+export async function PUT(req, { params }) {
   const auth = authorizeConversation(req, "edit");
   if (!auth.ok) return auth.response;
 
@@ -47,7 +49,7 @@ export async function PATCH(req, { params }) {
 
   if ("notas_agente" in body) {
     fields.push("notas_agente = ?");
-    values.push(body.notas_agente);
+    values.push(typeof body.notas_agente === "string" ? body.notas_agente.trim() || null : null);
   }
 
   if (fields.length === 0) {
@@ -57,12 +59,15 @@ export async function PATCH(req, { params }) {
   values.push(isNaN(Number(id)) ? 0 : Number(id));
   values.push(id);
 
-  await db.query(
-    `UPDATE ventas_leads SET ${fields.join(", ")} WHERE id = ? OR lead_uuid = ?`,
-    values
-  );
-
-  return NextResponse.json({ message: "Lead actualizado" });
+  try {
+    await db.query(
+      `UPDATE ventas_leads SET ${fields.join(", ")} WHERE id = ? OR lead_uuid = ?`,
+      values
+    );
+    return NextResponse.json({ message: "Lead actualizado" });
+  } catch {
+    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 });
+  }
 }
 
 export async function DELETE(req, { params }) {
@@ -72,10 +77,16 @@ export async function DELETE(req, { params }) {
   const { id } = await params;
   const numId = isNaN(Number(id)) ? 0 : Number(id);
 
-  await db.query(
-    `DELETE FROM ventas_leads WHERE id = ? OR lead_uuid = ?`,
-    [numId, id]
-  );
-
-  return NextResponse.json({ message: "Lead eliminado" });
+  try {
+    const [result] = await db.query(
+      `DELETE FROM ventas_leads WHERE id = ? OR lead_uuid = ?`,
+      [numId, id]
+    );
+    if (result.affectedRows === 0) {
+      return NextResponse.json({ message: "Lead no encontrado" }, { status: 404 });
+    }
+    return NextResponse.json({ message: "Lead eliminado" });
+  } catch {
+    return NextResponse.json({ message: "Error interno del servidor" }, { status: 500 });
+  }
 }

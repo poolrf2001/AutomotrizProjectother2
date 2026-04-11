@@ -52,6 +52,20 @@ export async function GET(req) {
     );
     const total = countRows[0]?.total ?? 0;
 
+    // Conteos por estado sobre el universo filtrado (sin paginación)
+    const [estadoRows] = await db.query(
+      `SELECT l.estado, COUNT(*) AS cnt FROM ventas_leads l
+       WHERE (? IS NULL OR l.modelo_id = ?)
+         AND (? IS NULL OR l.created_at >= ?)
+         AND (? IS NULL OR l.created_at <= ?)
+       GROUP BY l.estado`,
+      [modeloFiltro, modeloFiltro, desdeFiltro, desdeFiltro, hastaFiltro, hastaFiltro]
+    );
+    const estadoCounts = { nuevo: 0, contactado: 0, negociando: 0, cerrado: 0, perdido: 0 };
+    for (const row of estadoRows) {
+      if (row.estado in estadoCounts) estadoCounts[row.estado] = Number(row.cnt);
+    }
+
     const [leads] = await db.query(
       `SELECT l.id, l.lead_uuid, l.nombre_cliente, l.telefono, l.email,
               l.modelo_id, l.version_id, l.modelo_nombre, l.version_nombre,
@@ -60,8 +74,10 @@ export async function GET(req) {
               l.uso_vehiculo, l.personas_habituales, l.presupuesto_rango,
               l.equipamiento_requerido, l.tiene_historial_crediticio,
               l.estado, l.notas_agente, l.cotizacion_enviada_at,
-              l.oportunidad_crm_id, l.created_at, l.updated_at
+              l.oportunidad_crm_id, o.oportunidad_id AS oportunidad_crm_codigo,
+              l.created_at, l.updated_at
        FROM ventas_leads l
+       LEFT JOIN oportunidades o ON o.id = l.oportunidad_crm_id
        WHERE (? IS NULL OR l.estado = ?)
          AND (? IS NULL OR l.modelo_id = ?)
          AND (? IS NULL OR l.created_at >= ?)
@@ -73,10 +89,10 @@ export async function GET(req) {
 
     return NextResponse.json({
       leads,
+      estado_counts: estadoCounts,
       pagination: { total, page, limit, pages: Math.ceil(total / limit) },
     });
-  } catch (error) {
-    console.error("ERROR GET /api/ventas/leads:", error);
+  } catch {
     return NextResponse.json({ message: "Error obteniendo leads" }, { status: 500 });
   }
 }
@@ -157,8 +173,7 @@ export async function POST(req) {
       );
       clienteId = ins.insertId;
     }
-  } catch (error) {
-    console.error("[ventas/leads] Error buscando/creando cliente:", error);
+  } catch {
     return NextResponse.json({ message: "Error procesando datos del cliente" }, { status: 500 });
   }
 
@@ -266,15 +281,12 @@ export async function POST(req) {
           ]
         );
         oportunidadId = oportunidadCodigo;
-      } else {
-        console.error("[ventas/leads] No se encontró origen o etapa:", { origenBot, primeraEtapa });
       }
     }
 
     await conn.commit();
-  } catch (e) {
+  } catch {
     if (conn) await conn.rollback();
-    console.error("[ventas/leads] Error en transacción, rollback ejecutado:", e.message);
     return NextResponse.json({ message: "Error al guardar el lead" }, { status: 500 });
   } finally {
     if (conn) conn.release();

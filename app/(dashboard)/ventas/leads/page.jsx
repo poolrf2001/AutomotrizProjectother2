@@ -1,14 +1,30 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRequirePerm } from "@/hooks/useRequirePerm";
 import {
   ArrowUpRight, ChevronDown, ChevronUp, Filter, RefreshCw, Trash2, User, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function getAuthHeaders() {
+  if (typeof document === "undefined") return {};
+  const match = document.cookie.match(/(?:^|;\s*)token=([^;]+)/);
+  const token = match ? match[1] : "";
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 const ESTADOS = ["nuevo", "contactado", "negociando", "cerrado", "perdido"];
 
@@ -60,10 +76,13 @@ function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
   const [oportunidadId, setOportunidadId] = useState(lead.oportunidad_crm_codigo || (lead.oportunidad_crm_id ? `LD-?` : null));
 
   async function handlePromover() {
-    if (oportunidadId) return; // ya promovido
+    if (oportunidadId) return;
     setPromoting(true);
     try {
-      const res = await fetch(`/api/ventas/leads/${lead.id}/promover`, { method: "POST" });
+      const res = await fetch(`/api/ventas/leads/${lead.id}/promover`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Error al promover");
       if (data.already_promoted || data.ok) {
@@ -81,7 +100,10 @@ function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
     if (!confirm(`¿Eliminar la cotización de ${lead.nombre_cliente || "este cliente"}? Esta acción no se puede deshacer.`)) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/ventas/leads/${lead.id}`, { method: "DELETE" });
+      const res = await fetch(`/api/ventas/leads/${lead.id}`, {
+        method: "DELETE",
+        headers: getAuthHeaders(),
+      });
       if (!res.ok) throw new Error("Error al eliminar");
       toast.success("Cotización eliminada");
       onDeleted(lead.id);
@@ -96,8 +118,8 @@ function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
     setSaving(true);
     try {
       const res = await fetch(`/api/ventas/leads/${lead.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PUT",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ estado, notas_agente: notas }),
       });
       if (!res.ok) throw new Error("Error al actualizar");
@@ -175,24 +197,25 @@ function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
 
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-600 mb-1">Estado del lead</label>
-            <select
-              value={estado}
-              onChange={(e) => setEstado(e.target.value)}
-              className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-            >
-              {ESTADOS.map((e) => (
-                <option key={e} value={e}>{ESTADO_CONFIG[e]?.label || e}</option>
-              ))}
-            </select>
+            <Select value={estado} onValueChange={setEstado}>
+              <SelectTrigger className="w-full text-sm">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {ESTADOS.map((e) => (
+                  <SelectItem key={e} value={e}>{ESTADO_CONFIG[e]?.label || e}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Notas del agente</label>
-            <textarea
+            <Textarea
               value={notas}
               onChange={(e) => setNotas(e.target.value)}
               rows={3}
-              className="w-full border rounded-md px-3 py-2 text-sm resize-none"
+              className="resize-none text-sm"
               placeholder="Agrega notas o comentarios internos"
             />
           </div>
@@ -204,30 +227,28 @@ function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
         <Button onClick={handleSave} disabled={saving} className="w-full">
           {saving ? "Guardando…" : "Guardar cambios"}
         </Button>
-        <button
-          onClick={handlePromover}
+        <Button
+          variant={oportunidadId ? "outline" : "default"}
+          className={`w-full ${oportunidadId ? "text-green-700 border-green-200 bg-green-50 hover:bg-green-50 cursor-default" : ""}`}
+          onClick={() => handlePromover()}
           disabled={promoting || !!oportunidadId}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            oportunidadId
-              ? "bg-green-50 text-green-700 border border-green-200 cursor-default"
-              : "bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-          }`}
         >
-          <ArrowUpRight className="w-4 h-4" />
+          <ArrowUpRight className="w-4 h-4 mr-2" />
           {oportunidadId
             ? `Enviado a Ventas: ${oportunidadId}`
             : promoting
             ? "Enviando a Ventas…"
             : "Enviar a Ventas"}
-        </button>
-        <button
-          onClick={handleDelete}
+        </Button>
+        <Button
+          variant="outline"
+          className="w-full text-red-600 border-red-200 hover:bg-red-50"
+          onClick={() => handleDelete()}
           disabled={deleting}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-md text-sm font-medium text-red-600 border border-red-200 hover:bg-red-50 disabled:opacity-50 transition-colors"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="w-4 h-4 mr-2" />
           {deleting ? "Eliminando…" : "Eliminar cotización"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -236,9 +257,12 @@ function LeadPanel({ lead, onClose, onEstadoChanged, onDeleted }) {
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function VentasLeadsPage() {
+  useRequirePerm("mensajes", "view");
+
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ total: 0, page: 1, pages: 1 });
+  const [estadoCounts, setEstadoCounts] = useState({ nuevo: 0, contactado: 0, negociando: 0, cerrado: 0, perdido: 0 });
   const [selectedLead, setSelectedLead] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
 
@@ -261,10 +285,11 @@ export default function VentasLeadsPage() {
       params.set("page", filters.page);
       params.set("limit", "50");
 
-      const res = await fetch(`/api/ventas/leads?${params}`);
+      const res = await fetch(`/api/ventas/leads?${params}`, { headers: getAuthHeaders() });
       const data = await res.json();
       setLeads(data.leads || []);
       setPagination(data.pagination || { total: 0, page: 1, pages: 1 });
+      if (data.estado_counts) setEstadoCounts(data.estado_counts);
     } catch {
       toast.error("Error al cargar los leads");
     } finally {
@@ -294,9 +319,9 @@ export default function VentasLeadsPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Leads de ventas</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Leads del agente IA</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              Cotizaciones generadas por el agente de IA · {pagination.total} total
+              Cotizaciones generadas por el agente de IA · {pagination.total} en total
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -325,16 +350,17 @@ export default function VentasLeadsPage() {
           <div className="mb-4 p-4 border rounded-lg bg-gray-50 grid grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
-              <select
-                value={filters.estado}
-                onChange={(e) => setFilter("estado", e.target.value)}
-                className="w-full border rounded-md px-3 py-2 text-sm bg-white"
-              >
-                <option value="">Todos</option>
-                {ESTADOS.map((e) => (
-                  <option key={e} value={e}>{ESTADO_CONFIG[e]?.label || e}</option>
-                ))}
-              </select>
+              <Select value={filters.estado || "todos"} onValueChange={(v) => setFilter("estado", v === "todos" ? "" : v)}>
+                <SelectTrigger className="w-full text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todos</SelectItem>
+                  {ESTADOS.map((e) => (
+                    <SelectItem key={e} value={e}>{ESTADO_CONFIG[e]?.label || e}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 mb-1">Desde</label>
@@ -361,7 +387,7 @@ export default function VentasLeadsPage() {
         {/* Resumen por estado */}
         <div className="grid grid-cols-5 gap-2 mb-4">
           {ESTADOS.map((e) => {
-            const count = leads.filter((l) => l.estado === e).length;
+            const count = estadoCounts[e] ?? 0;
             const cfg = ESTADO_CONFIG[e];
             return (
               <button
