@@ -26,7 +26,7 @@ export function OportunidadInfoCard({ oportunidad }) {
                         <div className="min-w-0">
                             <p className="text-xs text-gray-600 font-semibold">Cliente</p>
                             <p className="text-sm sm:text-base font-bold text-gray-900 truncate">
-                                {oportunidad.cliente_nombre}
+                                {oportunidad.cliente_contacto}
                             </p>
                             <p className="text-xs text-gray-500 truncate">{oportunidad.cliente_email}</p>
                         </div>
@@ -73,15 +73,7 @@ export function OportunidadInfoCard({ oportunidad }) {
                         </div>
                     </div>
 
-                    <div className="flex items-start gap-2 sm:gap-3">
-                        <Mail className="text-purple-600 mt-1 flex-shrink-0" size={18} />
-                        <div className="min-w-0">
-                            <p className="text-xs text-gray-600 font-semibold">Detalle</p>
-                            <p className="text-xs sm:text-sm font-medium text-gray-900 line-clamp-2">
-                                {oportunidad.detalle || "Sin detalle"}
-                            </p>
-                        </div>
-                    </div>
+                    
 
                     {oportunidad.detalles && oportunidad.detalles.length > 0 && (
                         <div className="flex items-start gap-2 sm:gap-3">

@@ -45,6 +45,67 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [igvRate, setIgvRate] = useState(0.18);
+  
+  const [marcaNombre, setMarcaNombre] = useState("");
+  const [modeloNombre, setModeloNombre] = useState("");
+
+  // ✅ Función auxiliar para obtener nombre de marca
+  const cargarMarca = async (marcaId) => {
+    try {
+      const resMarcas = await fetch("/api/marcas", { cache: "no-store" });
+      if (resMarcas.ok) {
+        const marcas = await resMarcas.json();
+        
+        let marcasArray = [];
+        if (Array.isArray(marcas)) {
+          marcasArray = marcas;
+        } else if (marcas.data && Array.isArray(marcas.data)) {
+          marcasArray = marcas.data;
+        }
+
+        const marca = marcasArray.find((m) => Number(m.id) === Number(marcaId));
+
+        if (marca) {
+          setMarcaNombre(marca.name || "");
+          console.log("✅ Marca encontrada:", marca.name);
+          return marca.name;
+        } else {
+          console.warn("❌ Marca no encontrada");
+        }
+      }
+    } catch (error) {
+      console.error("Error cargando marca:", error);
+    }
+  };
+
+  // ✅ Función auxiliar para obtener nombre de modelo
+  const cargarModelo = async (modeloId) => {
+    try {
+      const resModelos = await fetch("/api/modelos", { cache: "no-store" });
+      if (resModelos.ok) {
+        const modelos = await resModelos.json();
+        
+        let modelosArray = [];
+        if (Array.isArray(modelos)) {
+          modelosArray = modelos;
+        } else if (modelos.data && Array.isArray(modelos.data)) {
+          modelosArray = modelos.data;
+        }
+
+        const modelo = modelosArray.find((m) => Number(m.id) === Number(modeloId));
+
+        if (modelo) {
+          setModeloNombre(modelo.name || "");
+          console.log("✅ Modelo encontrado:", modelo.name);
+          return modelo.name;
+        } else {
+          console.warn("❌ Modelo no encontrado");
+        }
+      }
+    } catch (error) {
+      console.error("Error cargando modelo:", error);
+    }
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -63,8 +124,6 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
           }
         );
 
-        console.log("Response status:", resCot.status);
-
         if (!resCot.ok) {
           const error = await resCot.text();
           console.error("Error response:", error);
@@ -76,12 +135,21 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
 
         console.log("Cotización cargada:", {
           id: dataC.id,
-          marca: dataC.marca,
-          modelo: dataC.modelo,
+          marca_id: dataC.marca_id,
+          modelo_id: dataC.modelo_id,
           version_id: dataC.version_id,
         });
 
         setCotizacion(dataC);
+
+        // ✅ CARGAR MARCA Y MODELO EN PARALELO
+        if (dataC.marca_id) {
+          await cargarMarca(dataC.marca_id);
+        }
+
+        if (dataC.modelo_id) {
+          await cargarModelo(dataC.modelo_id);
+        }
 
         // ✅ CARGAR OPORTUNIDAD
         if (dataC.oportunidad_id) {
@@ -182,9 +250,9 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
               if (Array.isArray(dataPreciosArray) && dataPreciosArray.length > 0) {
                 const precioEncontrado = dataPreciosArray.find(
                   (p) =>
-                    p.marca_id === dataC.marca_id &&
-                    p.modelo_id === dataC.modelo_id &&
-                    p.version_id === dataC.version_id
+                    Number(p.marca_id) === Number(dataC.marca_id) &&
+                    Number(p.modelo_id) === Number(dataC.modelo_id) &&
+                    Number(p.version_id) === Number(dataC.version_id)
                 );
 
                 if (precioEncontrado) {
@@ -537,7 +605,7 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
                       MARCA
                     </p>
                     <p className="text-lg font-bold text-gray-900">
-                      {cotizacion.marca || "No especificado"}
+                      {marcaNombre || "No especificado"}
                     </p>
                   </div>
 
@@ -546,7 +614,7 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
                       MODELO
                     </p>
                     <p className="text-lg font-bold text-gray-900">
-                      {cotizacion.modelo || "No especificado"}
+                      {modeloNombre || "No especificado"}
                     </p>
                   </div>
 
@@ -608,38 +676,7 @@ export default function CotizacionPublicaPage({ params: paramsPromise }) {
             </CardContent>
           </Card>
 
-          {/* ✅ CLIENTE E INFORMACIÓN */}
-          {oportunidad && (
-            <Card className="border-l-4 border-l-indigo-500 shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-indigo-50 to-indigo-100 border-b">
-                <CardTitle className="text-lg font-bold text-gray-900">
-                  Información del Cliente
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="pt-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-xs text-gray-600 font-medium mb-1">
-                      CLIENTE
-                    </p>
-                    <p className="text-lg font-bold text-gray-900">
-                      {oportunidad.cliente_nombre || "No especificado"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-gray-600 font-medium mb-1">
-                      EMAIL
-                    </p>
-                    <p className="text-lg font-bold text-gray-900">
-                      {oportunidad.cliente_email || "No especificado"}
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+         
 
           {/* ✅ ESPECIFICACIONES DEL MODELO */}
           {especificaciones.length > 0 && (

@@ -200,7 +200,7 @@ export async function POST(req) {
       yPosition += 7;
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
-      doc.text(oportunidad.cliente_nombre || 'N/A', 15, yPosition);
+      doc.text(oportunidad.cliente_contacto || 'N/A', 15, yPosition);
 
       yPosition += 5;
       doc.setFontSize(9);

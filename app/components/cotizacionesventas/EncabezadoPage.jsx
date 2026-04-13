@@ -13,11 +13,6 @@ export function EncabezadoPage({
     return (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-4 w-full sm:flex-1">
-                <Link href="/cotizaciones">
-                    <Button variant="outline" size="icon" className="h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0">
-                        <ArrowLeft size={16} />
-                    </Button>
-                </Link>
                 <div className="min-w-0 flex-1">
                     <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 truncate">
                         Resumen de Cotización

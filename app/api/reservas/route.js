@@ -16,6 +16,7 @@ export async function GET(request) {
         r.created_by,
         r.created_at,
         r.updated_at,
+        r.estado,
         u.fullname as created_by_name,
         oo.oportunidad_id as oportunidad_codigo,
         c.nombre as cliente_nombre
@@ -32,7 +33,6 @@ export async function GET(request) {
       params.push(oportunidadId);
     }
 
-    // Contar total
     const countSql = `
       SELECT COUNT(*) as total FROM reservas r
       WHERE 1=1 ${oportunidadId ? "AND r.oportunidad_id = ?" : ""}
@@ -64,7 +64,30 @@ export async function GET(request) {
 
 export async function POST(req) {
   try {
-    const { oportunidad_id, created_by } = await req.json();
+    const body = await req.json();
+    const {
+      oportunidad_id,
+      created_by,
+      dsctotienda,
+      dsctotiendaporcentaje,
+      dsctobonoretoma,
+      dsctonper,
+      glp,
+      tarjetaplaca,
+      flete,
+      cuota_inicial,
+      tipo_comprobante,
+      numero_motor,
+      vin,
+      vin_existe,
+      usovehiculo,
+      placa,
+      tc_referencial,
+      total,
+      cantidad,
+      precio_unitario,
+      descripcion,
+    } = body;
 
     if (!oportunidad_id || !created_by) {
       return NextResponse.json(
@@ -73,7 +96,6 @@ export async function POST(req) {
       );
     }
 
-    // ✅ Verificar que la oportunidad existe
     const [oportunidadCheck] = await db.query(
       "SELECT id FROM oportunidades_oportunidades WHERE id = ?",
       [oportunidad_id]
@@ -86,7 +108,6 @@ export async function POST(req) {
       );
     }
 
-    // ✅ Verificar que el usuario existe
     const [usuarioCheck] = await db.query(
       "SELECT id FROM usuarios WHERE id = ?",
       [created_by]
@@ -99,20 +120,25 @@ export async function POST(req) {
       );
     }
 
-    // ✅ Crear reserva
     const [result] = await db.query(
-      "INSERT INTO reservas (oportunidad_id, created_by) VALUES (?, ?)",
-      [oportunidad_id, created_by]
+      "INSERT INTO reservas (oportunidad_id, created_by, estado) VALUES (?, ?, ?)",
+      [oportunidad_id, created_by, "borrador"]
     );
 
     const reservaId = result.insertId;
 
-    // ✅ Obtener la primera cotización con estado "enviada" o "reservada"
     const [cotizaciones] = await db.query(
       `SELECT 
         ca.id,
         ca.anio,
+        ca.sku,
         ca.version_id,
+        ca.marca_id,
+        ca.modelo_id,
+        ca.color_externo,
+        ca.color_interno,
+        ca.descuento_vehículo,
+        ca.descuento_vehículo_porcentaje,
         m.name as marca_nombre,
         mo.name as modelo_nombre,
         v.nombre as version_nombre,
@@ -131,7 +157,6 @@ export async function POST(req) {
       [oportunidad_id]
     );
 
-    // Si hay cotización, crear detalle de reserva
     let detalleId = null;
     let cotizacionId = null;
 
@@ -139,7 +164,6 @@ export async function POST(req) {
       const cotizacion = cotizaciones[0];
       cotizacionId = cotizacion.id;
 
-      // ✅ Obtener información del cliente
       const [clienteInfo] = await db.query(
         `SELECT 
           c.nombre,
@@ -156,68 +180,126 @@ export async function POST(req) {
 
       const cliente = clienteInfo[0] || {};
 
-      // ✅ CAMBIO: Usar NULL en lugar de string vacío para los campos opcionales
+      const dsctotiendaFinal =
+        dsctotienda ?? cotizacion.descuento_vehículo ?? 0.0;
+
+      const dsctotiendaporcentajeFinal =
+        dsctotiendaporcentaje ?? cotizacion.descuento_vehículo_porcentaje ?? null;
+
       const [detalleResult] = await db.query(
         `INSERT INTO reserva_detalles (
           reserva_id,
           cotizacion_id,
           oportunidad_id,
+          tipo_comprobante,
+          numero_motor,
+          tc_referencial,
+          total,
           vin,
+          vin_existe,
           usovehiculo,
           placa,
-          numero_motor,
+          dsctotienda,
+          dsctotiendaporcentaje,
+          dsctobonoretoma,
+          dsctonper,
+          glp,
+          tarjetaplaca,
+          flete,
+          cuota_inicial,
           cantidad,
-          precio_unitario
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          precio_unitario,
+          descripcion
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           reservaId,
           cotizacionId,
           oportunidad_id,
-          null, // ✅ CAMBIO: null en lugar de ""
-          null, // ✅ CAMBIO: null en lugar de ""
-          null, // ✅ CAMBIO: null en lugar de ""
-          null, // ✅ CAMBIO: null en lugar de ""
-          1.00,
-          cotizacion.precio_base || 0,
+          tipo_comprobante || null,
+          numero_motor || null,
+          tc_referencial || null,
+          total || null,
+          vin || cotizacion.sku || null,
+          vin_existe === true || vin_existe === "true" || vin_existe === 1 ? 1 : 0,
+          usovehiculo || null,
+          placa || null,
+          dsctotiendaFinal,
+          dsctotiendaporcentajeFinal,
+          dsctobonoretoma || 0.0,
+          dsctonper || 0.0,
+          glp || 0.0,
+          tarjetaplaca || 0.0,
+          flete || 0.0,
+          cuota_inicial || null,
+          cantidad || 1.0,
+          precio_unitario || cotizacion.precio_base || 0,
+          descripcion || null,
         ]
       );
 
       detalleId = detalleResult.insertId;
     } else {
-      // Si no hay cotización, crear detalle sin información de cotización
+      const dsctotiendaFinal = dsctotienda ?? 0.0;
+      const dsctotiendaporcentajeFinal = dsctotiendaporcentaje ?? null;
+
       const [detalleResult] = await db.query(
         `INSERT INTO reserva_detalles (
           reserva_id,
           cotizacion_id,
           oportunidad_id,
+          tipo_comprobante,
+          numero_motor,
+          tc_referencial,
+          total,
           vin,
+          vin_existe,
           usovehiculo,
           placa,
-          numero_motor,
+          dsctotienda,
+          dsctotiendaporcentaje,
+          dsctobonoretoma,
+          dsctonper,
+          glp,
+          tarjetaplaca,
+          flete,
+          cuota_inicial,
           cantidad,
-          precio_unitario
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          precio_unitario,
+          descripcion
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           reservaId,
           0,
           oportunidad_id,
-          null, // ✅ CAMBIO: null en lugar de ""
-          null, // ✅ CAMBIO: null en lugar de ""
-          null, // ✅ CAMBIO: null en lugar de ""
-          null, // ✅ CAMBIO: null en lugar de ""
-          1.00,
-          0,
+          tipo_comprobante || null,
+          numero_motor || null,
+          tc_referencial || null,
+          total || null,
+          vin || null,
+          vin_existe === true || vin_existe === "true" || vin_existe === 1 ? 1 : 0,
+          usovehiculo || null,
+          placa || null,
+          dsctotiendaFinal,
+          dsctotiendaporcentajeFinal,
+          dsctobonoretoma || 0.0,
+          dsctonper || 0.0,
+          glp || 0.0,
+          tarjetaplaca || 0.0,
+          flete || 0.0,
+          cuota_inicial || null,
+          cantidad || 1.0,
+          precio_unitario || 0,
+          descripcion || null,
         ]
       );
 
       detalleId = detalleResult.insertId;
     }
 
-    // ✅ Respuesta
     return NextResponse.json(
       {
-        message: cotizacionId 
-          ? "Reserva creada con detalle de cotización" 
+        message: cotizacionId
+          ? "Reserva creada con detalle de cotización"
           : "Reserva creada sin cotización",
         id: reservaId,
         detalle_id: detalleId,

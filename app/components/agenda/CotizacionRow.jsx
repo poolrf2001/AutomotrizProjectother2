@@ -641,26 +641,10 @@ async function handleEnviarNotaPedido() {
                     </DropdownMenuItem>
                   </TooltipTrigger>
                   <TooltipContent side="left">
-                    Cambia estado a "Enviada" + crea reserva + cambia etapa
+                    Crea nota de pedido
                   </TooltipContent>
                 </Tooltip>
 
-                {/* ✅ CREAR RESERVA */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <DropdownMenuItem
-                      onClick={handleCrearReserva}
-                      disabled={saving || creatingReserva || userScopeLoading}
-                      className="cursor-help"
-                    >
-                      <CheckCircle size={14} className="mr-2" />
-                      {creatingReserva ? "Procesando..." : "Crear Reserva"}
-                    </DropdownMenuItem>
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    Cambia estado a "Reservada" + crea reserva + cambia etapa
-                  </TooltipContent>
-                </Tooltip>
 
                 <DropdownMenuSeparator />
 

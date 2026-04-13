@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 import {
   Select,
@@ -44,25 +45,149 @@ export default function ClienteDialog({
     nombre: "",
     apellido: "",
     email: "",
-    celular: "", // Solo los 9 dígitos
+    celular: "",
     tipo_identificacion: "DNI",
     identificacion_fiscal: "",
     nombre_comercial: "",
+    fecha_nacimiento: "",
+    ocupacion: "",
+    domicilio: "",
+    departamento_id: "",
+    provincia_id: "",
+    distrito_id: "",
+    nombreconyugue: "",
+    dniconyugue: "",
   });
 
   const [errors, setErrors] = useState({});
   const [isSaving, setIsSaving] = useState(false);
+  const [departamentos, setDepartamentos] = useState([]);
+  const [provincias, setProvincias] = useState([]);
+  const [distritos, setDistritos] = useState([]);
+  
+  // ✅ Estados filtrados
+  const [provinciasFiltradas, setProvinciasFiltradas] = useState([]);
+  const [distritosFiltrados, setDistritosFiltrados] = useState([]);
 
-  // cargar datos cuando edita
+  // ✅ FUNCIÓN PARA FORMATEAR FECHA
+  function formatDateForInput(dateString) {
+    if (!dateString) return "";
+    
+    try {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+        return dateString;
+      }
+      
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      
+      return `${year}-${month}-${day}`;
+    } catch (e) {
+      console.error("Error formateando fecha:", e);
+      return "";
+    }
+  }
+
+  // Cargar datos ubicaciones
+  useEffect(() => {
+    loadUbicaciones();
+  }, []);
+
+  async function loadUbicaciones() {
+    try {
+      const [depRes, provRes, distRes] = await Promise.all([
+        fetch("/api/departamentos", { cache: "no-store" }),
+        fetch("/api/provincias", { cache: "no-store" }),
+        fetch("/api/distritos", { cache: "no-store" }),
+      ]);
+
+      if (depRes.ok) setDepartamentos(await depRes.json());
+      if (provRes.ok) setProvincias(await provRes.json());
+      if (distRes.ok) setDistritos(await distRes.json());
+    } catch (error) {
+      console.error("Error cargando ubicaciones:", error);
+    }
+  }
+
+  // ✅ EFECTO PARA FILTRAR PROVINCIAS CUANDO CAMBIA DEPARTAMENTO
+  useEffect(() => {
+    if (form.departamento_id) {
+      const deptId = parseInt(form.departamento_id);
+      const provsFiltradas = provincias.filter(
+        (prov) => prov.departamento_id === deptId
+      );
+      setProvinciasFiltradas(provsFiltradas);
+      
+      // Limpiar provincia e distrito si no están en las nuevas opciones
+      if (form.provincia_id) {
+        const provinciaActual = provsFiltradas.find(
+          (p) => p.id === parseInt(form.provincia_id)
+        );
+        if (!provinciaActual) {
+          setForm((prev) => ({
+            ...prev,
+            provincia_id: "",
+            distrito_id: "",
+          }));
+          setDistritosFiltrados([]);
+        }
+      }
+    } else {
+      setProvinciasFiltradas([]);
+      setForm((prev) => ({
+        ...prev,
+        provincia_id: "",
+        distrito_id: "",
+      }));
+      setDistritosFiltrados([]);
+    }
+  }, [form.departamento_id, provincias]);
+
+  // ✅ EFECTO PARA FILTRAR DISTRITOS CUANDO CAMBIA PROVINCIA
+  useEffect(() => {
+    if (form.provincia_id) {
+      const provId = parseInt(form.provincia_id);
+      const distFiltrados = distritos.filter(
+        (dist) => dist.provincia_id === provId
+      );
+      setDistritosFiltrados(distFiltrados);
+      
+      // Limpiar distrito si no está en las nuevas opciones
+      if (form.distrito_id) {
+        const distritoActual = distFiltrados.find(
+          (d) => d.id === parseInt(form.distrito_id)
+        );
+        if (!distritoActual) {
+          setForm((prev) => ({
+            ...prev,
+            distrito_id: "",
+          }));
+        }
+      }
+    } else {
+      setDistritosFiltrados([]);
+      setForm((prev) => ({
+        ...prev,
+        distrito_id: "",
+      }));
+    }
+  }, [form.provincia_id, distritos]);
+
+  // Cargar datos cuando edita
   useEffect(() => {
     if (!open) return;
 
     if (cliente) {
-      // ✅ CAMBIO: Extraer solo los últimos 9 dígitos del celular
       let celularFormato = cliente.celular ?? "";
       if (celularFormato.startsWith("51")) {
-        celularFormato = celularFormato.slice(2); // Remover "51"
+        celularFormato = celularFormato.slice(2);
       }
+
+      const fechaNacimiento = formatDateForInput(cliente.fecha_nacimiento);
 
       setForm({
         nombre: cliente.nombre ?? "",
@@ -72,6 +197,14 @@ export default function ClienteDialog({
         tipo_identificacion: cliente.tipo_identificacion ?? "DNI",
         identificacion_fiscal: cliente.identificacion_fiscal ?? "",
         nombre_comercial: cliente.nombre_comercial ?? "",
+        fecha_nacimiento: fechaNacimiento,
+        ocupacion: cliente.ocupacion ?? "",
+        domicilio: cliente.domicilio ?? "",
+        departamento_id: cliente.departamento_id ? cliente.departamento_id.toString() : "",
+        provincia_id: cliente.provincia_id ? cliente.provincia_id.toString() : "",
+        distrito_id: cliente.distrito_id ? cliente.distrito_id.toString() : "",
+        nombreconyugue: cliente.nombreconyugue ?? "",
+        dniconyugue: cliente.dniconyugue ?? "",
       });
     } else {
       setForm({
@@ -82,22 +215,26 @@ export default function ClienteDialog({
         tipo_identificacion: "DNI",
         identificacion_fiscal: "",
         nombre_comercial: "",
+        fecha_nacimiento: "",
+        ocupacion: "",
+        domicilio: "",
+        departamento_id: "",
+        provincia_id: "",
+        distrito_id: "",
+        nombreconyugue: "",
+        dniconyugue: "",
       });
     }
     setErrors({});
   }, [open, cliente]);
 
   function updateField(key, value) {
-    // ✅ CAMBIO: Validar que celular solo tenga 9 dígitos
     if (key === "celular") {
-      // Solo permitir números
       value = value.replace(/\D/g, "");
-      // Limitar a 9 dígitos
       value = value.slice(0, 9);
     }
 
     setForm((p) => ({ ...p, [key]: value }));
-    // Limpiar error del campo cuando empieza a escribir
     if (errors[key]) {
       setErrors((p) => ({ ...p, [key]: "" }));
     }
@@ -106,7 +243,6 @@ export default function ClienteDialog({
   function validateForm() {
     const newErrors = {};
 
-    // Validaciones comunes
     if (!form.nombre.trim()) {
       newErrors.nombre = "Nombre requerido";
     }
@@ -114,7 +250,6 @@ export default function ClienteDialog({
       newErrors.apellido = "Apellido requerido";
     }
 
-    // Validar email
     if (!form.email.trim()) {
       newErrors.email = "Email requerido";
     } else {
@@ -124,7 +259,6 @@ export default function ClienteDialog({
       }
     }
 
-    // Validar celular - Solo 9 dígitos
     if (!form.celular.trim()) {
       newErrors.celular = "Celular requerido";
     } else if (!/^\d{9}$/.test(form.celular.trim())) {
@@ -134,7 +268,6 @@ export default function ClienteDialog({
     if (!form.identificacion_fiscal.trim()) {
       newErrors.identificacion_fiscal = "N° Documento requerido";
     } else {
-      // Validar formato según tipo
       if (form.tipo_identificacion === "DNI") {
         if (!/^\d{8}$/.test(form.identificacion_fiscal.trim())) {
           newErrors.identificacion_fiscal = "DNI debe contener 8 dígitos";
@@ -146,7 +279,6 @@ export default function ClienteDialog({
       }
     }
 
-    // Si es RUC, nombre comercial es obligatorio
     if (form.tipo_identificacion === "RUC") {
       if (!form.nombre_comercial.trim()) {
         newErrors.nombre_comercial = "Nombre comercial requerido para RUC";
@@ -167,31 +299,38 @@ export default function ClienteDialog({
         nombre: form.nombre.trim(),
         apellido: form.apellido.trim(),
         email: form.email.trim(),
-        celular: "51" + form.celular.trim(), // ✅ CAMBIO: Agregar "51" al enviar
+        celular: "51" + form.celular.trim(),
         tipo_identificacion: form.tipo_identificacion,
         identificacion_fiscal: form.identificacion_fiscal.trim(),
         nombre_comercial: form.tipo_identificacion === "RUC"
           ? form.nombre_comercial.trim()
           : null,
+        fecha_nacimiento: form.fecha_nacimiento ? form.fecha_nacimiento : null,
+        ocupacion: form.ocupacion.trim() || null,
+        domicilio: form.domicilio.trim() || null,
+        departamento_id: form.departamento_id ? parseInt(form.departamento_id) : null,
+        provincia_id: form.provincia_id ? parseInt(form.provincia_id) : null,
+        distrito_id: form.distrito_id ? parseInt(form.distrito_id) : null,
+        nombreconyugue: form.nombreconyugue.trim() || null,
+        dniconyugue: form.dniconyugue.trim() || null,
       };
 
-      // ✅ Llamar a onSave si viene del padre
       if (onSave) {
         await onSave(payload);
       } else {
-        // ✅ O hacer POST si no viene onSave
-        const response = await fetch("/api/clientes", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
+        const response = await fetch(
+          isEdit ? `/api/clientes/${cliente.id}` : "/api/clientes",
+          {
+            method: isEdit ? "PUT" : "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          }
+        );
 
         const data = await response.json();
 
         if (!response.ok) {
-          // ✅ Manejar errores específicos del servidor
           if (response.status === 409) {
-            // Duplicado
             const fieldMap = {
               identificacion_fiscal: "identificacion_fiscal",
               email: "email",
@@ -219,7 +358,6 @@ export default function ClienteDialog({
     }
   }
 
-  // Campos requeridos para crear
   const isFormValid =
     form.nombre.trim() &&
     form.apellido.trim() &&
@@ -232,15 +370,18 @@ export default function ClienteDialog({
   return (
     <TooltipProvider>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-3xl">
-
+        <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle className="text-[#5d16ec]">
               {isEdit ? "Editar Cliente" : "Nuevo Cliente"}
             </DialogTitle>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[65vh] overflow-y-auto pr-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[70vh] overflow-y-auto pr-2">
+            {/* ========== SECCIÓN INFORMACIÓN BÁSICA ========== */}
+            <div className="md:col-span-2 border-b pb-3 mb-2">
+              <h3 className="text-sm font-bold text-[#5d16ec]">Información Básica</h3>
+            </div>
 
             {/* Nombre */}
             <div className="space-y-1">
@@ -376,7 +517,6 @@ export default function ClienteDialog({
                   </TooltipContent>
                 </Tooltip>
               </Label>
-
               <Select
                 value={form.tipo_identificacion}
                 onValueChange={(v) => updateField("tipo_identificacion", v)}
@@ -385,23 +525,10 @@ export default function ClienteDialog({
                 <SelectTrigger className={errors.tipo_identificacion ? "border-red-500" : ""}>
                   <SelectValue />
                 </SelectTrigger>
-
                 <SelectContent>
-                  <SelectItem value="DNI">
-                    <span className="flex items-center gap-2">
-                      DNI - Documento Nacional
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="RUC">
-                    <span className="flex items-center gap-2">
-                      RUC - Razón Social
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="PASAPORTE">
-                    <span className="flex items-center gap-2">
-                      PASAPORTE
-                    </span>
-                  </SelectItem>
+                  <SelectItem value="DNI">DNI - Documento Nacional</SelectItem>
+                  <SelectItem value="RUC">RUC - Razón Social</SelectItem>
+                  <SelectItem value="PASAPORTE">PASAPORTE</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -456,14 +583,6 @@ export default function ClienteDialog({
                 <Label className="flex items-center gap-1 text-[#5d16ec]">
                   Nombre Comercial
                   <span className="text-red-500">*</span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertCircle size={14} className="text-gray-400 cursor-help" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top">
-                      Nombre comercial del cliente
-                    </TooltipContent>
-                  </Tooltip>
                 </Label>
                 <Input
                   value={form.nombre_comercial}
@@ -480,6 +599,162 @@ export default function ClienteDialog({
               </div>
             )}
 
+            {/* ========== SECCIÓN INFORMACIÓN PERSONAL ========== */}
+            <div className="md:col-span-2 border-b pb-3 mb-2 mt-4">
+              <h3 className="text-sm font-bold text-[#5d16ec]">Información Personal</h3>
+            </div>
+
+            {/* Fecha de Nacimiento */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Fecha de Nacimiento
+              </Label>
+              <Input
+                type="date"
+                value={form.fecha_nacimiento}
+                onChange={(e) => updateField("fecha_nacimiento", e.target.value)}
+                disabled={isSaving}
+              />
+            </div>
+
+            {/* Ocupación */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Ocupación
+              </Label>
+              <Input
+                value={form.ocupacion}
+                onChange={(e) => updateField("ocupacion", e.target.value)}
+                placeholder="Ej: Ingeniero, Vendedor, etc."
+                disabled={isSaving}
+              />
+            </div>
+
+            {/* Domicilio */}
+            <div className="space-y-1 md:col-span-2">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Domicilio
+              </Label>
+              <Textarea
+                value={form.domicilio}
+                onChange={(e) => updateField("domicilio", e.target.value)}
+                placeholder="Ingrese dirección completa"
+                disabled={isSaving}
+                rows={2}
+              />
+            </div>
+
+            {/* ========== SECCIÓN UBICACIÓN ========== */}
+            <div className="md:col-span-2 border-b pb-3 mb-2 mt-4">
+              <h3 className="text-sm font-bold text-[#5d16ec]">Ubicación</h3>
+            </div>
+
+            {/* ✅ DEPARTAMENTO */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Departamento
+              </Label>
+              <Select
+                value={form.departamento_id}
+                onValueChange={(v) => updateField("departamento_id", v)}
+                disabled={isSaving}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione departamento" />
+                </SelectTrigger>
+                <SelectContent>
+                  {departamentos.map((dep) => (
+                    <SelectItem key={dep.id} value={dep.id.toString()}>
+                      {dep.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+                        {/* ✅ PROVINCIA - FILTRADA POR DEPARTAMENTO */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Provincia
+                {!form.departamento_id && <span className="text-gray-500 text-xs">(Selecciona departamento primero)</span>}
+              </Label>
+              <Select
+                value={form.provincia_id}
+                onValueChange={(v) => updateField("provincia_id", v)}
+                disabled={!form.departamento_id || isSaving}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione provincia" />
+                </SelectTrigger>
+                <SelectContent>
+                  {provinciasFiltradas.length > 0 ? (
+                    provinciasFiltradas.map((prov) => (
+                      <SelectItem key={prov.id} value={prov.id.toString()}>
+                        {prov.nombre}
+                      </SelectItem>
+                    ))
+                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* ✅ DISTRITO - FILTRADO POR PROVINCIA */}
+            <div className="space-y-1 md:col-span-2">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Distrito
+                {!form.provincia_id && <span className="text-gray-500 text-xs">(Selecciona provincia primero)</span>}
+              </Label>
+              <Select
+                value={form.distrito_id}
+                onValueChange={(v) => updateField("distrito_id", v)}
+                disabled={!form.provincia_id || isSaving}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccione distrito" />
+                </SelectTrigger>
+                <SelectContent>
+                  {distritosFiltrados.length > 0 ? (
+                    distritosFiltrados.map((dist) => (
+                      <SelectItem key={dist.id} value={dist.id.toString()}>
+                        {dist.nombre}
+                      </SelectItem>
+                    ))
+                  ) : null}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* ========== SECCIÓN CÓNYUGE ========== */}
+            <div className="md:col-span-2 border-b pb-3 mb-2 mt-4">
+              <h3 className="text-sm font-bold text-[#5d16ec]">Información del Cónyuge (Opcional)</h3>
+            </div>
+
+            {/* Nombre Cónyuge */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                Nombre del Cónyuge
+              </Label>
+              <Input
+                value={form.nombreconyugue}
+                onChange={(e) => updateField("nombreconyugue", e.target.value)}
+                placeholder="Nombre completo"
+                disabled={isSaving}
+              />
+            </div>
+
+            {/* DNI Cónyuge */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-[#5d16ec]">
+                DNI del Cónyuge
+              </Label>
+              <Input
+                value={form.dniconyugue}
+                onChange={(e) => updateField("dniconyugue", e.target.value)}
+                placeholder="12345678"
+                disabled={isSaving}
+                maxLength="8"
+              />
+            </div>
           </div>
 
           <DialogFooter className="mt-6">
@@ -509,7 +784,6 @@ export default function ClienteDialog({
               )}
             </Tooltip>
           </DialogFooter>
-
         </DialogContent>
       </Dialog>
     </TooltipProvider>
