@@ -166,8 +166,10 @@ export default function ReservaDetailPage() {
     return Number.isFinite(total) ? total.toFixed(2) : "0.00";
   }, []);
 
+  const isLocked = reserva?.estado === "firmado";
+
   const handleFieldChange = (field, value) => {
-    console.log("[FIELD CHANGE]", field, value);
+    if (isLocked) return;
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -175,8 +177,8 @@ export default function ReservaDetailPage() {
   };
 
   const handleVinExistsChange = (e) => {
+    if (isLocked) return;
     const checked = e.target.checked;
-    console.log("[VIN EXISTS CHECKBOX]", checked);
     setClientVinExists(checked);
     setFormData((prev) => ({
       ...prev,
@@ -186,17 +188,14 @@ export default function ReservaDetailPage() {
 
   const parseApiJson = async (res, name) => {
     const text = await res.text();
-    console.log(`[API RAW] ${name}`, text);
-
     if (!res.ok) {
       console.error(`${name} respondió con error:`, res.status, text);
       return [];
     }
-
     try {
       const data = JSON.parse(text);
       return data.data || (Array.isArray(data) ? data : []);
-    } catch (e) {
+    } catch {
       console.error(`${name} no devolvió JSON válido:`, text);
       return [];
     }
@@ -205,8 +204,6 @@ export default function ReservaDetailPage() {
   useEffect(() => {
     async function loadInitialData() {
       try {
-        console.log("[loadInitialData] start");
-
         const [depRes, provRes, distRes, carrosRes] = await Promise.all([
           fetch("/api/departamentos"),
           fetch("/api/provincias"),
@@ -306,15 +303,9 @@ export default function ReservaDetailPage() {
 
   const autoSaveDetalles = useCallback(
     async (data) => {
-      const detalleId = detalles?.id || detalles?.detalle_id;
+      if (isLocked) return;
 
-      console.log("[AUTOSAVE] called", {
-        detalles,
-        detalleId,
-        clienteLoaded,
-        initialLoaded,
-        clientVinExists,
-      });
+      const detalleId = detalles?.id || detalles?.detalle_id;
 
       if (!initialLoaded) return;
       if (!detalleId) return;
@@ -387,8 +378,6 @@ export default function ReservaDetailPage() {
         });
 
         const detallesText = await resDetalles.text();
-        console.log("[AUTOSAVE] detalles response", resDetalles.status, detallesText);
-
         if (!resDetalles.ok) {
           throw new Error(detallesText || "Error guardando detalles");
         }
@@ -411,8 +400,6 @@ export default function ReservaDetailPage() {
           });
 
           const clienteText = await resCliente.text();
-          console.log("[AUTOSAVE] cliente response", resCliente.status, clienteText);
-
           if (!resCliente.ok) {
             throw new Error(clienteText || "Error guardando cliente");
           }
@@ -427,12 +414,12 @@ export default function ReservaDetailPage() {
         setSaving(false);
       }
     },
-    [detalles, clienteLoaded, initialLoaded, cliente, canViewAll, clientVinExists]
+    [detalles, clienteLoaded, initialLoaded, cliente, canViewAll, clientVinExists, isLocked]
   );
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      if (!initialLoaded) return;
+      if (!initialLoaded || isLocked) return;
       const detalleId = detalles?.id || detalles?.detalle_id;
       if (detalleId && clienteLoaded) {
         autoSaveDetalles(formData);
@@ -440,7 +427,7 @@ export default function ReservaDetailPage() {
     }, 1500);
 
     return () => clearTimeout(timer);
-  }, [formData, autoSaveDetalles, detalles, clienteLoaded, initialLoaded]);
+  }, [formData, autoSaveDetalles, detalles, clienteLoaded, initialLoaded, isLocked]);
 
   async function loadReservaDetail(provList = [], distList = []) {
     try {
@@ -683,9 +670,16 @@ export default function ReservaDetailPage() {
       </div>
     );
   }
+
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-6 py-8 px-4 max-w-7xl mx-auto">
+        {isLocked && (
+          <div className="p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">
+            Esta reserva está firmada y no puede editarse.
+          </div>
+        )}
+
         <div className="flex items-center justify-between border-b pb-6">
           <div className="flex items-center gap-4">
             <Tooltip>
@@ -715,7 +709,7 @@ export default function ReservaDetailPage() {
               </p>
             </div>
           </div>
-          {autoSaveIndicator && (
+          {autoSaveIndicator && !isLocked && (
             <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 rounded border border-blue-200">
               <div className="w-2 h-2 bg-blue-600 rounded-full animate-pulse" />
               <span className="text-xs font-medium text-blue-600">Guardando...</span>
@@ -807,100 +801,6 @@ export default function ReservaDetailPage() {
             </TooltipTrigger>
             <TooltipContent side="top">Descargar como PDF</TooltipContent>
           </Tooltip>
-
-          {canView && !canViewAll && (
-            <>
-              {reserva?.estado === "borrador" && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className="gap-2 bg-blue-600 hover:bg-blue-700"
-                      onClick={() => handleChangeStatus("enviado_firma")}
-                      disabled={changingStatus}
-                    >
-                      {changingStatus ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <Send size={16} />
-                      )}
-                      Enviar para Revisar
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Envía la reserva para revisión y firma
-                  </TooltipContent>
-                </Tooltip>
-              )}
-
-              {reserva?.estado === "observado" && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className="gap-2 bg-green-600 hover:bg-green-700"
-                      onClick={() => handleChangeStatus("subsanado")}
-                      disabled={changingStatus}
-                    >
-                      {changingStatus ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <CheckCheck size={16} />
-                      )}
-                      Marcar como Subsanado
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Marca la reserva como subsanada
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </>
-          )}
-
-          {canViewAll && (
-            <>
-              {reserva?.estado === "enviado_firma" && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className="gap-2 bg-yellow-600 hover:bg-yellow-700"
-                      onClick={() => handleChangeStatus("observado")}
-                      disabled={changingStatus}
-                    >
-                      {changingStatus ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <AlertCircle size={16} />
-                      )}
-                      Marcar como Observado
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Marca la reserva como observada (requiere cambios)
-                  </TooltipContent>
-                </Tooltip>
-              )}
-
-              {(reserva?.estado === "enviado_firma" || reserva?.estado === "subsanado") && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className="gap-2 bg-green-600 hover:bg-green-700"
-                      onClick={() => handleChangeStatus("firmado")}
-                      disabled={changingStatus}
-                    >
-                      {changingStatus ? (
-                        <Loader2 size={16} className="animate-spin" />
-                      ) : (
-                        <CheckCircle size={16} />
-                      )}
-                      Firmar
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">Firma y aprueba la reserva</TooltipContent>
-                </Tooltip>
-              )}
-            </>
-          )}
         </div>
 
         <Card>
@@ -925,6 +825,7 @@ export default function ReservaDetailPage() {
                       handleFieldChange("tipo_comprobante", e.target.value)
                     }
                     placeholder="Boleta/Factura"
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -960,6 +861,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("fecha_nacimiento", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -970,6 +872,7 @@ export default function ReservaDetailPage() {
                   <Input
                     value={formData.ocupacion}
                     onChange={(e) => handleFieldChange("ocupacion", e.target.value)}
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -980,6 +883,7 @@ export default function ReservaDetailPage() {
                   <Input
                     value={formData.domicilio}
                     onChange={(e) => handleFieldChange("domicilio", e.target.value)}
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -994,6 +898,7 @@ export default function ReservaDetailPage() {
                         role="combobox"
                         aria-expanded={openDep}
                         className="w-full justify-between"
+                        disabled={isLocked}
                       >
                         <span className="truncate">{getDepartamentoNombre()}</span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1011,6 +916,7 @@ export default function ReservaDetailPage() {
                                   key={dep.id}
                                   value={dep.nombre}
                                   onSelect={() => {
+                                    if (isLocked) return;
                                     handleFieldChange("departamento_id", dep.id.toString());
                                     setOpenDep(false);
                                   }}
@@ -1047,7 +953,7 @@ export default function ReservaDetailPage() {
                         role="combobox"
                         aria-expanded={openProv}
                         className="w-full justify-between"
-                        disabled={!formData.departamento_id}
+                        disabled={isLocked || !formData.departamento_id}
                       >
                         <span className="truncate">{getProvinciaNombre()}</span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1066,6 +972,7 @@ export default function ReservaDetailPage() {
                                   key={prov.id}
                                   value={prov.nombre}
                                   onSelect={() => {
+                                    if (isLocked) return;
                                     handleFieldChange("provincia_id", prov.id.toString());
                                     setOpenProv(false);
                                   }}
@@ -1102,7 +1009,7 @@ export default function ReservaDetailPage() {
                         role="combobox"
                         aria-expanded={openDist}
                         className="w-full justify-between"
-                        disabled={!formData.provincia_id}
+                        disabled={isLocked || !formData.provincia_id}
                       >
                         <span className="truncate">{getDistritoNombre()}</span>
                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1121,6 +1028,7 @@ export default function ReservaDetailPage() {
                                   key={dist.id}
                                   value={dist.nombre}
                                   onSelect={() => {
+                                    if (isLocked) return;
                                     handleFieldChange("distrito_id", dist.id.toString());
                                     setOpenDist(false);
                                   }}
@@ -1154,6 +1062,7 @@ export default function ReservaDetailPage() {
                     value={formData.email}
                     onChange={(e) => handleFieldChange("email", e.target.value)}
                     placeholder="correo@example.com"
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -1165,6 +1074,7 @@ export default function ReservaDetailPage() {
                     value={formData.celular}
                     onChange={(e) => handleFieldChange("celular", e.target.value)}
                     placeholder="+51 999999999"
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -1177,6 +1087,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("nombreconyugue", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
 
@@ -1187,6 +1098,7 @@ export default function ReservaDetailPage() {
                   <Input
                     value={formData.dniconyugue}
                     onChange={(e) => handleFieldChange("dniconyugue", e.target.value)}
+                    disabled={isLocked}
                   />
                 </div>
               </div>
@@ -1241,6 +1153,7 @@ export default function ReservaDetailPage() {
                       id="vinExistsCheckbox"
                       checked={clientVinExists}
                       onChange={handleVinExistsChange}
+                      disabled={isLocked}
                       className="h-4 w-4 border border-gray-300 rounded focus:ring-blue-500"
                     />
                     <label
@@ -1264,7 +1177,7 @@ export default function ReservaDetailPage() {
                           role="combobox"
                           aria-expanded={openVin}
                           className="w-full justify-between"
-                          disabled={!clientVinExists}
+                          disabled={isLocked || !clientVinExists}
                         >
                           <span className="truncate">{getVinDisplay()}</span>
                           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -1287,6 +1200,7 @@ export default function ReservaDetailPage() {
                                     key={carro.vin}
                                     value={carro.vin}
                                     onSelect={() => {
+                                      if (isLocked) return;
                                       handleFieldChange("vin", carro.vin);
                                       setOpenVin(false);
                                     }}
@@ -1339,6 +1253,7 @@ export default function ReservaDetailPage() {
                       onChange={(e) =>
                         handleFieldChange("usovehiculo", e.target.value)
                       }
+                      disabled={isLocked}
                     />
                   </div>
 
@@ -1351,6 +1266,7 @@ export default function ReservaDetailPage() {
                       onChange={(e) =>
                         handleFieldChange("color_externo", e.target.value)
                       }
+                      disabled={isLocked}
                     />
                   </div>
 
@@ -1363,6 +1279,7 @@ export default function ReservaDetailPage() {
                       onChange={(e) =>
                         handleFieldChange("color_interno", e.target.value)
                       }
+                      disabled={isLocked}
                     />
                   </div>
 
@@ -1375,6 +1292,7 @@ export default function ReservaDetailPage() {
                       onChange={(e) =>
                         handleFieldChange("numero_motor", e.target.value)
                       }
+                      disabled={isLocked}
                     />
                   </div>
                 </div>
@@ -1386,7 +1304,7 @@ export default function ReservaDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs font-medium text-gray-600 block mb-2">
-                    Descuento Tienda ($/) *
+                    Descuento Tienda (S/) *
                   </label>
                   <Input
                     type="number"
@@ -1394,6 +1312,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("dsctotienda", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1406,6 +1325,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("dsctotiendaporcentaje", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1418,6 +1338,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("dsctobonoretoma", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1430,6 +1351,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("dsctonper", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1440,6 +1362,7 @@ export default function ReservaDetailPage() {
                     type="number"
                     value={formData.cantidad}
                     onChange={(e) => handleFieldChange("cantidad", e.target.value)}
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1452,6 +1375,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("precio_unitario", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1468,6 +1392,7 @@ export default function ReservaDetailPage() {
                     type="number"
                     value={formData.flete}
                     onChange={(e) => handleFieldChange("flete", e.target.value)}
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1480,6 +1405,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("tarjetaplaca", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1490,6 +1416,7 @@ export default function ReservaDetailPage() {
                     type="number"
                     value={formData.glp}
                     onChange={(e) => handleFieldChange("glp", e.target.value)}
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1499,9 +1426,8 @@ export default function ReservaDetailPage() {
                   <Input
                     type="number"
                     value={formData.total}
-                    onChange={(e) => handleFieldChange("total", e.target.value)}
-                    className="font-bold text-lg"
                     disabled
+                    className="font-bold text-lg bg-gray-100"
                   />
                 </div>
               </div>
@@ -1520,6 +1446,7 @@ export default function ReservaDetailPage() {
                     onChange={(e) =>
                       handleFieldChange("valores_tc_ref", e.target.value)
                     }
+                    disabled={isLocked}
                   />
                 </div>
                 <div>
@@ -1532,6 +1459,7 @@ export default function ReservaDetailPage() {
                       handleFieldChange("cuota_inicial", e.target.value)
                     }
                     placeholder="Ingresa la cuota inicial"
+                    disabled={isLocked}
                   />
                 </div>
               </div>
@@ -1547,12 +1475,12 @@ export default function ReservaDetailPage() {
               <Textarea
                 value={formData.observaciones}
                 onChange={(e) =>
-                  canViewAll && handleFieldChange("observaciones", e.target.value)
+                  canViewAll && !isLocked && handleFieldChange("observaciones", e.target.value)
                 }
-                disabled={!canViewAll}
+                disabled={!canViewAll || isLocked}
                 placeholder="Observaciones adicionales o descripción de la reserva..."
                 rows={4}
-                className={cn("text-sm", !canViewAll && "bg-gray-100")}
+                className={cn("text-sm", (!canViewAll || isLocked) && "bg-gray-100")}
               />
             </div>
 
@@ -1564,11 +1492,12 @@ export default function ReservaDetailPage() {
                 <Textarea
                   value={formData.observaciones_revisor}
                   onChange={(e) =>
-                    handleFieldChange("observaciones_revisor", e.target.value)
+                    !isLocked && handleFieldChange("observaciones_revisor", e.target.value)
                   }
                   placeholder="Ingresa tus observaciones aquí..."
                   rows={4}
                   className="text-sm"
+                  disabled={isLocked}
                 />
               </div>
             )}

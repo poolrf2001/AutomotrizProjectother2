@@ -1,20 +1,21 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import jsPDF from "jspdf";
+import fs from "fs";
+import path from "path";
 
-export async function GET(request, { params }) {
+export async function GET(request, context) {
   try {
-    const { id } = await params;
+    const { params } = context;
+    const resolvedParams = await params;
+    const { id } = resolvedParams;
 
-    if (!id || isNaN(id)) {
-      return NextResponse.json(
-        { message: "ID inválido" },
-        { status: 400 }
-      );
+    if (!id || isNaN(Number(id))) {
+      return NextResponse.json({ message: "ID inválido" }, { status: 400 });
     }
 
-    // ✅ Obtener información básica de la reserva
-    const [rows] = await db.query(`
+    const [rows] = await db.query(
+      `
       SELECT 
         r.id,
         r.oportunidad_id,
@@ -36,38 +37,36 @@ export async function GET(request, { params }) {
       LEFT JOIN clientes c ON oo.cliente_id = c.id
       LEFT JOIN etapasconversion e ON oo.etapasconversion_id = e.id
       WHERE r.id = ?
-    `, [id]);
+      `,
+      [id]
+    );
 
     if (rows.length === 0) {
-      return NextResponse.json(
-        { message: "Reserva no encontrada" },
-        { status: 404 }
-      );
+      return NextResponse.json({ message: "Reserva no encontrada" }, { status: 404 });
     }
 
     const reserva = rows[0];
-    const oportunidadId = reserva.oportunidad_id;
 
-    // ✅ Obtener detalles completos de la reserva
-    const [detalles] = await db.query(`
+    const [detalles] = await db.query(
+      `
       SELECT 
         rd.id as detalle_id,
-        rd.departamento_id,
-        rd.provincia_id,
-        rd.distrito_id,
+        c.departamento_id,
+        c.provincia_id,
+        c.distrito_id,
         rd.tipo_comprobante,
         c.identificacion_fiscal,
         c.nombre_comercial,
-        rd.fecha_nacimiento,
-        rd.ocupacion,
-        rd.domicilio,
+        c.fecha_nacimiento,
+        c.ocupacion,
+        c.domicilio,
         d.nombre as departamento_nombre,
         p.nombre as provincia_nombre,
         di.nombre as distrito_nombre,
         c.email,
         c.celular,
-        rd.nombreconyugue,
-        rd.dniconyugue,
+        c.nombreconyugue,
+        c.dniconyugue,
         oo.oportunidad_id,
         m.name as marca_nombre,
         mo.name as modelo_nombre,
@@ -80,7 +79,6 @@ export async function GET(request, { params }) {
         ca.color_interno,
         prv.precio_base,
         rd.numero_motor,
-        rd.dsctocredinissan,
         rd.dsctotienda,
         rd.dsctobonoretoma,
         rd.dsctonper,
@@ -100,9 +98,9 @@ export async function GET(request, { params }) {
       JOIN cotizacionesagenda ca ON ca.id = rd.cotizacion_id
       JOIN marcas m ON m.id = ca.marca_id
       JOIN modelos mo ON ca.modelo_id = mo.id
-      LEFT JOIN departamentos d ON d.id = rd.departamento_id
-      LEFT JOIN provincias p ON p.id = rd.provincia_id
-      LEFT JOIN distritos di ON di.id = rd.distrito_id
+      LEFT JOIN departamentos d ON d.id = c.departamento_id
+      LEFT JOIN provincias p ON p.id = c.provincia_id
+      LEFT JOIN distritos di ON di.id = c.distrito_id
       LEFT JOIN clases cl ON cl.id = mo.clase_id
       LEFT JOIN versiones v ON v.id = ca.version_id
       LEFT JOIN precios_region_version prv ON prv.marca_id = m.id 
@@ -111,7 +109,9 @@ export async function GET(request, { params }) {
       WHERE rd.reserva_id = ?
       ORDER BY rd.created_at DESC
       LIMIT 1
-    `, [id]);
+      `,
+      [id]
+    );
 
     if (detalles.length === 0) {
       return NextResponse.json(
@@ -121,95 +121,86 @@ export async function GET(request, { params }) {
     }
 
     const detalle = detalles[0];
+    const cotizacionId = detalle.cotizacion_id || null;
     const fechaFormato = new Date(reserva.created_at).toLocaleDateString("es-ES");
 
-    // ✅ Obtener usuario que creó la reserva (para firma)
+    let accesorios = [];
+    let regalos = [];
+    let accesoriosDisponibles = [];
+    let regalosDisponibles = [];
+
+    if (cotizacionId) {
+      const [accRows] = await db.query(
+        `SELECT * FROM cotizaciones_accesorios WHERE cotizacion_id = ? ORDER BY id ASC`,
+        [cotizacionId]
+      );
+
+      const [regRows] = await db.query(
+        `SELECT * FROM cotizaciones_regalos WHERE cotizacion_id = ? ORDER BY id ASC`,
+        [cotizacionId]
+      );
+
+      accesorios = accRows || [];
+      regalos = regRows || [];
+    }
+
+    // Nombres disponibles de accesorios y regalos
+    const [accDispRows] = await db.query(
+      `SELECT id, detalle, numero_parte FROM accesorios_disponibles ORDER BY detalle ASC`
+    );
+    accesoriosDisponibles = accDispRows || [];
+
+    const [regDispRows] = await db.query(
+      `SELECT id, detalle, lote FROM regalos_disponibles ORDER BY detalle ASC`
+    );
+    regalosDisponibles = regDispRows || [];
+
     const [usuarioCreador] = await db.query(
-  `SELECT id, fullname FROM usuarios WHERE id = ?`,
-  [reserva.created_by]
-);
+      `SELECT id, fullname FROM usuarios WHERE id = ?`,
+      [reserva.created_by]
+    );
 
-// ✅ Obtener JEFE DE VENTAS - CAMBIO AQUÍ
-const [jefeVentas] = await db.query(
-  `SELECT u.id, u.fullname FROM usuarios u
-  JOIN roles r ON u.role_id = r.id
-  WHERE r.name = 'JEFE DE VENTAS' LIMIT 1`
-);
+    const [jefeVentas] = await db.query(
+      `
+      SELECT u.id, u.fullname
+      FROM usuarios u
+      JOIN roles r ON u.role_id = r.id
+      WHERE r.name = 'JEFE DE VENTAS'
+      LIMIT 1
+      `
+    );
 
-const creador = usuarioCreador[0] || {};
-const jefe = jefeVentas[0] || {};
+    const creador = usuarioCreador[0] || {};
+    const jefe = jefeVentas[0] || {};
 
-    // ✅ Crear PDF con jsPDF
     const doc = new jsPDF({
       orientation: "portrait",
       unit: "mm",
       format: "a4",
     });
 
+    const fontPath = path.join(process.cwd(), "public/fonts/Autography.ttf");
+    const fontData = fs.readFileSync(fontPath);
+    const fontBase64 = fontData.toString("base64");
+    doc.addFileToVFS("Autography.ttf", fontBase64);
+    doc.addFont("Autography.ttf", "Autography", "normal");
+
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 15;
-    const contentWidth = pageWidth - 2 * margin;
+    const contentWidth = pageWidth - margin * 2;
     let yPosition = margin;
 
-    // Colores
     const primaryColor = [93, 22, 236];
     const secondaryColor = [100, 100, 100];
     const textColor = [50, 50, 50];
-    const warningColor = [220, 53, 69];
 
-    // Función para agregar línea separadora
     const addSeparator = () => {
       doc.setDrawColor(...secondaryColor);
       doc.line(margin, yPosition, pageWidth - margin, yPosition);
       yPosition += 5;
     };
 
-    // Encabezado
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(...primaryColor);
-    doc.text("NISSAN", pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 8;
-
-    doc.setFontSize(12);
-    doc.text("NOTA DE PEDIDO Y CARTA DE CARACTERÍSTICAS", pageWidth / 2, yPosition, {
-      align: "center",
-    });
-    yPosition += 6;
-
-    doc.setFontSize(10);
-    doc.setTextColor(...secondaryColor);
-    doc.text(`Fecha: ${fechaFormato}`, pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 4;
-    doc.text(`Reserva #${reserva.id}`, pageWidth / 2, yPosition, { align: "center" });
-    yPosition += 7;
-
-    // ✅ MARCA DE AGUA según estado
-    if (reserva.estado === "observado" || reserva.estado === "subsanado" ) {
-      doc.setFontSize(60);
-      doc.setTextColor(220, 220, 220);
-      doc.setFont("helvetica", "bold");
-      
-      if (reserva.estado === "observado") {
-        doc.text("OBSERVADO", pageWidth / 2, pageHeight / 2, { 
-          align: "center", 
-          angle: 45 
-        });
-      } else if (reserva.estado === "subsanado") {
-        doc.text("SUBSANADO", pageWidth / 2, pageHeight / 2, { 
-          align: "center", 
-          angle: 45 
-        });
-      }
-      
-      doc.setTextColor(...textColor);
-      doc.setFontSize(10);
-    }
-
-    addSeparator();
-
-    // Función para agregar sección
     const addSection = (title) => {
       if (yPosition > pageHeight - 30) {
         doc.addPage();
@@ -223,19 +214,19 @@ const jefe = jefeVentas[0] || {};
       addSeparator();
     };
 
-    // Función para convertir a número y dar formato
     const formatCurrency = (value) => {
-      if (value === null || value === undefined || value === "") {
-        return "0.00";
-      }
+      if (value === null || value === undefined || value === "") return "0.00";
       const num = parseFloat(value);
-      if (isNaN(num)) {
-        return "0.00";
-      }
+      if (isNaN(num)) return "0.00";
       return num.toFixed(2);
     };
 
-    // Función para agregar campo
+    const getDisponibleName = (type, detalleName) => {
+      const list = type === "acc" ? accesoriosDisponibles : regalosDisponibles;
+      const found = list.find((x) => String(x.detalle).toLowerCase() === String(detalleName).toLowerCase());
+      return found ? found.detalle : detalleName || "-";
+    };
+
     const addField = (label, value) => {
       if (yPosition > pageHeight - 20) {
         doc.addPage();
@@ -244,20 +235,51 @@ const jefe = jefeVentas[0] || {};
       doc.setFont("helvetica", "bold");
       doc.setFontSize(9);
       doc.setTextColor(...textColor);
-      const labelText = `${label}:`;
-      doc.text(labelText, margin, yPosition);
-      
+      doc.text(`${label}:`, margin, yPosition);
+
       doc.setFont("helvetica", "normal");
       const valueText = String(value || "-");
-      const maxWidth = contentWidth - 60;
-      const wrappedText = doc.splitTextToSize(valueText, maxWidth);
+      const wrappedText = doc.splitTextToSize(valueText, contentWidth - 60);
       doc.text(wrappedText, margin + 60, yPosition);
-      
+
       const lineHeight = wrappedText.length * 4;
       yPosition += Math.max(5, lineHeight);
     };
 
-    // INFORMACIÓN DE LA RESERVA
+    // Header
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(...primaryColor);
+    doc.text("NISSAN", pageWidth / 2, yPosition, { align: "center" });
+    yPosition += 8;
+
+    doc.setFontSize(12);
+    doc.text("NOTA DE PEDIDO", pageWidth / 2, yPosition, { align: "center" });
+    yPosition += 6;
+
+    doc.setFontSize(10);
+    doc.setTextColor(...secondaryColor);
+    doc.text(`Fecha: ${fechaFormato}`, pageWidth / 2, yPosition, { align: "center" });
+    yPosition += 4;
+    doc.text(`Reserva #${reserva.id}`, pageWidth / 2, yPosition, { align: "center" });
+    yPosition += 7;
+
+    if (reserva.estado === "observado" || reserva.estado === "subsanado") {
+      doc.setFontSize(60);
+      doc.setTextColor(220, 220, 220);
+      doc.setFont("helvetica", "bold");
+      doc.text(
+        reserva.estado === "observado" ? "OBSERVADO" : "SUBSANADO",
+        pageWidth / 2,
+        pageHeight / 2,
+        { align: "center", angle: 45 }
+      );
+      doc.setTextColor(...textColor);
+      doc.setFontSize(10);
+    }
+
+    addSeparator();
+
     addSection("INFORMACIÓN DE LA RESERVA");
     addField("Oportunidad", reserva.oportunidad_codigo || "-");
     addField("Código Reserva", `RES-${reserva.id}`);
@@ -265,7 +287,6 @@ const jefe = jefeVentas[0] || {};
     addField("Creado por", reserva.created_by_name || "-");
     yPosition += 3;
 
-    // DATOS DEL CLIENTE
     addSection("DATOS DEL CLIENTE");
     addField("Nombre", reserva.cliente_nombre || "-");
     addField("Email", reserva.cliente_email || "-");
@@ -274,12 +295,14 @@ const jefe = jefeVentas[0] || {};
     addField("Tipo Comprobante", detalle.tipo_comprobante || "-");
     addField("Ocupación", detalle.ocupacion || "-");
     addField("Domicilio", detalle.domicilio || "-");
-    addField("Ubicación", `${detalle.distrito_nombre || ""}, ${detalle.provincia_nombre || ""}, ${detalle.departamento_nombre || ""}`);
+    addField(
+      "Ubicación",
+      `${detalle.distrito_nombre || ""}, ${detalle.provincia_nombre || ""}, ${detalle.departamento_nombre || ""}`
+    );
     addField("Nombre Cónyuge", detalle.nombreconyugue || "-");
     addField("DNI Cónyuge", detalle.dniconyugue || "-");
     yPosition += 3;
 
-    // DATOS DEL VEHÍCULO
     addSection("DATOS DEL VEHÍCULO");
     addField("Marca", detalle.marca_nombre || "-");
     addField("Modelo", detalle.modelo_nombre || "-");
@@ -293,10 +316,8 @@ const jefe = jefeVentas[0] || {};
     addField("Uso del Vehículo", detalle.usovehiculo || "-");
     yPosition += 3;
 
-    // DESCUENTOS Y MONTOS
     addSection("DESCUENTOS Y MONTOS");
     addField("Precio Base", `S/ ${formatCurrency(detalle.precio_base)}`);
-    addField("Descuento Crédito Nissan", `S/ ${formatCurrency(detalle.dsctocredinissan)}`);
     addField("Descuento Tienda", `S/ ${formatCurrency(detalle.dsctotienda)}`);
     addField("Bono Retoma", `S/ ${formatCurrency(detalle.dsctobonoretoma)}`);
     addField("Descuento NPER", `S/ ${formatCurrency(detalle.dsctonper)}`);
@@ -304,138 +325,108 @@ const jefe = jefeVentas[0] || {};
     addField("Tarjeta Placa", `S/ ${formatCurrency(detalle.tarjetaplaca)}`);
     addField("GLP", `S/ ${formatCurrency(detalle.glp)}`);
     addField("T.C. Referencial", detalle.tc_referencial?.toString() || "-");
+    addField("Total", `S/ ${formatCurrency(detalle.total)}`);
     yPosition += 5;
 
-    // TOTAL
-    if (yPosition > pageHeight - 25) {
+    // Accesorios
+    if (accesorios.length > 0) {
+      addSection("ACCESORIOS");
+      accesorios.forEach((acc, index) => {
+        const accName = getDisponibleName("acc", acc.detalle) || acc.detalle || `Accesorio ${index + 1}`;
+        const desc = acc.descuento_monto ? ` | Desc.: S/ ${formatCurrency(acc.descuento_monto)}` : "";
+        addField(
+          accName,
+          `Cant: ${acc.cantidad || 0} | P.Unit: S/ ${formatCurrency(acc.precio_unitario)}${desc} | Total: S/ ${formatCurrency(acc.total)}`
+        );
+      });
+      yPosition += 3;
+    }
+
+    // Regalos
+    if (regalos.length > 0) {
+      addSection("REGALOS");
+      regalos.forEach((reg, index) => {
+        const regName = getDisponibleName("reg", reg.detalle) || reg.detalle || `Regalo ${index + 1}`;
+        const desc = reg.descuento_monto ? ` | Desc.: S/ ${formatCurrency(reg.descuento_monto)}` : "";
+        addField(
+          regName,
+          `Cant: ${reg.cantidad || 0} | P.Unit: S/ ${formatCurrency(reg.precio_unitario)}${desc} | Total: S/ ${formatCurrency(reg.total)}`
+        );
+      });
+      yPosition += 3;
+    }
+
+    // Nuevo campo total accesorios + regalos con descuentos
+   const totalAccesorios = accesorios.reduce((sum, a) => sum + parseFloat(a.total || 0), 0);
+const totalRegalos = regalos.reduce((sum, r) => sum + parseFloat(r.total || 0), 0);
+const descuentosAccesorios = accesorios.reduce((sum, a) => sum + parseFloat(a.descuento_monto || 0), 0);
+const descuentosRegalos = regalos.reduce((sum, r) => sum + parseFloat(r.descuento_monto || 0), 0);
+const totalAccRegFinal = (totalAccesorios + totalRegalos) - descuentosAccesorios - descuentosRegalos;
+const totalGeneralFinal = parseFloat(detalle.total || 0) + totalAccRegFinal;
+
+    addSection("RESUMEN ACCESORIOS Y REGALOS");
+    addField("Total Accesorios", `S/ ${formatCurrency(totalAccesorios)}`);
+    addField("Total Regalos", `S/ ${formatCurrency(totalRegalos)}`);
+    addField("Descuentos Accesorios", `S/ ${formatCurrency(descuentosAccesorios)}`);
+    addField("Descuentos Regalos", `S/ ${formatCurrency(descuentosRegalos)}`);
+    addField("Total Accesorios + Regalos", `S/ ${formatCurrency(totalAccRegFinal)}`);
+
+    addSection("RESUMEN FINAL");
+addField("Total Nota de Pedido", `S/ ${formatCurrency(detalle.total)}`);
+addField("Total Accesorios y Regalos", `S/ ${formatCurrency(totalAccRegFinal)}`);
+addField("TOTAL GENERAL", `S/ ${formatCurrency(totalGeneralFinal)}`);
+
+    if (yPosition > pageHeight - 80) {
       doc.addPage();
       yPosition = margin;
     }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(14);
-    doc.setTextColor(...primaryColor);
-    doc.text("TOTAL:", margin, yPosition);
-    doc.setFontSize(16);
-    doc.text(`S/ ${formatCurrency(detalle.total)}`, pageWidth - margin - 20, yPosition, {
-      align: "right",
-    });
-    yPosition += 10;
 
-    // OBSERVACIONES
-    if (detalle.descripcion) {
-      addSection("OBSERVACIONES");
-      const wrappedObs = doc.splitTextToSize(detalle.descripcion, contentWidth);
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
+    yPosition += 15;
+
+    const drawSignature = (label, name) => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
       doc.setTextColor(...textColor);
-      doc.text(wrappedObs, margin, yPosition);
-      yPosition += wrappedObs.length * 4;
+      doc.text(label, margin, yPosition);
+
+      yPosition += 10;
+      doc.setDrawColor(...secondaryColor);
+      doc.line(margin, yPosition, margin + 50, yPosition);
+
+      yPosition += 10;
+      doc.setFont("Autography", "normal");
+      doc.setFontSize(26);
+      doc.setTextColor(0, 0, 0);
+      doc.text(name || "", margin, yPosition);
+
+      yPosition += 15;
+    };
+
+    if (reserva.estado === "borrador") {
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(9);
+      doc.setTextColor(...secondaryColor);
+      doc.text("Documento en estado borrador - Sin firmas requeridas", margin, yPosition);
+    } else if (reserva.estado === "enviado_firma") {
+      drawSignature("FIRMA DEL CLIENTE:", "Firma del Cliente");
+      drawSignature("FIRMA AUTORIZADO:", creador.fullname || "Usuario");
+    } else if (reserva.estado === "firmado") {
+      drawSignature("FIRMA DEL CLIENTE:", "Firma del Cliente");
+      drawSignature("AUTORIZADO POR:", (creador.fullname || "Usuario"));
+      drawSignature("JEFE DE VENTAS:", (jefe.fullname || "No asignado"));
     }
 
-    // ✅ FIRMAS según estado
-   // ✅ FIRMAS según estado
-if (yPosition > pageHeight - 60) {
-  doc.addPage();
-  yPosition = margin;
-}
+    yPosition = pageHeight - 10;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.setTextColor(...secondaryColor);
+    doc.text(
+      `Este documento fue generado el ${fechaFormato} por el sistema de gestión de Nissan.`,
+      pageWidth / 2,
+      yPosition,
+      { align: "center" }
+    );
 
-yPosition += 15;
-
-if (reserva.estado === "borrador") {
-  // No mostrar firmas en borrador
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(9);
-  doc.setTextColor(...secondaryColor);
-  doc.text("Documento en estado borrador - Sin firmas requeridas", margin, yPosition);
-} else if (reserva.estado === "enviado_firma") {
-  // Campo en blanco para firma del cliente y firma de creador
-  yPosition += 10;
-  
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...textColor);
-  doc.text("FIRMA DEL CLIENTE:", margin, yPosition);
-  
-  yPosition += 10;
-  doc.setDrawColor(...secondaryColor);
-  doc.line(margin, yPosition, margin + 50, yPosition);
-  yPosition += 8;
-  doc.setFontSize(8);
-  doc.text("Firma del Cliente", margin, yPosition);
-  
-  yPosition += 15;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...textColor);
-  doc.text("FIRMA AUTORIZADO:", margin, yPosition);
-  
-  yPosition += 10;
-  doc.setDrawColor(...secondaryColor);
-  doc.line(margin, yPosition, margin + 50, yPosition);
-  yPosition += 8;
-  doc.setFontSize(8);
-  doc.text(creador.fullname || "Usuario", margin, yPosition);
-} else if (reserva.estado === "firmado") {
-  // Mostrar firma del cliente (en blanco) + firma de creador + nombre jefe de ventas
-  yPosition += 10;
-  
-  // Firma del cliente
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...textColor);
-  doc.text("FIRMA DEL CLIENTE:", margin, yPosition);
-  
-  yPosition += 10;
-  doc.setDrawColor(...secondaryColor);
-  doc.line(margin, yPosition, margin + 50, yPosition);
-  yPosition += 8;
-  doc.setFontSize(8);
-  doc.text("Firma del Cliente", margin, yPosition);
-  
-  // Firma de quien creó
-  yPosition += 15;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...textColor);
-  doc.text("AUTORIZADO POR:", margin, yPosition);
-  
-  yPosition += 10;
-  doc.setDrawColor(...secondaryColor);
-  doc.line(margin, yPosition, margin + 50, yPosition);
-  yPosition += 8;
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.text((creador.fullname || "Usuario").toUpperCase(), margin, yPosition);
-  
-  // Jefe de Ventas
-  yPosition += 12;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(...textColor);
-  doc.text("JEFE DE VENTAS:", margin, yPosition);
-  
-  yPosition += 10;
-  doc.setDrawColor(...secondaryColor);
-  doc.line(margin, yPosition, margin + 50, yPosition);
-  yPosition += 8;
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
-  doc.text((jefe.fullname || "No asignado").toUpperCase(), margin, yPosition);
-}
-
-// Pie de página
-yPosition = pageHeight - 10;
-doc.setFont("helvetica", "normal");
-doc.setFontSize(8);
-doc.setTextColor(...secondaryColor);
-doc.text(
-  `Este documento fue generado el ${fechaFormato} por el sistema de gestión de Nissan.`,
-  pageWidth / 2,
-  yPosition,
-  { align: "center" }
-);
-
-    // Generar PDF
     const pdfBuffer = Buffer.from(doc.output("arraybuffer"));
 
     return new NextResponse(pdfBuffer, {

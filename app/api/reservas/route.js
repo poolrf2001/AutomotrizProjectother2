@@ -83,7 +83,6 @@ export async function POST(req) {
       usovehiculo,
       placa,
       tc_referencial,
-      total,
       cantidad,
       precio_unitario,
       descripcion,
@@ -137,8 +136,8 @@ export async function POST(req) {
         ca.modelo_id,
         ca.color_externo,
         ca.color_interno,
-        ca.descuento_vehículo,
-        ca.descuento_vehículo_porcentaje,
+        ca.descuento_vehiculo,
+        ca.descuento_vehiculo_porcentaje,
         m.name as marca_nombre,
         mo.name as modelo_nombre,
         v.nombre as version_nombre,
@@ -164,6 +163,31 @@ export async function POST(req) {
       const cotizacion = cotizaciones[0];
       cotizacionId = cotizacion.id;
 
+      const precioBase = parseFloat(cotizacion.precio_base || 0);
+
+      const descuentoMonto = parseFloat(
+        dsctotienda ?? cotizacion.descuento_vehiculo ?? 0
+      );
+
+      const descuentoPorcentaje = parseFloat(
+        dsctotiendaporcentaje ?? cotizacion.descuento_vehiculo_porcentaje ?? 0
+      );
+
+      const descuentoPorcentajeMonto = precioBase * (descuentoPorcentaje / 100);
+
+      const dsctotiendaFinal = descuentoMonto;
+      const dsctotiendaporcentajeFinal = descuentoPorcentaje;
+
+      const totalCalculado =
+        precioBase -
+        descuentoMonto -
+        descuentoPorcentajeMonto -
+        parseFloat(dsctobonoretoma || 0) -
+        parseFloat(dsctonper || 0) +
+        parseFloat(glp || 0) +
+        parseFloat(tarjetaplaca || 0) +
+        parseFloat(flete || 0);
+
       const [clienteInfo] = await db.query(
         `SELECT 
           c.nombre,
@@ -179,12 +203,6 @@ export async function POST(req) {
       );
 
       const cliente = clienteInfo[0] || {};
-
-      const dsctotiendaFinal =
-        dsctotienda ?? cotizacion.descuento_vehículo ?? 0.0;
-
-      const dsctotiendaporcentajeFinal =
-        dsctotiendaporcentaje ?? cotizacion.descuento_vehículo_porcentaje ?? null;
 
       const [detalleResult] = await db.query(
         `INSERT INTO reserva_detalles (
@@ -218,7 +236,7 @@ export async function POST(req) {
           tipo_comprobante || null,
           numero_motor || null,
           tc_referencial || null,
-          total || null,
+          totalCalculado,
           vin || cotizacion.sku || null,
           vin_existe === true || vin_existe === "true" || vin_existe === 1 ? 1 : 0,
           usovehiculo || null,
@@ -232,7 +250,7 @@ export async function POST(req) {
           flete || 0.0,
           cuota_inicial || null,
           cantidad || 1.0,
-          precio_unitario || cotizacion.precio_base || 0,
+          precio_unitario || precioBase || 0,
           descripcion || null,
         ]
       );
@@ -274,7 +292,7 @@ export async function POST(req) {
           tipo_comprobante || null,
           numero_motor || null,
           tc_referencial || null,
-          total || null,
+          null,
           vin || null,
           vin_existe === true || vin_existe === "true" || vin_existe === 1 ? 1 : 0,
           usovehiculo || null,
