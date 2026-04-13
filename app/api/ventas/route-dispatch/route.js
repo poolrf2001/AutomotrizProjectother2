@@ -192,7 +192,16 @@ export async function POST(req) {
     const _dbg = process.env.DEBUG_ROUTE_DISPATCH === "1";
     if (_dbg) console.error("[route-dispatch] phone=%s convId=%s text=%s", phone, conversationId, text?.substring(0, 50));
 
-    // ── Verificar horario de atención ────────────────────────────────────────
+    // ── Verificar sesión de ventas activa PRIMERO (24/7) ────────────────────
+    // El bot de ventas responde a CUALQUIER hora. Solo el escalate a asesor
+    // humano informa sobre horarios (nodo Check Business Hours en n8n).
+    const ventasRoute = await resolveVentasRoute(phone, conversationId, _dbg);
+    if (ventasRoute === "ventas_ia") {
+      await touchSession(phone, conversationId, "ventas_ia");
+      return NextResponse.json({ route: "ventas_ia", dispatched: false });
+    }
+
+    // ── Verificar horario de atención (para menú y taller, NO para ventas) ──
     const hours = await checkBusinessHours();
     if (!hours.open) {
       const agentCfg = await getAgentMenuConfig();
@@ -217,7 +226,6 @@ export async function POST(req) {
           [phone, conversationId]
         );
       } catch (e) {
-        // Si la columna no existe, crear la sesión igualmente
         if (e?.code !== "ER_BAD_FIELD_ERROR" && e?.errno !== 1054) {
           console.error("[route-dispatch] pending_reopen error:", e.message);
         }
@@ -241,15 +249,6 @@ export async function POST(req) {
         off_hours_text: offHoursText,
         phone,
       });
-    }
-
-    // ── Verificar sesión de ventas activa PRIMERO (últimas 24h) ─────────────
-    // Si el usuario ya está en ventas_ia, TODOS sus mensajes van a ventas
-    // sin importar si parecen selecciones de menú ("2", "servicio", etc.)
-    const ventasRoute = await resolveVentasRoute(phone, conversationId, _dbg);
-    if (ventasRoute === "ventas_ia") {
-      await touchSession(phone, conversationId, "ventas_ia");
-      return NextResponse.json({ route: "ventas_ia", dispatched: false });
     }
 
     // ── Verificar si hay sesión de taller activa reciente (últimas 4h) ────────
