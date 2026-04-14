@@ -145,8 +145,24 @@ export async function POST(req) {
   const canalKey = (canal || "whatsapp").toLowerCase();
   const canalCfg = CANAL_CONFIG[canalKey] || CANAL_CONFIG.whatsapp;
 
-  if (!telefono?.trim()) {
-    return NextResponse.json({ message: "El teléfono es requerido" }, { status: 400 });
+  // Contrato duro: un lead SIEMPRE nace con nombre + celular real. El agente IA
+  // los pide al cliente (incluso en IG/FB donde el "phone" del canal es sender_id,
+  // no un celular). Si falta cualquiera, el lead no se guarda y el LLM reintenta.
+  const nombreLimpio = nombre_cliente?.trim();
+  const telefonoLimpio = telefono?.trim();
+  const CELULAR_RE = /^\+?\d{7,15}$/;
+
+  if (!nombreLimpio) {
+    return NextResponse.json(
+      { message: "nombre_cliente es requerido" },
+      { status: 400 }
+    );
+  }
+  if (!telefonoLimpio || !CELULAR_RE.test(telefonoLimpio)) {
+    return NextResponse.json(
+      { message: "telefono invalido: debe ser un celular real (7-15 digitos, opcionalmente con +)" },
+      { status: 400 }
+    );
   }
 
   const formasPagoValidas = ["contado", "financiamiento"];
@@ -156,12 +172,12 @@ export async function POST(req) {
 
   const leadUuid = randomUUID();
   const now = new Date().toISOString().slice(0, 19).replace("T", " ");
-  const telefonoClean = telefono.trim();
+  const telefonoClean = telefonoLimpio;
 
   // ── Buscar/crear cliente por teléfono ─────────────────────────────────────
   let clienteId = null;
   let clienteExistente = null;
-  let nombreFinal = nombre_cliente?.trim() || null;
+  let nombreFinal = nombreLimpio;
 
   try {
     const [[found]] = await db.query(
@@ -178,7 +194,7 @@ export async function POST(req) {
       if (!clienteExistente.email && email?.trim()) {
         await db.query("UPDATE clientes SET email = ? WHERE id = ?", [email.trim(), clienteId]);
       }
-    } else if (nombreFinal) {
+    } else {
       const partes = nombreFinal.split(" ");
       const nombre = partes[0] || null;
       const apellido = partes.slice(1).join(" ") || null;
