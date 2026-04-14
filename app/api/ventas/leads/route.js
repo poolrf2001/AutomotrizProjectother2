@@ -134,7 +134,16 @@ export async function POST(req) {
     equipamiento_requerido,
     tiene_historial_crediticio,
     notas_agente,
+    canal,
   } = body;
+
+  const CANAL_CONFIG = {
+    whatsapp:  { username: "whatsapp-bot",  origen: "WhatsApp Bot"  },
+    instagram: { username: "instagram-bot", origen: "Instagram Bot" },
+    facebook:  { username: "facebook-bot",  origen: "Facebook Bot"  },
+  };
+  const canalKey = (canal || "whatsapp").toLowerCase();
+  const canalCfg = CANAL_CONFIG[canalKey] || CANAL_CONFIG.whatsapp;
 
   if (!telefono?.trim()) {
     return NextResponse.json({ message: "El teléfono es requerido" }, { status: 400 });
@@ -231,36 +240,41 @@ export async function POST(req) {
     );
     insertId = result.insertId;
 
-    // ── Crear registro LD- en oportunidades automáticamente ────────────────
-    if (clienteId && modelo_id) {
+    // ── Crear registro LD- en oportunidades_oportunidades (tabla del CRM) ──
+    if (clienteId) {
       const [[botUser]] = await conn.query(
-        `SELECT id FROM usuarios WHERE username = 'whatsapp-bot' LIMIT 1`
+        `SELECT id FROM usuarios WHERE username = ? LIMIT 1`,
+        [canalCfg.username]
       );
       const botUserId = botUser?.id || 1;
 
       await conn.query(
-        `INSERT IGNORE INTO origenes_citas (name, is_active) VALUES ('WhatsApp Bot', 1)`
+        `INSERT IGNORE INTO origenes_citas (name, is_active) VALUES (?, 1)`,
+        [canalCfg.origen]
       );
       const [[origenBot]] = await conn.query(
-        `SELECT id FROM origenes_citas WHERE name = 'WhatsApp Bot' LIMIT 1`
+        `SELECT id FROM origenes_citas WHERE name = ? LIMIT 1`,
+        [canalCfg.origen]
       );
 
-      const [[modeloRow]] = await conn.query(
-        `SELECT marca_id FROM modelos WHERE id = ? LIMIT 1`,
-        [Number(modelo_id)]
-      );
       const [[primeraEtapa]] = await conn.query(
         `SELECT id FROM etapasconversion ORDER BY sort_order ASC, id ASC LIMIT 1`
       );
 
       if (origenBot && primeraEtapa) {
-        const [[maxRow]] = await conn.query(
-          `SELECT COALESCE(MAX(CAST(SUBSTRING(oportunidad_id, 4) AS UNSIGNED)), 0) AS max_num
-           FROM oportunidades
-           WHERE oportunidad_padre_id IS NULL AND oportunidad_id REGEXP '^LD-[0-9]+$'`
+        const year = new Date().getFullYear();
+        const [[lastLead]] = await conn.query(
+          `SELECT oportunidad_id FROM oportunidades_oportunidades
+           WHERE oportunidad_id LIKE ?
+           ORDER BY id DESC LIMIT 1`,
+          [`LD-${year}-%`]
         );
-        const nextNum = Number(maxRow?.max_num || 0) + 1;
-        const oportunidadCodigo = `LD-${nextNum}`;
+        let nextNum = 1;
+        if (lastLead?.oportunidad_id) {
+          const parts = lastLead.oportunidad_id.split("-");
+          nextNum = parseInt(parts[2], 10) + 1;
+        }
+        const oportunidadCodigo = `LD-${year}-${String(nextNum).padStart(3, "0")}`;
 
         const detalleCrm = [
           modelo_nombre ? `Modelo: ${modelo_nombre}` : null,
@@ -269,19 +283,16 @@ export async function POST(req) {
           notas_agente ? `Notas: ${notas_agente}` : null,
         ]
           .filter(Boolean)
-          .join(" | ") || "Lead capturado por agente WhatsApp";
+          .join(" | ") || `Lead capturado por agente ${canalCfg.origen}`;
 
         await conn.query(
-          `INSERT INTO oportunidades
-             (oportunidad_id, cliente_id, marca_id, modelo_id,
-              origen_id, etapasconversion_id, detalle, created_by,
-              created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+          `INSERT INTO oportunidades_oportunidades
+             (oportunidad_id, cliente_id, origen_id, etapasconversion_id,
+              detalle, created_by)
+           VALUES (?, ?, ?, ?, ?, ?)`,
           [
             oportunidadCodigo,
             clienteId,
-            modeloRow?.marca_id || null,
-            Number(modelo_id),
             origenBot.id,
             primeraEtapa.id,
             detalleCrm,

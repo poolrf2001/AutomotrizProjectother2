@@ -30,7 +30,6 @@ export const NAV_TREE = [
     items: [
       { to: "/carros", label: "Precios de Carros", icon: DollarSign, perm: ["inventariocarros", "view"] },
       { to: "/accesorios", label: "Precios de Accesorios", icon: Boxes, perm: ["inventariocarros", "view"] },
-      { to: "/ventas/catalogo", label: "Catálogo", icon: BookOpen, perm: ["mensajes", "view"] },
     ],
   },
   {
@@ -67,7 +66,6 @@ export const NAV_TREE = [
       { to: "/mensajes", label: "Mensajes", icon: MessageCircle, perm: ["mensajes", "view"] },
       { to: "/followups", label: "Seguimiento de leads", icon: MessageCircle, perm: ["mensajes", "view"] },
       { to: "/enviosmasivos", label: "Envíos masivos", icon: MessageCircle, perm: ["mensajes", "view"] },
-      { to: "/ventas/leads", label: "Leads del agente IA", icon: ShoppingCart, perm: ["mensajes", "view"] },
     ],
   },
   {
