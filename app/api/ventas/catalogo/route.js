@@ -5,13 +5,18 @@ import { db } from "@/lib/db";
  * GET /api/ventas/catalogo
  *
  * Endpoint para el agente n8n de Ventas IA.
- * Devuelve modelos con versiones/precios desde ventas_versiones (fuente única),
- * promociones vigentes, especificaciones técnicas y configuración general.
  *
- * Header requerido: x-ventas-webhook-secret
- * Nota: usa un secret separado (VENTAS_WEBHOOK_SECRET) porque este endpoint
- * es consumido exclusivamente por el workflow de Ventas IA en n8n, que tiene
- * credenciales independientes del webhook de taller/conversaciones.
+ * Fuentes:
+ *   - precios_region_version: precio, stock, existe, dias de entrega (autoridad)
+ *   - ventas_versiones:       equipamiento y colores (detalle de catalogo)
+ *   - versiones / modelos / marcas: nombres
+ *   - modelo_especificaciones: specs tecnicas por modelo
+ *   - ventas_promociones / ventas_configuracion: promos y textos
+ *
+ * Filtro: solo se devuelven versiones con prv.existe = 1 y precio > 0.
+ * Si existe = 0 en una region, esa version no se incluye en la respuesta.
+ *
+ * Header requerido: x-ventas-webhook-secret (VENTAS_WEBHOOK_SECRET).
  */
 export async function GET(req) {
   const secret = req.headers.get("x-ventas-webhook-secret") || "";
@@ -32,16 +37,28 @@ export async function GET(req) {
        ORDER BY ma.name ASC, m.name ASC`
     );
 
-    // Versiones activas con precio, stock y equipamiento (fuente única: ventas_versiones)
+    // Versiones ofrecidas: precio/stock/existe/dias desde precios_region_version (autoridad),
+    // equipamiento/colores desde ventas_versiones (LEFT JOIN por version_id).
     const [versiones] = await db.query(
-      `SELECT vv.id AS version_id, vv.modelo_id, vv.nombre_version,
-              vv.precio_lista, vv.moneda, vv.descuento_porcentaje,
-              vv.en_stock, vv.tiempo_entrega_dias,
-              vv.colores_disponibles, vv.descripcion_equipamiento
-       FROM ventas_versiones vv
-       WHERE vv.is_active = 1
-         AND vv.precio_lista > 0
-       ORDER BY vv.modelo_id ASC, vv.nombre_version ASC`
+      `SELECT prv.version_id,
+              prv.modelo_id,
+              v.nombre AS nombre_version,
+              prv.precio_base AS precio_lista,
+              COALESCE(vv.moneda, 'PEN') AS moneda,
+              COALESCE(vv.descuento_porcentaje, 0) AS descuento_porcentaje,
+              prv.en_stock,
+              prv.tiempo_entrega_dias,
+              vv.colores_disponibles,
+              vv.descripcion_equipamiento
+       FROM precios_region_version prv
+       JOIN versiones v ON v.id = prv.version_id
+       LEFT JOIN ventas_versiones vv
+              ON vv.version_id = prv.version_id
+             AND vv.modelo_id  = prv.modelo_id
+             AND vv.is_active  = 1
+       WHERE prv.existe = 1
+         AND prv.precio_base > 0
+       ORDER BY prv.modelo_id ASC, v.nombre ASC`
     );
 
     // Especificaciones técnicas por modelo (excluye media: full, imagen, video)
