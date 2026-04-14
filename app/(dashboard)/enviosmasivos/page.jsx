@@ -999,13 +999,15 @@ export default function EnviosMasivosPage() {
                         value={form.content.whatsapp_template_name}
                         onChange={(e) => {
                           const tmpl = campaignTemplates.find((t) => t.name === e.target.value) || null;
-                          setSelectedTemplate(tmpl);
-                          const varCount = (tmpl?.body?.match(/\{\{(\d+)\}\}/g) || []).length;
+                          const bodyText = tmpl?.components?.find((c) => c.type === "BODY")?.text || "";
+                          setSelectedTemplate(tmpl ? { ...tmpl, body: bodyText } : null);
+                          const varCount = (bodyText.match(/\{\{(\d+)\}\}/g) || []).length;
                           setForm((prev) => ({
                             ...prev,
                             content: {
                               ...prev.content,
                               whatsapp_template_name: e.target.value,
+                              whatsapp_template_language: tmpl?.language || prev.content.whatsapp_template_language,
                               whatsapp_template_variables: Array.from({ length: varCount }, (_, i) =>
                                 i === 0 ? "{{nombre_cliente}}" : ""
                               ),
