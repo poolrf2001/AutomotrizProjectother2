@@ -23,9 +23,8 @@ export async function GET(req) {
   }
 
   try {
-    const data = await getMessageTemplates(inboxId);
-    // Chatwoot devuelve un array directo o { payload: [...] } según la versión
-    const templates = Array.isArray(data) ? data : (Array.isArray(data?.payload) ? data.payload : []);
+    const raw = await getMessageTemplates(inboxId);
+    const templates = raw.filter((t) => t.status === "APPROVED");
     return NextResponse.json({ templates });
   } catch (err) {
     console.error("Error obteniendo plantillas de Chatwoot:", err.message);
