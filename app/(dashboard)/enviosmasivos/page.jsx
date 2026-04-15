@@ -15,6 +15,16 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 function getAuthHeaders() {
   if (typeof document === "undefined") return {};
@@ -107,6 +117,8 @@ export default function EnviosMasivosPage() {
   const [previewing, setPreviewing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dispatchingId, setDispatchingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [syncingInterests, setSyncingInterests] = useState(false);
   const [detailLoadingId, setDetailLoadingId] = useState(null);
   const [campaignDetail, setCampaignDetail] = useState(null);
@@ -525,6 +537,24 @@ export default function EnviosMasivosPage() {
     }
   }
 
+  async function handleDeleteCampaign(id) {
+    try {
+      setDeletingId(id);
+      const res = await fetch(`/api/envios-masivos/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || "No se pudo eliminar la campaña");
+      }
+      toast.success("Campaña eliminada");
+      setRows((prev) => prev.filter((r) => r.id !== id));
+    } catch (error) {
+      toast.error(error?.message || "Error al eliminar campaña");
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+    }
+  }
+
   async function syncInteresesVentas() {
     try {
       setSyncingInterests(true);
@@ -680,14 +710,25 @@ export default function EnviosMasivosPage() {
                         {detailLoadingId === row.id ? "Cargando..." : "Detalle"}
                       </Button>
                       {row.status === "scheduled" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => dispatchCampaign(row.id)}
-                          disabled={dispatchingId === row.id}
-                        >
-                          {dispatchingId === row.id ? "..." : "Ejecutar"}
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => dispatchCampaign(row.id)}
+                            disabled={dispatchingId === row.id}
+                          >
+                            {dispatchingId === row.id ? "..." : "Ejecutar"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 hover:border-red-300 hover:bg-red-50"
+                            onClick={() => setConfirmDeleteId(row.id)}
+                            disabled={deletingId === row.id}
+                          >
+                            Eliminar
+                          </Button>
+                        </>
                       )}
                     </div>
                   </td>
@@ -1462,6 +1503,31 @@ export default function EnviosMasivosPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── Confirm delete dialog ──────────────────────────── */}
+      <AlertDialog
+        open={confirmDeleteId !== null}
+        onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar campaña programada?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción no se puede deshacer. Se eliminarán la campaña y todos sus destinatarios pendientes.
+              Solo se pueden eliminar campañas con estado <strong>Programado</strong>.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => handleDeleteCampaign(confirmDeleteId)}
+            >
+              {deletingId === confirmDeleteId ? "Eliminando..." : "Sí, eliminar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
