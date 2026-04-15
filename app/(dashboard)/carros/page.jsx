@@ -1,7 +1,6 @@
 "use client";
 
-import React from "react";
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,12 +23,18 @@ import {
   TrendingUp,
   History,
   File,
+  Sparkles,
+  Database,
+  RefreshCw,
+  Clock3,
 } from "lucide-react";
 
 import HistorialCarrosImportGlobal from "@/app/components/carros/HistorialCarrosImportGlobal";
 import HistorialCarrosSheet from "@/app/components/carros/HistorialCarrosSheet";
 
-// ✅ Función helper para limpiar IDs
+const BRAND_PRIMARY = "#5d16ec";
+const BRAND_SECONDARY = "#81929c";
+
 function cleanId(value) {
   if (!value) return null;
   const cleaned = parseInt(String(value).trim());
@@ -47,14 +52,10 @@ export default function PreciosPage() {
   const fileInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
-
-  const [preciosPorMarcaModeloVersion, setPreciosPorMarcaModeloVersion] =
-    useState({});
-
+  const [preciosPorMarcaModeloVersion, setPreciosPorMarcaModeloVersion] = useState({});
   const [isSaving, setIsSaving] = useState(false);
   const saveTimers = useRef({});
 
-  // Cargar datos
   async function loadData() {
     try {
       setLoading(true);
@@ -62,23 +63,16 @@ export default function PreciosPage() {
       const [m, mo, v, p] = await Promise.all([
         fetch("/api/marcas", { cache: "no-store" }).then((r) => r.json()),
         fetch("/api/modelos", { cache: "no-store" }).then((r) => r.json()),
-        fetch("/api/versiones?limit=1000", { cache: "no-store" }).then(
-          (r) => r.json()
-        ),
-        fetch("/api/precios-region-version", { cache: "no-store" }).then(
-          (r) => r.json()
-        ),
+        fetch("/api/versiones?limit=1000", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/precios-region-version", { cache: "no-store" }).then((r) => r.json()),
       ]);
 
       const marcasData = Array.isArray(m) ? m : [];
       const modelosData = Array.isArray(mo) ? mo : [];
 
       let versionesData = [];
-      if (v.data && Array.isArray(v.data)) {
-        versionesData = v.data;
-      } else if (Array.isArray(v)) {
-        versionesData = v;
-      }
+      if (v.data && Array.isArray(v.data)) versionesData = v.data;
+      else if (Array.isArray(v)) versionesData = v;
 
       const preciosData = Array.isArray(p) ? p : [];
 
@@ -87,12 +81,7 @@ export default function PreciosPage() {
       setVersiones(versionesData.sort((a, b) => a.id - b.id));
       setPrecios(preciosData);
 
-      initializePricesStructure(
-        marcasData,
-        modelosData,
-        versionesData,
-        preciosData
-      );
+      initializePricesStructure(marcasData, modelosData, versionesData, preciosData);
     } catch (e) {
       console.error(e);
       toast.error("Error cargando datos");
@@ -101,12 +90,7 @@ export default function PreciosPage() {
     }
   }
 
-  function initializePricesStructure(
-    marcasData,
-    modelosData,
-    versionesData,
-    preciosData
-  ) {
+  function initializePricesStructure(marcasData, modelosData, versionesData, preciosData) {
     try {
       const estructura = {};
 
@@ -142,9 +126,7 @@ export default function PreciosPage() {
 
   async function handleDownloadTemplate() {
     try {
-      const response = await fetch(
-        "/api/precios-region-version/import?action=template"
-      );
+      const response = await fetch("/api/precios-region-version/import?action=template");
       const blob = await response.blob();
 
       const url = window.URL.createObjectURL(blob);
@@ -177,8 +159,8 @@ export default function PreciosPage() {
       ];
       const exampleData = [
         headers.join(","),
-        'WBADT43452G917604,8,11,1,FAC-001,25000,2024-01-15,2024-01-20',
-        'JTHBP5C2XA5034186,8,11,1,FAC-002,28000,2024-01-16,2024-01-21',
+        "WBADT43452G917604,8,11,1,FAC-001,25000,2024-01-15,2024-01-20",
+        "JTHBP5C2XA5034186,8,11,1,FAC-002,28000,2024-01-16,2024-01-21",
       ].join("\n");
 
       const blob = new Blob([exampleData], { type: "text/csv;charset=utf-8;" });
@@ -219,13 +201,9 @@ export default function PreciosPage() {
 
       if (response.ok) {
         toast.success(`${data.success} precios importados`);
-        if (data.errors > 0) {
-          toast.error(`${data.errors} errores durante la importación`);
-        }
+        if (data.errors > 0) toast.error(`${data.errors} errores durante la importación`);
         setImportFile(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        if (fileInputRef.current) fileInputRef.current.value = "";
         loadData();
       } else {
         toast.error(data.message);
@@ -285,9 +263,11 @@ export default function PreciosPage() {
 
   function scheduleAutoSave(marcaId, modeloId, versionId, key) {
     setIsSaving(true);
+
     if (saveTimers.current[`${key}_${versionId}`]) {
       clearTimeout(saveTimers.current[`${key}_${versionId}`]);
     }
+
     saveTimers.current[`${key}_${versionId}`] = setTimeout(() => {
       setPreciosPorMarcaModeloVersion((current) => {
         const cell = current[key]?.[versionId] || {};
@@ -342,65 +322,22 @@ export default function PreciosPage() {
     return (
       <div className="space-y-6 pb-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className="p-3 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-md">
+          <div className="p-3 rounded-xl shadow-lg" style={{ backgroundColor: BRAND_PRIMARY }}>
             <DollarSign className="h-6 w-6 text-white" />
           </div>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
               Precios por Versión
             </h1>
-            <p className="text-sm text-gray-600 mt-1">
+            <p className="text-sm mt-1" style={{ color: BRAND_SECONDARY }}>
               Gestiona precios de mantenimiento por versión de vehículo
             </p>
           </div>
         </div>
-        <div className="border rounded-lg p-12 text-center bg-slate-50">
-          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-blue-600" />
-          <p className="text-gray-600">Cargando datos...</p>
-        </div>
-      </div>
-    );
-  }
 
-  if (
-    marcas.length === 0 ||
-    modelos.length === 0 ||
-    versiones.length === 0
-  ) {
-    return (
-      <div className="space-y-6 pb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-3 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-md">
-            <DollarSign className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Precios por Versión
-            </h1>
-            <p className="text-sm text-gray-600 mt-1">
-              Gestiona precios de mantenimiento por versión de vehículo
-            </p>
-          </div>
-        </div>
-        <div className="border rounded-lg p-12 text-center bg-amber-50 border-amber-200">
-          <AlertCircle className="w-8 h-8 mx-auto mb-3 text-amber-600" />
-          <p className="text-amber-900 font-semibold mb-2">
-            No se encontraron datos necesarios
-          </p>
-          <div className="text-amber-700 text-sm mb-4 text-left max-w-md mx-auto">
-            <p className="mb-2">Verifica que existan:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>✓ Marcas configuradas: {marcas.length}</li>
-              <li>✓ Modelos configurados: {modelos.length}</li>
-              <li>✓ Versiones configuradas: {versiones.length}</li>
-            </ul>
-          </div>
-          <Button
-            onClick={loadData}
-            className="bg-amber-600 hover:bg-amber-700"
-          >
-            Reintentar carga
-          </Button>
+        <div className="border rounded-2xl p-12 text-center bg-slate-50 shadow-sm">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" style={{ color: BRAND_PRIMARY }} />
+          <p className="text-gray-600">Cargando datos...</p>
         </div>
       </div>
     );
@@ -409,134 +346,84 @@ export default function PreciosPage() {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-6 pb-8">
-        {/* HEADER */}
-        <div className="border-b border-gray-200 pb-6">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-3 bg-gradient-to-br from-blue-600 to-blue-700 rounded-lg shadow-md">
-              <DollarSign className="h-6 w-6 text-white" />
+        {/* HERO */}
+        <Card className="overflow-hidden border-0 shadow-lg text-white">
+          <CardContent
+            className="p-6 sm:p-8"
+            
+          >
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+              <div className="flex items-start gap-4">
+                
+                <div className="p-2.5 rounded-xl" style={{ backgroundColor: BRAND_PRIMARY }}>
+                <DollarSign className="h-5 w-5 text-white" />
+              </div>
+                <div>
+                  <div className="flex items-center gap-2 mb-2 flex-wrap">
+                    <h1 className="text-3xl font-bold tracking-tight text-black">
+                      Precios por Versión
+                    </h1>
+                  </div>
+                  <p className="text-black/80 text-sm max-w-2xl">
+                    Configura precios de mantenimiento por marca, modelo y versión.
+                    Los cambios se guardan automáticamente.
+                  </p>
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Badge className="bg-white/10 text-black border-[#5d16ec]">
+                      {stats.totalMarcas} marcas
+                    </Badge>
+                    <Badge className="bg-white/10 text-black border-[#5d16ec]">
+                      {stats.totalModelos} modelos
+                    </Badge>
+                    <Badge className="bg-white/10 text-black border-[#5d16ec]">
+                      {stats.totalVersiones} versiones
+                    </Badge>
+                    <Badge className="bg-white/10 text-black border-[#5d16ec]">
+                      {stats.totalPrecios} precios
+                    </Badge>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Marcas", value: stats.totalMarcas, icon: Database },
+                  { label: "Modelos", value: stats.totalModelos, icon: TrendingUp },
+                  { label: "Versiones", value: stats.totalVersiones, icon: CheckCircle },
+                  { label: "Precios", value: stats.totalPrecios, icon: DollarSign },
+                ].map((item, index) => (
+                  <div
+                    key={item.label}
+                    className="rounded-2xl bg-[#5d16ec]/30 border border-[#5d16ec]/60 p-4 backdrop-blur-sm"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs text-black/70">{item.label}</p>
+                      <item.icon className="h-4 w-4 text-black/80" />
+                    </div>
+                    <p className="text-2xl font-bold text-black">{item.value}</p>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Precios por Versión
-              </h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Gestiona precios de mantenimiento por versión de vehículo
-              </p>
-            </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
 
-        {/* ESTADÍSTICAS */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Card className="bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-blue-600 font-medium">
-                        Marcas
-                      </p>
-                      <p className="text-3xl font-bold text-blue-900 mt-2">
-                        {stats.totalMarcas}
-                      </p>
-                    </div>
-                    <CheckCircle className="h-12 w-12 text-blue-200" />
-                  </div>
-                </CardContent>
-              </Card>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Total de marcas registradas
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Card className="bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-purple-600 font-medium">
-                        Modelos
-                      </p>
-                      <p className="text-3xl font-bold text-purple-900 mt-2">
-                        {stats.totalModelos}
-                      </p>
-                    </div>
-                    <TrendingUp className="h-12 w-12 text-purple-200" />
-                  </div>
-                </CardContent>
-              </Card>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Total de modelos registrados
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Card className="bg-gradient-to-br from-green-50 to-green-100 border-green-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-green-600 font-medium">
-                        Versiones
-                      </p>
-                      <p className="text-3xl font-bold text-green-900 mt-2">
-                        {stats.totalVersiones}
-                      </p>
-                    </div>
-                    <CheckCircle className="h-12 w-12 text-green-200" />
-                  </div>
-                </CardContent>
-              </Card>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Total de versiones registradas
-            </TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Card className="bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200 cursor-help shadow-sm hover:shadow-md transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm text-orange-600 font-medium">
-                        Precios
-                      </p>
-                      <p className="text-3xl font-bold text-orange-900 mt-2">
-                        {stats.totalPrecios}
-                      </p>
-                    </div>
-                    <DollarSign className="h-12 w-12 text-orange-200" />
-                  </div>
-                </CardContent>
-              </Card>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              Total de precios configurados
-            </TooltipContent>
-          </Tooltip>
-        </div>
-
-        {/* BOTONES DE ACCIÓN */}
-        <Card className="border-l-4 border-l-blue-500 shadow-lg">
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 border-b">
-            <CardTitle className="text-lg font-bold text-gray-900">
+        {/* TOOLBAR */}
+        <Card className="shadow-sm border border-slate-200">
+          <CardHeader className="border-b bg-slate-50/80">
+            <CardTitle className="text-lg font-semibold text-slate-900">
               Herramientas
             </CardTitle>
           </CardHeader>
-
-          <CardContent className="pt-6">
+          <CardContent className="p-4">
             <div className="flex flex-wrap gap-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     onClick={handleDownloadTemplate}
                     variant="outline"
-                    className="border-green-300 text-green-700 hover:bg-green-50 hover:border-green-400 gap-2"
+                    className="gap-2 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
                   >
                     <Download size={16} />
                     Plantilla Precios
@@ -552,7 +439,7 @@ export default function PreciosPage() {
                   <Button
                     onClick={handleDownloadCarrosTemplate}
                     variant="outline"
-                    className="border-blue-300 text-blue-700 hover:bg-blue-50 hover:border-blue-400 gap-2"
+                    className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
                   >
                     <File size={16} />
                     Plantilla Carros
@@ -569,7 +456,7 @@ export default function PreciosPage() {
                   trigger={
                     <Button
                       variant="outline"
-                      className="border-purple-300 text-purple-700 hover:bg-purple-50 hover:border-purple-400 gap-2"
+                      className="gap-2 border-violet-300 text-violet-700 hover:bg-violet-50"
                     >
                       <Upload size={16} />
                       Importar Carros
@@ -578,145 +465,140 @@ export default function PreciosPage() {
                 />
               </div>
 
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={loadData}
-                    variant="outline"
-                    className="border-gray-300 gap-2"
-                    disabled={loading}
-                  >
-                    {isSaving ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        <span className="hidden sm:inline">Guardando...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Loader2 size={16} />
-                        <span className="hidden sm:inline">Recargar</span>
-                      </>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {isSaving
-                    ? "Guardando cambios..."
-                    : "Recargar todos los precios"}
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                onClick={loadData}
+                variant="outline"
+                className="gap-2 border-slate-300 hover:bg-slate-50"
+                disabled={loading}
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Guardando...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw size={16} />
+                    Recargar
+                  </>
+                )}
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* IMPORTAR SECCIÓN */}
-        <Card className="border-l-4 border-l-blue-500 shadow-lg overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 border-b space-y-3">
+        {/* IMPORT */}
+        <Card className="shadow-sm border border-blue-200 overflow-hidden">
+          <CardHeader
+            className="border-b"
+            style={{ backgroundColor: `${BRAND_PRIMARY}08` }}
+          >
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-600 rounded-lg">
+              <div className="p-2.5 rounded-xl" style={{ backgroundColor: BRAND_PRIMARY }}>
                 <FileUp className="h-5 w-5 text-white" />
               </div>
-              <div className="flex-1">
+              <div>
                 <CardTitle className="text-lg font-bold text-gray-900">
                   Importar Precios desde Excel
                 </CardTitle>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-sm mt-1" style={{ color: BRAND_SECONDARY }}>
                   Carga múltiples precios rápidamente desde un archivo
                 </p>
               </div>
             </div>
           </CardHeader>
 
-          <CardContent className="pt-6 space-y-4">
+          <CardContent className="p-4 sm:p-6 space-y-4">
             <div className="flex gap-3 flex-col sm:flex-row">
               <Input
                 ref={fileInputRef}
                 type="file"
                 accept=".xlsx,.xls"
                 onChange={(e) => setImportFile(e.target.files?.[0] || null)}
-                placeholder="Selecciona archivo Excel"
-                className="flex-1 h-10 file:mr-2 file:py-1 file:px-3 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+                className="flex-1 h-11 file:mr-3 file:py-1.5 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
               />
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={handleImport}
-                    disabled={!importFile || importLoading}
-                    className="bg-blue-600 hover:bg-blue-700 text-white gap-2 min-w-fit"
-                  >
-                    {importLoading ? (
-                      <>
-                        <Loader2 size={16} className="animate-spin" />
-                        Importando...
-                      </>
-                    ) : (
-                      <>
-                        <Upload size={16} />
-                        Importar
-                      </>
-                    )}
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  Importa precios desde el archivo Excel seleccionado
-                </TooltipContent>
-              </Tooltip>
+              <Button
+                onClick={handleImport}
+                disabled={!importFile || importLoading}
+                className="text-white gap-2 min-w-fit h-11"
+                style={{ backgroundColor: BRAND_PRIMARY }}
+              >
+                {importLoading ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={16} />
+                    Importar
+                  </>
+                )}
+              </Button>
             </div>
 
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg flex gap-2">
-              <AlertCircle
-                size={16}
-                className="text-blue-600 flex-shrink-0 mt-0.5"
-              />
-              <p className="text-xs text-blue-700">
-                Descarga la plantilla primero para asegurar el formato correcto
+            <div
+              className="rounded-xl border p-4 flex gap-3"
+              style={{
+                backgroundColor: `${BRAND_PRIMARY}08`,
+                borderColor: `${BRAND_PRIMARY}25`,
+              }}
+            >
+              <AlertCircle size={18} style={{ color: BRAND_PRIMARY }} className="flex-shrink-0 mt-0.5" />
+              <p className="text-sm" style={{ color: BRAND_SECONDARY }}>
+                Descarga la plantilla primero para asegurar el formato correcto.
               </p>
             </div>
           </CardContent>
         </Card>
 
-        {/* TABLA PRINCIPAL */}
-        <Card className="border-l-4 border-l-blue-500 shadow-lg overflow-hidden">
-          <CardHeader className="bg-gradient-to-r from-blue-50 to-blue-100 border-b space-y-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-600 rounded-lg">
-                <DollarSign className="h-5 w-5 text-white" />
-              </div>
-              <div className="flex-1">
-                <CardTitle className="text-lg font-bold text-gray-900">
-                  Matriz de Precios
-                </CardTitle>
-                <p className="text-sm text-gray-600 mt-1">
-                  Ingresa los precios para cada marca, modelo y versión (Incluye Igv)
-                </p>
+        {/* TABLE */}
+        <Card className="shadow-sm border border-slate-200 overflow-hidden">
+          <CardHeader
+            className="border-b"
+            style={{ backgroundColor: `${BRAND_PRIMARY}08` }}
+          >
+            <div className="flex flex-col gap-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 rounded-xl" style={{ backgroundColor: BRAND_PRIMARY }}>
+                    <DollarSign className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg font-bold text-gray-900">
+                      Matriz de Precios
+                    </CardTitle>
+                    <p className="text-sm mt-1" style={{ color: BRAND_SECONDARY }}>
+                      Ingresa precios, stock y días de entrega por versión
+                    </p>
+                  </div>
+                </div>
+
+                <Badge
+                  variant="secondary"
+                  className="hidden md:inline-flex text-white border-0"
+                  style={{ backgroundColor: BRAND_PRIMARY }}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  {Object.keys(modelosPorMarca).length} marcas • {modelos.length} modelos
+                </Badge>
               </div>
             </div>
-
-            <Badge
-              variant="secondary"
-              className="w-fit bg-blue-100 text-blue-900 border-blue-300"
-            >
-              <CheckCircle className="h-3 w-3 mr-1" />
-              {Object.keys(modelosPorMarca).length} marca
-              {Object.keys(modelosPorMarca).length !== 1 ? "s" : ""} •
-              {modelos.length} modelo
-              {modelos.length !== 1 ? "s" : ""}
-            </Badge>
           </CardHeader>
 
           <CardContent className="p-0">
-            <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <div className="overflow-x-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
-                  <tr className="bg-slate-50 border-b-2 border-slate-300">
-                    <th className="border-r border-slate-300 p-3 text-left font-bold bg-slate-100 sticky left-0 z-10 min-w-max">
+                  <tr className="bg-slate-100 border-b border-slate-200">
+                    <th className="border-r border-slate-200 p-3 text-left font-semibold bg-slate-100 sticky left-0 z-20 min-w-[150px]">
                       Marca
                     </th>
-                    <th className="border-r border-slate-300 p-3 text-left font-bold bg-slate-100 sticky left-32 z-10 min-w-max">
+                    <th className="border-r border-slate-200 p-3 text-left font-semibold bg-slate-100 sticky left-[150px] z-20 min-w-[180px]">
                       Modelo
                     </th>
-                    <th className="border-r border-slate-300 p-3 text-center font-bold bg-slate-100 w-12">
-                      Acciones
+                    <th className="border-r border-slate-200 p-3 text-center font-semibold bg-slate-100 w-14">
+                      Hist.
                     </th>
 
                     {versiones.map((version) => (
@@ -724,30 +606,33 @@ export default function PreciosPage() {
                         <TooltipTrigger asChild>
                           <th
                             colSpan={3}
-                            className="border-r border-slate-300 p-3 text-center font-bold bg-blue-100 text-blue-900 min-w-[220px] cursor-help hover:bg-blue-200 transition-colors"
+                            className="border-r border-slate-200 p-3 text-center font-semibold text-white min-w-[220px] cursor-help"
+                            style={{ backgroundColor: BRAND_PRIMARY }}
                           >
                             {version.nombre}
                           </th>
                         </TooltipTrigger>
                         <TooltipContent side="top">
-                          Precio, Stock y Días de entrega para {version.nombre}
+                          Precio, stock y días de entrega para {version.nombre}
                         </TooltipContent>
                       </Tooltip>
                     ))}
                   </tr>
-                  <tr className="bg-slate-50 border-b border-slate-300">
-                    <th className="border-r border-slate-300 p-2 text-left text-xs font-semibold text-slate-500 bg-slate-100 sticky left-0 z-10 min-w-[128px]"></th>
-                    <th className="border-r border-slate-300 p-2 text-left text-xs font-semibold text-slate-500 bg-slate-100 sticky left-32 z-10 min-w-[128px]"></th>
-                    <th className="border-r border-slate-300 p-2 text-center text-xs font-semibold text-slate-500 bg-slate-100 w-12"></th>
+
+                  <tr className="bg-white border-b border-slate-200">
+                    <th className="border-r border-slate-200 p-2 bg-slate-50 sticky left-0 z-20"></th>
+                    <th className="border-r border-slate-200 p-2 bg-slate-50 sticky left-[150px] z-20"></th>
+                    <th className="border-r border-slate-200 p-2 bg-slate-50"></th>
+
                     {versiones.map((version) => (
                       <React.Fragment key={version.id}>
-                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-blue-700 bg-blue-50 w-[95px]">
+                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-white w-[95px]" style={{ backgroundColor: BRAND_PRIMARY }}>
                           Precio
                         </th>
-                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-green-700 bg-green-50 w-[60px]">
+                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-white w-[60px]" style={{ backgroundColor: BRAND_SECONDARY }}>
                           Stock
                         </th>
-                        <th className="border-r border-slate-300 p-2 text-center text-xs font-semibold text-orange-700 bg-orange-50 w-[65px]">
+                        <th className="border-r border-slate-200 p-2 text-center text-xs font-semibold text-white w-[65px]" style={{ backgroundColor: "#d97706" }}>
                           Días
                         </th>
                       </React.Fragment>
@@ -756,191 +641,175 @@ export default function PreciosPage() {
                 </thead>
 
                 <tbody>
-                  {Object.entries(modelosPorMarca).map(
-                    ([marcaId, modelosList]) => {
-                      const marca = marcas.find(
-                        (m) => m.id === parseInt(marcaId)
-                      );
+                  {Object.entries(modelosPorMarca).map(([marcaId, modelosList]) => {
+                    const marca = marcas.find((m) => m.id === parseInt(marcaId));
 
-                      return (
-                        <React.Fragment key={marcaId}>
-                          {modelosList.map((modelo, idx) => {
-                            const key = `${modelo.marca_id}_${modelo.id}`;
-                            const preciosData =
-                              preciosPorMarcaModeloVersion[key] || {};
+                    return (
+                      <React.Fragment key={marcaId}>
+                        {modelosList.map((modelo, idx) => {
+                          const key = `${modelo.marca_id}_${modelo.id}`;
+                          const preciosData = preciosPorMarcaModeloVersion[key] || {};
 
-                            // ✅ LIMPIAR LOS IDs AQUÍ
-                            const cleanMarcaId = cleanId(modelo.marca_id);
-                            const cleanModeloId = cleanId(modelo.id);
+                          const cleanMarcaId = cleanId(modelo.marca_id);
+                          const cleanModeloId = cleanId(modelo.id);
 
-                            return (
-                              <tr
-                                key={modelo.id}
-                                className={`border-b border-slate-200 hover:bg-blue-50 transition-colors ${
-                                  idx % 2 === 0
-                                    ? "bg-white"
-                                    : "bg-slate-50/30"
-                                }`}
-                              >
-                                {idx === 0 && (
-                                  <td
-                                    rowSpan={modelosList.length}
-                                    className="border-r border-slate-300 p-3 font-bold bg-slate-100 sticky left-0 z-5 align-top min-w-max"
-                                  >
-                                    {marca?.name}
-                                  </td>
+                          return (
+                            <tr
+                              key={modelo.id}
+                              className={`border-b border-slate-200 hover:bg-blue-50/40 transition-colors ${
+                                idx % 2 === 0 ? "bg-white" : "bg-slate-50/30"
+                              }`}
+                            >
+                              {idx === 0 && (
+                                <td
+                                  rowSpan={modelosList.length}
+                                  className="border-r border-slate-200 p-3 font-bold bg-slate-50 sticky left-0 z-10 align-top min-w-[150px]"
+                                >
+                                  {marca?.name}
+                                </td>
+                              )}
+
+                              <td className="border-r border-slate-200 p-3 font-semibold text-slate-900 sticky left-[150px] z-10 min-w-[180px] bg-inherit">
+                                {modelo.name}
+                              </td>
+
+                              <td className="border-r border-slate-200 p-2 text-center bg-inherit">
+                                {cleanMarcaId && cleanModeloId ? (
+                                  <HistorialCarrosSheet
+                                    marcaId={cleanMarcaId}
+                                    modeloId={cleanModeloId}
+                                    marcaNombre={marca?.name || ""}
+                                    modeloNombre={modelo.name}
+                                  />
+                                ) : (
+                                  <div className="text-xs text-gray-400" title="IDs inválidos">
+                                    —
+                                  </div>
                                 )}
+                              </td>
 
-                                <td className="border-r border-slate-300 p-3 font-semibold text-slate-900 sticky left-32 z-5 min-w-max">
-                                  {modelo.name}
-                                </td>
-
-                                <td className="border-r border-slate-300 p-2 text-center">
-                                  {cleanMarcaId && cleanModeloId ? (
-                                    <HistorialCarrosSheet
-                                      marcaId={cleanMarcaId}
-                                      modeloId={cleanModeloId}
-                                      marcaNombre={marca?.name || ""}
-                                      modeloNombre={modelo.name}
-                                    />
-                                  ) : (
-                                    <div
-                                      className="text-xs text-gray-400"
-                                      title="IDs inválidos"
-                                    >
-                                      —
-                                    </div>
-                                  )}
-                                </td>
-
-                                {versiones.map((version) => {
-                                  const cell = preciosData[version.id] || {};
-                                  return (
-                                    <React.Fragment key={version.id}>
-                                      <td className="border-r border-slate-200 p-1.5 text-center bg-blue-50/30">
-                                        <input
-                                          type="number"
-                                          placeholder="—"
-                                          value={cell.precio_base ?? ""}
-                                          onChange={(e) =>
-                                            handlePriceChange(
-                                              modelo.marca_id,
-                                              modelo.id,
-                                              version.id,
-                                              e.target.value
-                                            )
-                                          }
-                                          className="w-full h-8 border border-slate-300 rounded px-1.5 py-1 text-center text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
-                                        />
-                                      </td>
-                                      <td className="border-r border-slate-200 p-1.5 text-center bg-green-50/30">
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                handleStockChange(
-                                                  modelo.marca_id,
-                                                  modelo.id,
-                                                  version.id,
-                                                  !cell.en_stock
-                                                )
-                                              }
-                                              className={`w-8 h-8 rounded-md flex items-center justify-center mx-auto transition-all border-2 ${
-                                                cell.en_stock !== false
-                                                  ? "bg-green-500 border-green-600 text-white hover:bg-green-600"
-                                                  : "bg-white border-slate-300 text-slate-400 hover:bg-slate-50"
-                                              }`}
-                                            >
-                                              <CheckCircle className="w-4 h-4" />
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="top">
-                                            {cell.en_stock !== false
-                                              ? "En stock — clic para marcar sin stock"
-                                              : "Sin stock — clic para marcar en stock"}
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </td>
-                                      <td className="border-r border-slate-300 p-1.5 text-center bg-orange-50/30">
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          value={cell.tiempo_entrega_dias ?? ""}
-                                          onChange={(e) =>
-                                            handleDiasChange(
-                                              modelo.marca_id,
-                                              modelo.id,
-                                              version.id,
-                                              e.target.value
-                                            )
-                                          }
-                                          className="w-full h-8 border border-slate-300 rounded px-1.5 py-1 text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all bg-white"
-                                        />
-                                      </td>
-                                    </React.Fragment>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                        </React.Fragment>
-                      );
-                    }
-                  )}
+                              {versiones.map((version) => {
+                                const cell = preciosData[version.id] || {};
+                                return (
+                                  <React.Fragment key={version.id}>
+                                    <td className="border-r border-slate-200 p-1.5 text-center bg-blue-50/30">
+                                      <input
+                                        type="number"
+                                        placeholder="—"
+                                        value={cell.precio_base ?? ""}
+                                        onChange={(e) =>
+                                          handlePriceChange(
+                                            modelo.marca_id,
+                                            modelo.id,
+                                            version.id,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-full h-9 border border-slate-300 rounded-lg px-2 text-center text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white"
+                                      />
+                                    </td>
+                                    <td className="border-r border-slate-200 p-1.5 text-center bg-emerald-50/30">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              handleStockChange(
+                                                modelo.marca_id,
+                                                modelo.id,
+                                                version.id,
+                                                !cell.en_stock
+                                              )
+                                            }
+                                            className={`w-9 h-9 rounded-lg flex items-center justify-center mx-auto transition-all border-2 ${
+                                              cell.en_stock !== false
+                                                ? "bg-emerald-500 border-emerald-600 text-white hover:bg-emerald-600"
+                                                : "bg-white border-slate-300 text-slate-400 hover:bg-slate-50"
+                                            }`}
+                                          >
+                                            <CheckCircle className="w-4 h-4" />
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                          {cell.en_stock !== false
+                                            ? "En stock — clic para marcar sin stock"
+                                            : "Sin stock — clic para marcar en stock"}
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </td>
+                                    <td className="border-r border-slate-200 p-1.5 text-center bg-orange-50/30">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        value={cell.tiempo_entrega_dias ?? ""}
+                                        onChange={(e) =>
+                                          handleDiasChange(
+                                            modelo.marca_id,
+                                            modelo.id,
+                                            version.id,
+                                            e.target.value
+                                          )
+                                        }
+                                        className="w-full h-9 border border-slate-300 rounded-lg px-2 text-center text-sm focus:outline-none focus:ring-2 focus:ring-orange-400 focus:border-transparent transition-all bg-white"
+                                      />
+                                    </td>
+                                  </React.Fragment>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </CardContent>
         </Card>
 
-        {/* STATUS Y LEYENDA */}
+        {/* FOOTER */}
         <div className="space-y-3">
           {isSaving && (
-            <div className="flex items-center gap-2 text-sm text-blue-600 bg-blue-50 border border-blue-200 px-4 py-3 rounded-lg">
+            <div className="flex items-center gap-2 text-sm text-white px-4 py-3 rounded-xl shadow-sm"
+              style={{ backgroundColor: BRAND_PRIMARY }}
+            >
               <Loader2 size={16} className="animate-spin" />
               Guardando cambios automáticamente...
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 rounded-xl border shadow-sm"
+            style={{
+              backgroundColor: `${BRAND_PRIMARY}08`,
+              borderColor: `${BRAND_PRIMARY}20`,
+            }}
+          >
             <div className="flex items-start gap-3">
-              <DollarSign
-                size={16}
-                className="text-green-600 flex-shrink-0 mt-1"
-              />
+              <Clock3 size={16} style={{ color: BRAND_PRIMARY }} className="flex-shrink-0 mt-1" />
               <div>
-                <p className="font-medium text-sm text-slate-900">
-                  Guardado Automático
-                </p>
-                <p className="text-xs text-gray-600">
+                <p className="font-medium text-sm text-slate-900">Guardado Automático</p>
+                <p className="text-xs" style={{ color: BRAND_SECONDARY }}>
                   Los precios se guardan 500ms después de escribir
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-3">
-              <Upload size={16} className="text-blue-600 flex-shrink-0 mt-1" />
+              <Upload size={16} style={{ color: BRAND_PRIMARY }} className="flex-shrink-0 mt-1" />
               <div>
-                <p className="font-medium text-sm text-slate-900">
-                  Importación
-                </p>
-                <p className="text-xs text-gray-600">
+                <p className="font-medium text-sm text-slate-900">Importación</p>
+                <p className="text-xs" style={{ color: BRAND_SECONDARY }}>
                   Usa Excel para importar múltiples precios rápidamente
                 </p>
               </div>
             </div>
 
             <div className="flex items-start gap-3">
-              <History
-                size={16}
-                className="text-purple-600 flex-shrink-0 mt-1"
-              />
+              <History size={16} style={{ color: BRAND_PRIMARY }} className="flex-shrink-0 mt-1" />
               <div>
-                <p className="font-medium text-sm text-slate-900">
-                  Historial
-                </p>
-                <p className="text-xs text-gray-600">
+                <p className="font-medium text-sm text-slate-900">Historial</p>
+                <p className="text-xs" style={{ color: BRAND_SECONDARY }}>
                   Ver, agregar e importar carros por marca y modelo
                 </p>
               </div>
