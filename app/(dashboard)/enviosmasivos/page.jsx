@@ -1,11 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Check, RefreshCw, Send, Upload, X } from "lucide-react";
+import { Check, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { useRequirePerm } from "@/hooks/useRequirePerm";
 import {
   Dialog,
@@ -72,20 +71,6 @@ function getStepTitle(step) {
   return "Vista preliminar";
 }
 
-function buildMessageFromTemplate(content) {
-  const greeting = String(content?.greeting || "").trim();
-  const body = String(content?.body || "").trim();
-  const closing = String(content?.closing || "").trim();
-
-  const blocks = [greeting, body, closing].filter(Boolean);
-
-  if (content?.show_cta) {
-    blocks.push('Presione el botón "QUIERO QUE ME CONTACTEN" y nos pondremos en contacto con usted.');
-    blocks.push('Presione el botón "DETENER PROMOCIONES" para dejar de recibir estos mensajes.');
-  }
-
-  return blocks.join("\n\n");
-}
 
 function getFilterContextByCampaignType(campaignType) {
   if (campaignType === "ventas") {
@@ -125,7 +110,6 @@ export default function EnviosMasivosPage() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [step, setStep] = useState(0);
-  const [imageUploading, setImageUploading] = useState(false);
 
   // ── Template aprobada de Meta ─────────────────────────────────────
   const [inboxes, setInboxes] = useState([]);
@@ -148,13 +132,6 @@ export default function EnviosMasivosPage() {
       etapa_ids: [],
     },
     content: {
-      template_source: "libre",
-      template_mode: "texto",
-      image_url: "",
-      greeting: "Hola, [Nombre de cliente]",
-      body: "Tenemos una promoción especial para su próximo servicio de mantenimiento.",
-      closing: "¡Estamos listos para atenderle!",
-      show_cta: true,
       whatsapp_template_name: "",
       whatsapp_template_language: "es",
       whatsapp_template_variables: [],
@@ -183,14 +160,6 @@ export default function EnviosMasivosPage() {
         etapa_ids: [],
       },
       content: {
-        template_source: "libre",
-        template_mode: "texto",
-        image_url: "",
-        greeting: "Hola, [Nombre de cliente]",
-        body: "Tenemos una promoción especial para su próximo servicio de mantenimiento.",
-        closing: "¡Estamos listos para atenderle!",
-        show_cta: true,
-        // campos plantilla aprobada
         whatsapp_template_name: "",
         whatsapp_template_language: "es",
         whatsapp_template_variables: [],
@@ -342,39 +311,6 @@ export default function EnviosMasivosPage() {
     });
   }, [modelosFiltrados]);
 
-  async function uploadTemplateImage(file) {
-    if (!file) return;
-
-    try {
-      setImageUploading(true);
-      const body = new FormData();
-      body.append("file", file);
-
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body,
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.message || "No se pudo subir la imagen");
-      }
-
-      setForm((prev) => ({
-        ...prev,
-        content: {
-          ...prev.content,
-          image_url: data?.url || "",
-        },
-      }));
-
-      toast.success("Imagen subida correctamente");
-    } catch (error) {
-      toast.error(error?.message || "Error subiendo imagen");
-    } finally {
-      setImageUploading(false);
-    }
-  }
 
   async function previewAudience(options = {}) {
     const silent = Boolean(options?.silent);
@@ -429,11 +365,6 @@ export default function EnviosMasivosPage() {
     try {
       setSaving(true);
 
-      const isApproved = form.content.template_source === "aprobada";
-      const finalMessage = isApproved
-        ? selectedTemplate?.body || form.content.whatsapp_template_name
-        : buildMessageFromTemplate(form.content);
-
       const payload = {
         campaign_name: form.campaign_name,
         campaign_type: form.campaign_type,
@@ -442,18 +373,17 @@ export default function EnviosMasivosPage() {
         scheduled_at: form.send_now ? null : form.scheduled_at,
         filters: form.filters,
         content: {
-          template_source: form.content.template_source,
-          template_mode: isApproved ? "texto" : form.content.template_mode,
-          image_url: (!isApproved && form.content.template_mode === "imagen_texto") ? form.content.image_url : "",
-          greeting: isApproved ? "" : form.content.greeting,
-          body: isApproved ? (selectedTemplate?.body || "") : form.content.body,
-          closing: isApproved ? "" : form.content.closing,
-          show_cta: isApproved ? false : form.content.show_cta,
-          message: finalMessage,
-          // datos de plantilla aprobada
-          whatsapp_template_name: isApproved ? form.content.whatsapp_template_name : null,
-          whatsapp_template_language: isApproved ? (form.content.whatsapp_template_language || "es") : null,
-          whatsapp_template_variables: isApproved ? form.content.whatsapp_template_variables : [],
+          template_source: "aprobada",
+          template_mode: "texto",
+          image_url: "",
+          greeting: "",
+          body: selectedTemplate?.body || "",
+          closing: "",
+          show_cta: false,
+          message: selectedTemplate?.body || form.content.whatsapp_template_name,
+          whatsapp_template_name: form.content.whatsapp_template_name,
+          whatsapp_template_language: form.content.whatsapp_template_language || "es",
+          whatsapp_template_variables: form.content.whatsapp_template_variables,
         },
       };
 
@@ -496,23 +426,10 @@ export default function EnviosMasivosPage() {
   }
 
   function goToPreviewStep() {
-    if (form.content.template_source === "aprobada") {
-      if (!form.content.whatsapp_template_name?.trim()) {
-        toast.error("Seleccioná una plantilla aprobada de Meta");
-        return;
-      }
-    } else {
-      const body = String(form.content?.body || "").trim();
-      if (!body) {
-        toast.error("El texto principal es obligatorio");
-        return;
-      }
-      if (form.content.template_mode === "imagen_texto" && !String(form.content.image_url || "").trim()) {
-        toast.error("Sube una imagen para la plantilla");
-        return;
-      }
+    if (!form.content.whatsapp_template_name?.trim()) {
+      toast.error("Seleccioná una plantilla aprobada de Meta");
+      return;
     }
-
     setStep(2);
   }
 
@@ -978,314 +895,132 @@ export default function EnviosMasivosPage() {
           {/* ── Step 1: Plantilla ─────────────────────────── */}
           {step === 1 && (
             <section className="space-y-4 rounded-xl border p-4">
-              {/* 24h warning */}
-              <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
-                <div>
-                  <p className="font-semibold">Restricción de WhatsApp Business API</p>
-                  <p>Solo podés enviar texto libre si el cliente te escribió en las últimas <strong>24 horas</strong>. Para el resto del listado, usá una <strong>plantilla aprobada por Meta</strong>: es la única forma garantizada de que el mensaje llegue.</p>
-                </div>
+              {/* Info box */}
+              <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-800">
+                <p className="font-semibold">Solo plantillas aprobadas por Meta</p>
+                <p>Los envíos masivos usan exclusivamente plantillas aprobadas. Esto garantiza la entrega independientemente de cuándo haya interactuado el cliente por última vez. Creá tus plantillas en <strong>Meta Business Manager → WhatsApp Manager → Plantillas de mensajes</strong>.</p>
               </div>
 
-              {/* Source toggle — card style */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Origen del mensaje *</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className={`flex cursor-pointer flex-col gap-1 rounded-xl border-2 p-3 transition-colors ${
-                    form.content.template_source === "libre"
-                      ? "border-blue-500 bg-blue-50"
-                      : "border-slate-200 hover:border-slate-300"
-                  }`}>
-                    <input
-                      type="radio"
-                      name="template-source"
-                      className="sr-only"
-                      checked={form.content.template_source === "libre"}
-                      onChange={() => setForm((prev) => ({
+              <div className="space-y-4 rounded-xl border bg-slate-50 p-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Bandeja WhatsApp</label>
+                  <select
+                    className="h-10 w-full rounded-md border bg-white px-3 text-sm"
+                    value={selectedInboxId}
+                    onChange={(e) => {
+                      setSelectedInboxId(e.target.value);
+                      setSelectedTemplate(null);
+                      setForm((prev) => ({
                         ...prev,
-                        content: { ...prev.content, template_source: "libre" },
-                      }))}
-                    />
-                    <span className="text-sm font-medium">Texto libre</span>
-                    <span className="text-xs text-amber-600">Solo ventana 24h — puede no llegar</span>
-                  </label>
-
-                  <label className={`flex cursor-pointer flex-col gap-1 rounded-xl border-2 p-3 transition-colors ${
-                    form.content.template_source === "aprobada"
-                      ? "border-green-500 bg-green-50"
-                      : "border-slate-200 hover:border-slate-300"
-                  }`}>
-                    <input
-                      type="radio"
-                      name="template-source"
-                      className="sr-only"
-                      checked={form.content.template_source === "aprobada"}
-                      onChange={() => {
-                        setForm((prev) => ({
-                          ...prev,
-                          content: { ...prev.content, template_source: "aprobada" },
-                        }));
-                        if (inboxes.length === 1 && !selectedInboxId) {
-                          setSelectedInboxId(String(inboxes[0].id));
-                          loadCampaignTemplates(inboxes[0].id);
-                        }
-                      }}
-                    />
-                    <span className="text-sm font-medium text-green-700">Plantilla aprobada por Meta</span>
-                    <span className="text-xs text-green-600">Siempre funciona — garantizado</span>
-                  </label>
+                        content: { ...prev.content, whatsapp_template_name: "", whatsapp_template_variables: [] },
+                      }));
+                      loadCampaignTemplates(e.target.value);
+                    }}
+                  >
+                    <option value="">{inboxesLoading ? "Cargando bandejas..." : "— Seleccioná una bandeja —"}</option>
+                    {inboxes.map((inbox) => (
+                      <option key={inbox.id} value={inbox.id}>{inbox.name}</option>
+                    ))}
+                  </select>
                 </div>
-              </div>
 
-              {/* Aprobada mode */}
-              {form.content.template_source === "aprobada" && (
-                <div className="space-y-4 rounded-xl border bg-slate-50 p-4">
+                {selectedInboxId && (
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Bandeja WhatsApp</label>
+                    <label className="text-sm font-medium">Plantilla aprobada</label>
                     <select
                       className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                      value={selectedInboxId}
+                      value={form.content.whatsapp_template_name}
                       onChange={(e) => {
-                        setSelectedInboxId(e.target.value);
-                        setSelectedTemplate(null);
+                        const tmpl = campaignTemplates.find((t) => t.name === e.target.value) || null;
+                        const bodyText = tmpl?.components?.find((c) => c.type === "BODY")?.text || "";
+                        setSelectedTemplate(tmpl ? { ...tmpl, body: bodyText } : null);
+                        const varCount = (bodyText.match(/\{\{(\d+)\}\}/g) || []).length;
                         setForm((prev) => ({
                           ...prev,
-                          content: { ...prev.content, whatsapp_template_name: "", whatsapp_template_variables: [] },
+                          content: {
+                            ...prev.content,
+                            whatsapp_template_name: e.target.value,
+                            whatsapp_template_language: tmpl?.language || prev.content.whatsapp_template_language,
+                            whatsapp_template_variables: Array.from({ length: varCount }, (_, i) =>
+                              i === 0 ? "{{nombre_cliente}}" : ""
+                            ),
+                          },
                         }));
-                        loadCampaignTemplates(e.target.value);
                       }}
                     >
-                      <option value="">{inboxesLoading ? "Cargando bandejas..." : "— Seleccioná una bandeja —"}</option>
-                      {inboxes.map((inbox) => (
-                        <option key={inbox.id} value={inbox.id}>{inbox.name}</option>
+                      <option value="">{templatesLoading ? "Cargando plantillas..." : "— Seleccioná una plantilla —"}</option>
+                      {campaignTemplates.map((t) => (
+                        <option key={t.id ?? t.name} value={t.name}>{t.name} ({t.status ?? "aprobada"})</option>
                       ))}
                     </select>
+                    {!templatesLoading && !campaignTemplates.length && selectedInboxId && (
+                      <p className="text-xs text-muted-foreground">No hay plantillas aprobadas para esta bandeja. Creálas en Meta Business Manager.</p>
+                    )}
                   </div>
+                )}
 
-                  {selectedInboxId && (
+                {selectedTemplate && (
+                  <div className="space-y-3">
+                    {/* WhatsApp bubble preview */}
+                    <div className="rounded-xl border bg-[#e5ddd5] p-3">
+                      <p className="mb-2 text-[11px] font-medium text-slate-500">Vista previa:</p>
+                      <div className="mx-auto max-w-xs space-y-1">
+                        <div className="rounded-lg rounded-tl-none bg-white p-3 text-xs leading-relaxed text-slate-800 shadow-sm whitespace-pre-wrap">
+                          {selectedTemplate.body}
+                        </div>
+                        {selectedTemplate.components?.find((c) => c.type === "BUTTONS")?.buttons?.map((btn, i) => (
+                          <button key={i} type="button" className="w-full rounded-lg bg-white py-1.5 text-xs font-semibold text-[#00a884] shadow-sm">
+                            {btn.text}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {Array.isArray(form.content.whatsapp_template_variables) && form.content.whatsapp_template_variables.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Variables de la plantilla</p>
+                        <p className="text-xs text-muted-foreground">
+                          Usá <code className="rounded bg-slate-100 px-1">{"{{nombre_cliente}}"}</code> para insertar el nombre del destinatario automáticamente en cada envío.
+                          También podés escribir un valor fijo (ej: <span className="italic">"tu próximo servicio"</span>).
+                        </p>
+                        {form.content.whatsapp_template_variables.map((val, idx) => (
+                          <div key={idx} className="flex items-center gap-2">
+                            <span className="w-16 shrink-0 text-xs text-muted-foreground">{`{{${idx + 1}}}`}</span>
+                            <Input
+                              value={val}
+                              placeholder={idx === 0 ? "{{nombre_cliente}}" : `Valor para {{${idx + 1}}}`}
+                              onChange={(e) => setForm((prev) => {
+                                const next = [...prev.content.whatsapp_template_variables];
+                                next[idx] = e.target.value;
+                                return { ...prev, content: { ...prev.content, whatsapp_template_variables: next } };
+                              })}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
                     <div className="space-y-2">
-                      <label className="text-sm font-medium">Plantilla aprobada</label>
+                      <label className="text-sm font-medium">Idioma de la plantilla</label>
                       <select
                         className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                        value={form.content.whatsapp_template_name}
-                        onChange={(e) => {
-                          const tmpl = campaignTemplates.find((t) => t.name === e.target.value) || null;
-                          const bodyText = tmpl?.components?.find((c) => c.type === "BODY")?.text || "";
-                          setSelectedTemplate(tmpl ? { ...tmpl, body: bodyText } : null);
-                          const varCount = (bodyText.match(/\{\{(\d+)\}\}/g) || []).length;
-                          setForm((prev) => ({
-                            ...prev,
-                            content: {
-                              ...prev.content,
-                              whatsapp_template_name: e.target.value,
-                              whatsapp_template_language: tmpl?.language || prev.content.whatsapp_template_language,
-                              whatsapp_template_variables: Array.from({ length: varCount }, (_, i) =>
-                                i === 0 ? "{{nombre_cliente}}" : ""
-                              ),
-                            },
-                          }));
-                        }}
+                        value={form.content.whatsapp_template_language}
+                        onChange={(e) => setForm((prev) => ({
+                          ...prev,
+                          content: { ...prev.content, whatsapp_template_language: e.target.value },
+                        }))}
                       >
-                        <option value="">{templatesLoading ? "Cargando plantillas..." : "— Seleccioná una plantilla —"}</option>
-                        {campaignTemplates.map((t) => (
-                          <option key={t.id ?? t.name} value={t.name}>{t.name} ({t.status ?? "aprobada"})</option>
-                        ))}
+                        <option value="es">Español (es)</option>
+                        <option value="es_AR">Español Argentina (es_AR)</option>
+                        <option value="es_MX">Español México (es_MX)</option>
+                        <option value="es_PE">Español Perú (es_PE)</option>
+                        <option value="en_US">Inglés (en_US)</option>
+                        <option value="pt_BR">Portugués Brasil (pt_BR)</option>
                       </select>
-                      {!templatesLoading && !campaignTemplates.length && selectedInboxId && (
-                        <p className="text-xs text-muted-foreground">No hay plantillas aprobadas para esta bandeja. Creálas en Meta Business Manager.</p>
-                      )}
-                    </div>
-                  )}
-
-                  {selectedTemplate && (
-                    <div className="space-y-3">
-                      {/* WhatsApp bubble preview */}
-                      <div className="rounded-xl border bg-[#e5ddd5] p-3">
-                        <p className="mb-2 text-[11px] font-medium text-slate-500">Vista previa:</p>
-                        <div className="mx-auto max-w-xs space-y-1">
-                          <div className="rounded-lg rounded-tl-none bg-white p-3 text-xs leading-relaxed text-slate-800 shadow-sm whitespace-pre-wrap">
-                            {selectedTemplate.body}
-                          </div>
-                          {selectedTemplate.components?.find((c) => c.type === "BUTTONS")?.buttons?.map((btn, i) => (
-                            <button key={i} type="button" className="w-full rounded-lg bg-white py-1.5 text-xs font-semibold text-[#00a884] shadow-sm">
-                              {btn.text}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {Array.isArray(form.content.whatsapp_template_variables) && form.content.whatsapp_template_variables.length > 0 && (
-                        <div className="space-y-2">
-                          <p className="text-sm font-medium">Variables de la plantilla</p>
-                          <p className="text-xs text-muted-foreground">Usá <code className="rounded bg-slate-100 px-1">{"{{nombre_cliente}}"}</code> para insertar el nombre del destinatario automáticamente.</p>
-                          {form.content.whatsapp_template_variables.map((val, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <span className="w-16 shrink-0 text-xs text-muted-foreground">{`{{${idx + 1}}}`}</span>
-                              <Input
-                                value={val}
-                                placeholder={`Variable ${idx + 1}`}
-                                onChange={(e) => setForm((prev) => {
-                                  const next = [...prev.content.whatsapp_template_variables];
-                                  next[idx] = e.target.value;
-                                  return { ...prev, content: { ...prev.content, whatsapp_template_variables: next } };
-                                })}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Idioma de la plantilla</label>
-                        <select
-                          className="h-10 w-full rounded-md border bg-white px-3 text-sm"
-                          value={form.content.whatsapp_template_language}
-                          onChange={(e) => setForm((prev) => ({
-                            ...prev,
-                            content: { ...prev.content, whatsapp_template_language: e.target.value },
-                          }))}
-                        >
-                          <option value="es">Español (es)</option>
-                          <option value="es_AR">Español Argentina (es_AR)</option>
-                          <option value="es_MX">Español México (es_MX)</option>
-                          <option value="es_PE">Español Perú (es_PE)</option>
-                          <option value="en_US">Inglés (en_US)</option>
-                          <option value="pt_BR">Portugués Brasil (pt_BR)</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Libre mode */}
-              {form.content.template_source === "libre" && (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Tipo de plantilla *</label>
-                    <div className="flex flex-wrap gap-4">
-                      <label className="inline-flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name="template-mode"
-                          checked={form.content.template_mode === "texto"}
-                          onChange={() => setForm((prev) => ({
-                            ...prev,
-                            content: { ...prev.content, template_mode: "texto" },
-                          }))}
-                        />
-                        Texto
-                      </label>
-                      <label className="inline-flex items-center gap-2 text-sm">
-                        <input
-                          type="radio"
-                          name="template-mode"
-                          checked={form.content.template_mode === "imagen_texto"}
-                          onChange={() => setForm((prev) => ({
-                            ...prev,
-                            content: { ...prev.content, template_mode: "imagen_texto" },
-                          }))}
-                        />
-                        Imagen y texto
-                      </label>
                     </div>
                   </div>
-
-                  {form.content.template_mode === "imagen_texto" && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Imagen de la plantilla *</label>
-                      <div className="rounded-md border p-3">
-                        <div className="flex flex-wrap items-center gap-3">
-                          <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm">
-                            <Upload className="h-4 w-4" />
-                            {imageUploading ? "Subiendo..." : "Subir imagen desde dispositivo"}
-                            <input
-                              type="file"
-                              accept="image/png,image/jpeg,image/jpg,image/webp"
-                              className="hidden"
-                              disabled={imageUploading}
-                              onChange={(e) => uploadTemplateImage(e.target.files?.[0])}
-                            />
-                          </label>
-                          {form.content.image_url && (
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1 rounded-md border px-3 py-2 text-sm"
-                              onClick={() => setForm((prev) => ({
-                                ...prev,
-                                content: { ...prev.content, image_url: "" },
-                              }))}
-                            >
-                              <X className="h-4 w-4" />
-                              Quitar imagen
-                            </button>
-                          )}
-                        </div>
-                        {form.content.image_url && (
-                          <div className="mt-3">
-                            <img
-                              src={form.content.image_url}
-                              alt="Vista de imagen"
-                              className="h-36 w-full rounded-md border object-cover md:w-80"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Inicio del mensaje</label>
-                    <Textarea
-                      rows={2}
-                      value={form.content.greeting}
-                      onChange={(e) => setForm((prev) => ({
-                        ...prev,
-                        content: { ...prev.content, greeting: e.target.value },
-                      }))}
-                      placeholder="Hola, [Nombre de cliente]"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Texto principal *</label>
-                    <Textarea
-                      rows={5}
-                      value={form.content.body}
-                      onChange={(e) => setForm((prev) => ({
-                        ...prev,
-                        content: { ...prev.content, body: e.target.value },
-                      }))}
-                      placeholder="Escribí el mensaje principal"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Final del mensaje</label>
-                    <Textarea
-                      rows={2}
-                      value={form.content.closing}
-                      onChange={(e) => setForm((prev) => ({
-                        ...prev,
-                        content: { ...prev.content, closing: e.target.value },
-                      }))}
-                      placeholder="¡Estamos listos para atenderle!"
-                    />
-                  </div>
-
-                  <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(form.content.show_cta)}
-                      onChange={(e) => setForm((prev) => ({
-                        ...prev,
-                        content: { ...prev.content, show_cta: e.target.checked },
-                      }))}
-                    />
-                    Incluir botones de CTA (contacto y detener promociones)
-                  </label>
-                </>
-              )}
+                )}
+              </div>
             </section>
           )}
 
@@ -1307,6 +1042,10 @@ export default function EnviosMasivosPage() {
                       }`}>{form.campaign_type === "ventas" ? "Ventas" : "Postventa"}</span>
                     </div>
                     <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Plantilla</span>
+                      <span className="font-mono text-xs">{form.content.whatsapp_template_name || "—"}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Envío</span>
                       <span className="font-medium">{form.send_now ? "Inmediato" : form.scheduled_at}</span>
                     </div>
@@ -1319,48 +1058,19 @@ export default function EnviosMasivosPage() {
 
                 <div className="space-y-3">
                   <h3 className="text-sm font-semibold">Vista WhatsApp</h3>
-                  {form.content.template_source === "aprobada" ? (
-                    <div className="rounded-xl border bg-[#e5ddd5] p-3">
-                      <div className="mx-auto max-w-xs space-y-1">
-                        <div className="rounded-lg rounded-tl-none bg-white p-3 text-xs leading-relaxed text-slate-800 shadow-sm whitespace-pre-wrap">
-                          {selectedTemplate?.body || form.content.whatsapp_template_name || "Sin plantilla seleccionada"}
-                        </div>
-                        {selectedTemplate?.components?.find((c) => c.type === "BUTTONS")?.buttons?.map((btn, i) => (
-                          <button key={i} type="button" className="w-full rounded-lg bg-white py-1.5 text-xs font-semibold text-[#00a884] shadow-sm">
-                            {btn.text}
-                          </button>
-                        ))}
+                  <div className="rounded-xl border bg-[#e5ddd5] p-3">
+                    <div className="mx-auto max-w-xs space-y-1">
+                      <div className="rounded-lg rounded-tl-none bg-white p-3 text-xs leading-relaxed text-slate-800 shadow-sm whitespace-pre-wrap">
+                        {selectedTemplate?.body || form.content.whatsapp_template_name || "Sin plantilla seleccionada"}
                       </div>
-                      <p className="mt-2 text-center text-[11px] text-green-700">✓ Plantilla aprobada — funciona fuera de la ventana de 24h</p>
+                      {selectedTemplate?.components?.find((c) => c.type === "BUTTONS")?.buttons?.map((btn, i) => (
+                        <button key={i} type="button" className="w-full rounded-lg bg-white py-1.5 text-xs font-semibold text-[#00a884] shadow-sm">
+                          {btn.text}
+                        </button>
+                      ))}
                     </div>
-                  ) : (
-                    <div className="rounded-xl border bg-[#e5ddd5] p-3">
-                      <div className="mx-auto max-w-xs">
-                        <div className="overflow-hidden rounded-lg rounded-tl-none bg-white shadow-sm">
-                          {form.content.template_mode === "imagen_texto" && form.content.image_url && (
-                            <img
-                              src={form.content.image_url}
-                              alt="Plantilla"
-                              className="h-36 w-full object-cover"
-                            />
-                          )}
-                          <p className="p-3 text-xs leading-relaxed text-slate-700 whitespace-pre-wrap">
-                            {buildMessageFromTemplate(form.content) || "Sin contenido"}
-                          </p>
-                          {form.content.show_cta && (
-                            <div className="space-y-1 border-t p-2">
-                              <button type="button" className="w-full rounded py-1 text-[11px] font-semibold text-[#00a884]">
-                                QUIERO QUE ME CONTACTEN
-                              </button>
-                              <button type="button" className="w-full rounded py-1 text-[11px] font-semibold text-[#00a884]">
-                                DETENER PROMOCIONES
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                    <p className="mt-2 text-center text-[11px] text-green-700">✓ Plantilla aprobada — entrega garantizada</p>
+                  </div>
                 </div>
               </div>
             </section>
