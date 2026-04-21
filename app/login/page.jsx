@@ -145,7 +145,7 @@ export default function LoginPage() {
                   <Button
                     onClick={handleLogout}
                     variant="outline"
-                    className="w-full text-slate-200 border-white/10 hover:bg-white/5"
+                    className="w-full text-black border-white/10 hover:bg-white/5 hover:text-white"
                   >
                     <LogOut className="h-4 w-4 mr-2" />
                     Cerrar sesión
