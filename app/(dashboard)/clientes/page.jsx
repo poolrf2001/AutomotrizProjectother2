@@ -12,12 +12,7 @@ import ClienteDialog from "@/app/components/clientes/ClienteDialog";
 import VehiculoDialog from "@/app/components/clientes/VehiculoDialog";
 import ConfirmDeleteDialog from "@/app/components/clientes/ConfirmDeleteDialog";
 
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -28,18 +23,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import {
-  Plus,
-  AlertTriangle,
-  Loader2,
-  Info,
-  UserRound,
-  Car,
-  CheckCircle
-} from "lucide-react";
+import { Plus, AlertTriangle, Loader2, Info, UserRound, Car } from "lucide-react";
 
 export default function ClientesPage() {
-  const { permissions } = useAuth();
+  const { permissions, user } = useAuth();
 
   const permView = hasPermission(permissions, "clientes", "view");
   const permCreate = hasPermission(permissions, "clientes", "create");
@@ -67,15 +54,18 @@ export default function ClientesPage() {
   const [deleteDialog, setDeleteDialog] = useState({
     open: false,
     item: null,
+    type: null, // "cliente" | "vehiculo"
   });
 
-  // ---------------- LOAD CLIENTES ----------------
+  const actorName =
+    user?.fullname || user?.name || user?.username || user?.email || "Un usuario";
 
   async function loadClientes() {
     try {
       setLoading(true);
       const r = await fetch("/api/clientes", { cache: "no-store" });
-      setClientes(await r.json());
+      const data = await r.json();
+      setClientes(Array.isArray(data) ? data : []);
     } catch {
       toast.error("Error cargando clientes");
     } finally {
@@ -83,25 +73,25 @@ export default function ClientesPage() {
     }
   }
 
-  // ---------------- LOAD ALL VEHICULOS ----------------
-
   async function loadAllVehiculos() {
     try {
       const r = await fetch("/api/vehiculos", { cache: "no-store" });
-      setAllVehiculos(await r.json());
+      const data = await r.json();
+      setAllVehiculos(Array.isArray(data) ? data : []);
     } catch {
       toast.error("Error cargando vehículos");
     }
   }
 
-  // ---------------- LOAD VEHICULOS POR CLIENTE ----------------
-
   async function loadVehiculos(clienteId) {
     if (!clienteId) return;
 
     try {
-      const r = await fetch(`/api/vehiculos?cliente_id=${clienteId}`);
-      setVehiculos(await r.json());
+      const r = await fetch(`/api/vehiculos?cliente_id=${clienteId}`, {
+        cache: "no-store",
+      });
+      const data = await r.json();
+      setVehiculos(Array.isArray(data) ? data : []);
     } catch {
       toast.error("Error cargando vehículos");
     }
@@ -112,47 +102,68 @@ export default function ClientesPage() {
     loadAllVehiculos();
   }, []);
 
-  // ---------------- SELECT CLIENTE ----------------
-
   function onSelectCliente(cliente) {
     setSelectedCliente(cliente);
     loadVehiculos(cliente.id);
   }
-
-  // ---------------- ABRIR VEHICULOS DESDE BOTON ----------------
 
   function openVehiculos(cliente) {
     setSelectedCliente(cliente);
     loadVehiculos(cliente.id);
   }
 
-  // ✅ CALLBACK CUANDO SE CREA CLIENTE
-  function handleClienteCreated(newCliente) {
-    console.log("Cliente creado:", newCliente);
-    loadClientes();
-    loadAllVehiculos();
-    setClienteDialog({ open: false });
+  async function getJefeVentasRole() {
+    const resRoles = await fetch("/api/roles", { cache: "no-store" });
+    if (!resRoles.ok) return null;
+
+    const roles = await resRoles.json();
+    return Array.isArray(roles)
+      ? roles.find((r) => r.name?.toLowerCase() === "jefe de ventas")
+      : null;
   }
 
-  // ✅ CALLBACK CUANDO SE CREA VEHICULO
-  function handleVehiculoCreated(newVehiculo) {
-    console.log("Vehículo creado:", newVehiculo);
-    if (selectedCliente) {
-      loadVehiculos(selectedCliente.id);
+  async function sendNotificationToJefeVentas({
+    titulo,
+    mensaje,
+    url,
+    tipo = "info",
+    icono = "bell",
+  }) {
+    try {
+      const jefeVentas = await getJefeVentasRole();
+
+      if (!jefeVentas) {
+        console.warn('No se encontró el rol "jefe de ventas"');
+        return;
+      }
+
+      const resNotif = await fetch("/api/notificaciones", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          titulo,
+          mensaje,
+          tipo,
+          icono,
+          url,
+          roles_ids: [jefeVentas.id],
+          usuarios_ids: [],
+        }),
+      });
+
+      if (!resNotif.ok) {
+        const error = await resNotif.json();
+        console.warn("Falló la notificación:", error);
+      }
+    } catch (error) {
+      console.error("Error creando notificación:", error);
     }
-    loadAllVehiculos();
-    setVehiculoDialog({ open: false });
   }
-
-  // ---------------- SAVE CLIENTE (PARA EDITAR) ----------------
 
   async function saveCliente(data) {
-    const method = clienteDialog.mode === "edit" ? "PUT" : "POST";
-
-    const url =
-      clienteDialog.mode === "edit"
-        ? `/api/clientes/${clienteDialog.data.id}`
-        : `/api/clientes`;
+    const isEdit = clienteDialog.mode === "edit";
+    const method = isEdit ? "PUT" : "POST";
+    const url = isEdit ? `/api/clientes/${clienteDialog.data.id}` : `/api/clientes`;
 
     try {
       const response = await fetch(url, {
@@ -168,13 +179,21 @@ export default function ClientesPage() {
         return;
       }
 
-      toast.success(
-        clienteDialog.mode === "edit"
-          ? "✓ Cliente actualizado"
-          : "✓ Cliente creado"
-      );
+      toast.success(isEdit ? "✓ Cliente actualizado" : "✓ Cliente creado");
 
-      setClienteDialog({ open: false });
+      const nombreCompleto = `${data.nombre || clienteDialog.data?.nombre || ""} ${
+        data.apellido || clienteDialog.data?.apellido || ""
+      }`.trim();
+
+      await sendNotificationToJefeVentas({
+        titulo: isEdit ? "Cliente actualizado" : "Nuevo cliente registrado",
+        mensaje: `${actorName} ${isEdit ? "actualizó" : "creó"} el cliente ${nombreCompleto}.`,
+        tipo: isEdit ? "info" : "success",
+        icono: "user-round",
+        url: "/clientes",
+      });
+
+      setClienteDialog({ open: false, mode: "create", data: null });
       loadClientes();
       loadAllVehiculos();
     } catch (error) {
@@ -183,17 +202,12 @@ export default function ClientesPage() {
     }
   }
 
-  // ---------------- SAVE VEHICULO ----------------
-
   async function saveVehiculo(data) {
     if (!selectedCliente) return;
 
-    const method = vehiculoDialog.mode === "edit" ? "PUT" : "POST";
-
-    const url =
-      vehiculoDialog.mode === "edit"
-        ? `/api/vehiculos/${vehiculoDialog.data.id}`
-        : `/api/vehiculos`;
+    const isEdit = vehiculoDialog.mode === "edit";
+    const method = isEdit ? "PUT" : "POST";
+    const url = isEdit ? `/api/vehiculos/${vehiculoDialog.data.id}` : `/api/vehiculos`;
 
     try {
       const response = await fetch(url, {
@@ -212,13 +226,21 @@ export default function ClientesPage() {
         return;
       }
 
-      toast.success(
-        vehiculoDialog.mode === "edit"
-          ? "✓ Vehículo actualizado"
-          : "✓ Vehículo creado"
-      );
+      toast.success(isEdit ? "✓ Vehículo actualizado" : "✓ Vehículo creado");
 
-      setVehiculoDialog({ open: false });
+      const vehiculoTexto = `${data.marca || vehiculoDialog.data?.marca || ""} ${
+        data.modelo || vehiculoDialog.data?.modelo || ""
+      }`.trim();
+
+      await sendNotificationToJefeVentas({
+        titulo: isEdit ? "Vehículo actualizado" : "Nuevo vehículo registrado",
+        mensaje: `${actorName} ${isEdit ? "actualizó" : "creó"} el vehículo ${vehiculoTexto} del cliente ${selectedCliente.nombre} ${selectedCliente.apellido}.`,
+        tipo: isEdit ? "info" : "success",
+        icono: "car",
+        url: "/clientes",
+      });
+
+      setVehiculoDialog({ open: false, mode: "create", data: null });
       loadVehiculos(selectedCliente.id);
       loadAllVehiculos();
     } catch (error) {
@@ -227,10 +249,13 @@ export default function ClientesPage() {
     }
   }
 
-  // ✅ DELETE CLIENTE MEJORADO
   async function deleteCliente() {
+    if (!deleteDialog.item) return;
+
     try {
-      const response = await fetch(`/api/clientes/${deleteDialog.item.id}`, {
+      const cliente = deleteDialog.item;
+
+      const response = await fetch(`/api/clientes/${cliente.id}`, {
         method: "DELETE",
       });
 
@@ -243,13 +268,55 @@ export default function ClientesPage() {
 
       toast.success("✓ Cliente eliminado");
 
-      setDeleteDialog({ open: false });
+      await sendNotificationToJefeVentas({
+        titulo: "Cliente eliminado",
+        mensaje: `${actorName} eliminó el cliente ${cliente.nombre || ""} ${cliente.apellido || ""}.`.trim(),
+        tipo: "warning",
+        icono: "user-round-x",
+        url: "/clientes",
+      });
+
+      setDeleteDialog({ open: false, item: null, type: null });
       loadClientes();
       loadAllVehiculos();
       setSelectedCliente(null);
+      setVehiculos([]);
     } catch (error) {
       console.error(error);
       toast.error("Error eliminando cliente");
+    }
+  }
+
+  async function deleteVehiculo(vehiculo) {
+    if (!vehiculo) return;
+
+    try {
+      const response = await fetch(`/api/vehiculos/${vehiculo.id}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        toast.error(result.message || "No se pudo eliminar");
+        return;
+      }
+
+      toast.success("✓ Vehículo eliminado");
+
+      await sendNotificationToJefeVentas({
+        titulo: "Vehículo eliminado",
+        mensaje: `${actorName} eliminó el vehículo ${vehiculo.marca || ""} ${vehiculo.modelo || ""} del cliente ${selectedCliente?.nombre || ""} ${selectedCliente?.apellido || ""}.`.trim(),
+        tipo: "warning",
+        icono: "car-front",
+        url: "/clientes",
+      });
+
+      if (selectedCliente) loadVehiculos(selectedCliente.id);
+      loadAllVehiculos();
+    } catch (err) {
+      console.error(err);
+      toast.error("Error eliminando vehículo");
     }
   }
 
@@ -259,9 +326,7 @@ export default function ClientesPage() {
         <AlertTriangle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
         <div className="text-sm text-red-700">
           <p className="font-semibold">Sin permiso</p>
-          <p className="text-xs mt-1">
-            No tienes permisos para ver esta sección
-          </p>
+          <p className="text-xs mt-1">No tienes permisos para ver esta sección</p>
         </div>
       </div>
     );
@@ -275,16 +340,14 @@ export default function ClientesPage() {
   return (
     <TooltipProvider delayDuration={200}>
       <div className="space-y-6 pb-8">
-        {/* HEADER */}
+        {/* HEADER GENERAL */}
         <div className="border-b border-gray-200 pb-6">
           <div className="flex items-center gap-3 mb-2">
             <div className="p-3 bg-[#5d16ec] rounded-lg shadow-md">
               <UserRound className="h-6 w-6 text-white" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Gestión de Clientes
-              </h1>
+              <h1 className="text-3xl font-bold text-gray-900">Gestión de Clientes</h1>
               <p className="text-sm text-gray-600 mt-1">
                 Administra clientes y sus vehículos asociados
               </p>
@@ -292,7 +355,7 @@ export default function ClientesPage() {
           </div>
         </div>
 
-        {/* ESTADÍSTICAS */}
+        {/* STATS */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Tooltip>
             <TooltipTrigger asChild>
@@ -300,9 +363,7 @@ export default function ClientesPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-blue-600 font-medium">
-                        Total de Clientes
-                      </p>
+                      <p className="text-sm text-blue-600 font-medium">Total de Clientes</p>
                       <p className="text-3xl font-bold text-blue-900 mt-2">
                         {stats.totalClientes}
                       </p>
@@ -323,9 +384,7 @@ export default function ClientesPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-purple-600 font-medium">
-                        Total de Vehículos
-                      </p>
+                      <p className="text-sm text-purple-600 font-medium">Total de Vehículos</p>
                       <p className="text-3xl font-bold text-purple-900 mt-2">
                         {stats.totalVehiculos}
                       </p>
@@ -341,10 +400,10 @@ export default function ClientesPage() {
           </Tooltip>
         </div>
 
-        {/* TABLA CLIENTES */}
+        {/* LISTA CLIENTES */}
         <Card className="border-l-4 border-l-[#5d16ec] shadow-lg overflow-hidden">
           <CardHeader className="border-b space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-[#5d16ec] rounded-lg">
                   <UserRound className="h-5 w-5 text-white" />
@@ -359,6 +418,7 @@ export default function ClientesPage() {
                 </div>
               </div>
 
+              {/* ✅ BOTÓN CREAR FUERA DE LA TABLA */}
               {permCreate && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -370,15 +430,13 @@ export default function ClientesPage() {
                     >
                       <Plus className="h-4 w-4" />
                       <span className="hidden sm:inline">Nuevo Cliente</span>
+                      <span className="sm:hidden">Nuevo</span>
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="top">
-                    Crear un nuevo cliente
-                  </TooltipContent>
+                  <TooltipContent side="top">Crear nuevo cliente</TooltipContent>
                 </Tooltip>
               )}
             </div>
-
           </CardHeader>
 
           <CardContent className="px-2">
@@ -406,24 +464,15 @@ export default function ClientesPage() {
                 data={clientes}
                 onSelect={onSelectCliente}
                 onVehiculos={openVehiculos}
-                onCreate={
-                  permCreate
-                    ? () => setClienteDialog({ open: true, mode: "create", data: null })
-                    : undefined
-                }
+                // ✅ ya NO pasamos onCreate (para que no salga dentro de la tabla)
                 onEdit={
                   permEdit
-                    ? (c) =>
-                        setClienteDialog({
-                          open: true,
-                          mode: "edit",
-                          data: c,
-                        })
+                    ? (c) => setClienteDialog({ open: true, mode: "edit", data: c })
                     : undefined
                 }
                 onDelete={
                   permDelete
-                    ? (c) => setDeleteDialog({ open: true, item: c })
+                    ? (c) => setDeleteDialog({ open: true, item: c, type: "cliente" })
                     : undefined
                 }
               />
@@ -431,10 +480,10 @@ export default function ClientesPage() {
           </CardContent>
         </Card>
 
-        {/* TABLA VEHÍCULOS */}
+        {/* VEHÍCULOS DEL CLIENTE */}
         {selectedCliente && (
           <Card className="border-l-4 border-l-[#5d16ec] shadow-lg overflow-hidden">
-            <CardHeader className=" border-b space-y-3">
+            <CardHeader className="border-b space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-[#5d16ec] rounded-lg">
@@ -485,8 +534,7 @@ export default function ClientesPage() {
                 className="w-fit bg-[#e0d6f5] text-[#5d16ec] border-[#c9b8e0]"
               >
                 <Car className="h-3 w-3 mr-1" />
-                {vehiculos.length} vehículo
-                {vehiculos.length !== 1 ? "s" : ""}
+                {vehiculos.length} vehículo{vehiculos.length !== 1 ? "s" : ""}
               </Badge>
             </CardHeader>
 
@@ -511,77 +559,23 @@ export default function ClientesPage() {
                   data={vehiculos}
                   onCreate={
                     permEdit
-                      ? () =>
-                          setVehiculoDialog({
-                            open: true,
-                            mode: "create",
-                            data: null,
-                          })
+                      ? () => setVehiculoDialog({ open: true, mode: "create", data: null })
                       : undefined
                   }
                   onEdit={
                     permEdit
-                      ? (v) =>
-                          setVehiculoDialog({
-                            open: true,
-                            mode: "edit",
-                            data: v,
-                          })
+                      ? (v) => setVehiculoDialog({ open: true, mode: "edit", data: v })
                       : undefined
                   }
                   onDelete={
                     permDelete
-                      ? async (v) => {
-                          try {
-                            const res = await fetch(
-                              `/api/vehiculos/${v.id}`,
-                              {
-                                method: "DELETE",
-                              }
-                            );
-
-                            const data = await res.json();
-
-                            if (!res.ok) {
-                              toast.error(
-                                data.message || "No se pudo eliminar"
-                              );
-                              return;
-                            }
-
-                            toast.success("✓ Vehículo eliminado");
-
-                            loadVehiculos(selectedCliente.id);
-                            loadAllVehiculos();
-                          } catch (err) {
-                            console.error(err);
-                            toast.error("Error eliminando vehículo");
-                          }
-                        }
+                      ? (v) => setDeleteDialog({ open: true, item: v, type: "vehiculo" })
                       : undefined
                   }
                 />
               )}
             </CardContent>
           </Card>
-        )}
-
-        {/* INFO BOX */}
-        {!loading && clientes.length > 0 && (
-          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg flex gap-3">
-            <Info className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
-            <div className="text-sm text-blue-700 space-y-1">
-              <p className="font-semibold">Información importante:</p>
-              <ul className="list-disc list-inside space-y-1 text-xs">
-                <li>
-                  Cada cliente puede tener múltiples vehículos asociados
-                </li>
-                <li>Selecciona un cliente para ver sus vehículos</li>
-                <li>Puedes editar o eliminar clientes y vehículos</li>
-                <li>Los vehículos están vinculados a los clientes</li>
-              </ul>
-            </div>
-          </div>
         )}
       </div>
 
@@ -591,7 +585,6 @@ export default function ClientesPage() {
         mode={clienteDialog.mode}
         cliente={clienteDialog.data}
         onOpenChange={(v) => setClienteDialog((prev) => ({ ...prev, open: v }))}
-        onClienteCreated={handleClienteCreated}
         onSave={saveCliente}
       />
 
@@ -601,13 +594,18 @@ export default function ClientesPage() {
         vehiculo={vehiculoDialog.data}
         onSave={saveVehiculo}
         onOpenChange={(v) => setVehiculoDialog((prev) => ({ ...prev, open: v }))}
-        onVehiculoCreated={handleVehiculoCreated}
       />
 
       <ConfirmDeleteDialog
         open={deleteDialog.open}
-        onConfirm={deleteCliente}
-        onOpenChange={(v) => setDeleteDialog({ open: v })}
+        item={deleteDialog.item}
+        type={deleteDialog.type}
+        onConfirm={
+          deleteDialog.type === "vehiculo"
+            ? () => deleteVehiculo(deleteDialog.item)
+            : deleteCliente
+        }
+        onOpenChange={(v) => setDeleteDialog((prev) => ({ ...prev, open: v }))}
       />
     </TooltipProvider>
   );
