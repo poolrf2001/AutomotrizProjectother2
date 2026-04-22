@@ -351,14 +351,6 @@ export default function ConversationsPage() {
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [assignmentFilter, setAssignmentFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [bulkOpen, setBulkOpen] = useState(false);
-  const [bulkChannel, setBulkChannel] = useState("whatsapp");
-  const [bulkText, setBulkText] = useState("");
-  const [bulkSending, setBulkSending] = useState(false);
-  const [bulkError, setBulkError] = useState("");
-  const [bulkSummary, setBulkSummary] = useState(null);
-  const [selectedSessionIds, setSelectedSessionIds] = useState([]);
-  const [bulkTargetMode, setBulkTargetMode] = useState("filtered");
   const [pageError, setPageError] = useState("");
   const [summaryOpen, setSummaryOpen] = useState(false);
   const [summarySession, setSummarySession] = useState(null);
@@ -758,19 +750,6 @@ export default function ConversationsPage() {
     return [selectedSession];
   }, [filteredSessions, selectedSession]);
 
-  useEffect(() => {
-    const filteredIdSet = new Set(filteredSessions.map((s) => Number(s.session_id)));
-    setSelectedSessionIds((prev) => prev.filter((id) => filteredIdSet.has(Number(id))));
-  }, [filteredSessions]);
-
-  const selectedSessions = useMemo(() => {
-    const selectedIdSet = new Set(selectedSessionIds.map((id) => Number(id)));
-    return filteredSessions.filter((s) => selectedIdSet.has(Number(s.session_id)));
-  }, [filteredSessions, selectedSessionIds]);
-
-  const allFilteredSelected =
-    filteredSessions.length > 0 && selectedSessions.length === filteredSessions.length;
-
   const metricsCards = useMemo(() => {
     const total = scopedSessions.length;
     const active = scopedSessions.filter((s) => {
@@ -916,77 +895,6 @@ export default function ConversationsPage() {
     }
     return counts;
   }, [sessions]);
-
-  function handleToggleSessionSelection(sessionId) {
-    const normalized = Number(sessionId);
-    setSelectedSessionIds((prev) => {
-      if (prev.includes(normalized)) {
-        return prev.filter((id) => id !== normalized);
-      }
-      return [...prev, normalized];
-    });
-  }
-
-  function handleToggleSelectAll() {
-    if (allFilteredSelected) {
-      setSelectedSessionIds([]);
-      return;
-    }
-
-    setSelectedSessionIds(filteredSessions.map((s) => Number(s.session_id)));
-  }
-
-  async function handleSendBulkMessage() {
-    const text = bulkText.trim();
-    if (!text || bulkSending) return;
-
-    const targetSessions = bulkTargetMode === "selected" ? selectedSessions : filteredSessions;
-
-    if (!targetSessions.length) {
-      setBulkError(
-        bulkTargetMode === "selected"
-          ? "No hay conversaciones seleccionadas para enviar."
-          : "No hay conversaciones filtradas para enviar."
-      );
-      return;
-    }
-
-    setBulkSending(true);
-    setBulkError("");
-    setBulkSummary(null);
-
-    try {
-      const recipients = targetSessions.map((s) => ({
-        session_id: s.session_id,
-        phone: s.celular || s.phone || null,
-      }));
-
-      const bulkToken = getAuthToken();
-      const res = await fetch("/api/conversations/bulk-messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(bulkToken ? { Authorization: `Bearer ${bulkToken}` } : {}) },
-        body: JSON.stringify({
-          text,
-          source_channel: bulkChannel,
-          source: "bulk_ui",
-          recipients,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.message || "No se pudo enviar la campaña básica");
-      }
-
-      setBulkSummary(data?.summary || null);
-      await load();
-    } catch (error) {
-      setBulkError(error?.message || "Error enviando masivo");
-    } finally {
-      setBulkSending(false);
-    }
-  }
-
 
   return (
     <TooltipProvider>
@@ -1153,34 +1061,8 @@ export default function ConversationsPage() {
           </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <div />
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400">{filteredSessions.length} conv. · {selectedSessions.length} sel.</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                onClick={() => handleToggleSelectAll()}
-                disabled={filteredSessions.length === 0}
-              >
-                {allFilteredSelected ? "Limpiar" : "Seleccionar"}
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                onClick={() => {
-                  setBulkError("");
-                  setBulkSummary(null);
-                  setBulkTargetMode(selectedSessions.length > 0 ? "selected" : "filtered");
-                  setBulkOpen(true);
-                }}
-              >
-                Masivo
-              </Button>
-            </div>
+          <div className="flex items-center justify-end">
+            <span className="text-xs text-gray-400">{filteredSessions.length} conv.</span>
           </div>
         </div>
 
@@ -1277,16 +1159,6 @@ export default function ConversationsPage() {
                       isSelected ? "bg-blue-50/50 border-l-blue-500" : "border-l-transparent"
                     }`}
                   >
-                    {/* Checkbox */}
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-3.5 w-3.5 rounded flex-shrink-0"
-                      checked={selectedSessionIds.includes(Number(s.session_id))}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={() => handleToggleSessionSelection(s.session_id)}
-                      aria-label={`Seleccionar conversacion ${s.session_id}`}
-                    />
-
                     {/* Avatar con iniciales */}
                     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 text-white ${assignmentColorClass(s.assignment_status)}`}>
                       {getInitials(s.cliente_nombre)}
@@ -1420,78 +1292,6 @@ export default function ConversationsPage() {
             />
           </div>
         </div>
-
-        {/* Dialog: Envío masivo */}
-        <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
-          <DialogContent className="sm:max-w-xl">
-            <DialogHeader>
-              <DialogTitle>Envío masivo básico</DialogTitle>
-              <DialogDescription>
-                Envia el mismo mensaje a las conversaciones filtradas actualmente.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="space-y-3">
-              <p className="text-xs text-gray-500">
-                Filtrados: {filteredSessions.length} · Seleccionados: {selectedSessions.length}
-              </p>
-
-              <select
-                className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-                value={bulkTargetMode}
-                onChange={(e) => setBulkTargetMode(e.target.value)}
-                disabled={bulkSending}
-              >
-                <option value="filtered">Enviar a filtrados</option>
-                <option value="selected">Enviar solo a seleccionados</option>
-              </select>
-
-              <select
-                className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
-                value={bulkChannel}
-                onChange={(e) => setBulkChannel(e.target.value)}
-                disabled={bulkSending}
-              >
-                <option value="whatsapp">WhatsApp</option>
-                <option value="instagram">Instagram</option>
-                <option value="facebook">Facebook</option>
-              </select>
-
-              <Textarea
-                value={bulkText}
-                onChange={(e) => setBulkText(e.target.value)}
-                placeholder="Escribe el mensaje promocional a enviar..."
-                className="min-h-28"
-                disabled={bulkSending}
-              />
-
-              {bulkError && <p className="text-sm text-red-600">{bulkError}</p>}
-
-              {bulkSummary && (
-                <div className="text-xs rounded-md border bg-gray-50 p-2 text-gray-700">
-                  Total: {bulkSummary.total || 0} · Enviados: {bulkSummary.sent || 0} · En cola: {bulkSummary.queued || 0} · Fallidos: {bulkSummary.failed || 0} · Omitidos: {bulkSummary.skipped || 0}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setBulkOpen(false)} disabled={bulkSending}>
-                Cerrar
-              </Button>
-              <Button
-                onClick={() => handleSendBulkMessage()}
-                disabled={
-                  bulkSending
-                  || !bulkText.trim()
-                  || (bulkTargetMode === "selected" && selectedSessions.length === 0)
-                  || (bulkTargetMode === "filtered" && filteredSessions.length === 0)
-                }
-              >
-                {bulkSending ? "Enviando..." : "Enviar a filtrados"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
 
         {/* Dialog: Resumen de conversación */}
         <Dialog open={summaryOpen} onOpenChange={setSummaryOpen}>
