@@ -61,7 +61,6 @@ function mapSession(session) {
     assignment_status: session.assignment_status ?? session.status ?? "open",
     contact_id: session.contact_id ?? session.meta?.sender?.id ?? null,
     inbox_id: session.inbox_id ?? session.inbox?.id ?? null,
-    resumen: session.resumen ?? "",
   };
 }
 
@@ -205,6 +204,7 @@ export default function ConversationWorkspace({
   // ── Mensajes / timeline ──────────────────────────────────────
   const [messages, setMessages] = useState([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [resumenState, setResumenState] = useState({ text: "", loading: false, loaded: false });
   const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
@@ -460,7 +460,6 @@ export default function ConversationWorkspace({
           : null,
         message_status: msg.status || "sent",
         sender_name: msg.sender?.name || "",
-        resumen: null,
       }))
         .filter((m) => m.pregunta !== null || m.respuesta !== null || m.attachments.length > 0);
       setMessages(parsed);
@@ -551,6 +550,7 @@ export default function ConversationWorkspace({
     lastMarkedRef.current = 0;
     lastMessageIdRef.current = null;
     stickToBottomRef.current = true;
+    setResumenState({ text: "", loading: false, loaded: false });
     loadTimeline();
     loadLabels();
     loadAgents();
@@ -626,14 +626,33 @@ export default function ConversationWorkspace({
   // Resumen desde el timeline
   // ─────────────────────────────────────────────────────────────
 
-  const resumen = useMemo(() => {
-    // El campo resumen viene en cada row del timeline tomado de conversation_sessions.conversation_summary
-    if (messages.length > 0) {
-      const lastWithResumen = [...messages].reverse().find((m) => m?.resumen && String(m.resumen).trim());
-      if (lastWithResumen?.resumen) return String(lastWithResumen.resumen).trim();
+  async function handleResumenPopoverChange(open) {
+    if (!open) return;
+    if (resumenState.loaded || resumenState.loading) return;
+    if (!sess?.session_id) return;
+
+    setResumenState({ text: "", loading: true, loaded: false });
+    try {
+      const token = getAuthToken();
+      const res = await fetch(
+        `/api/conversations/timeline?session_id=${sess.session_id}`,
+        { cache: "no-store", headers: token ? { Authorization: `Bearer ${token}` } : {} }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const last = Array.isArray(data) ? data[data.length - 1]?.resumen : null;
+        setResumenState({
+          text: last && String(last).trim() ? String(last).trim() : "Sin resumen disponible.",
+          loading: false,
+          loaded: true,
+        });
+        return;
+      }
+    } catch {
+      // Falla silenciosa: se muestra fallback abajo.
     }
-    return sess?.resumen || "Sin resumen disponible.";
-  }, [messages, sess]);
+    setResumenState({ text: "Sin resumen disponible.", loading: false, loaded: true });
+  }
 
   // ─────────────────────────────────────────────────────────────
   // Render vacío
@@ -880,7 +899,7 @@ export default function ConversationWorkspace({
             )}
 
             {/* Resumen */}
-            <Popover>
+            <Popover onOpenChange={handleResumenPopoverChange}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PopoverTrigger asChild>
@@ -894,7 +913,13 @@ export default function ConversationWorkspace({
               <PopoverContent align="end" className="w-[320px]">
                 <div className="space-y-2">
                   <p className="text-sm font-semibold">Resumen de conversación</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{resumen}</p>
+                  {resumenState.loading ? (
+                    <p className="text-sm text-muted-foreground italic">Cargando resumen...</p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                      {resumenState.loaded ? resumenState.text : "Abrí el resumen para cargarlo."}
+                    </p>
+                  )}
                 </div>
               </PopoverContent>
             </Popover>
