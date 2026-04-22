@@ -32,10 +32,10 @@ export async function POST(req) {
   // En IG/FB el "phone" del canal es sender_id (15+ digitos), no un celular real.
   // No creamos clientes con identificadores basura: los clientes reales se crean
   // en /api/ventas/leads cuando el agente IA obtiene un celular validado del cliente.
-  const CELULAR_RE = /^\+?\d{7,15}$/;
+  const CELULAR_RE = /^(\+?51)?9\d{8}$/;
   if (!CELULAR_RE.test(telefonoClean)) {
     return NextResponse.json(
-      { skipped: true, reason: "telefono no es un celular valido (se espera 7-15 digitos)" },
+      { skipped: true, reason: "telefono no es un celular peruano valido (9 digitos empezando por 9, o con prefijo +51)" },
       { status: 200 }
     );
   }

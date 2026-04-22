@@ -150,7 +150,7 @@ export async function POST(req) {
   // no un celular). Si falta cualquiera, el lead no se guarda y el LLM reintenta.
   const nombreLimpio = nombre_cliente?.trim();
   const telefonoLimpio = telefono?.trim();
-  const CELULAR_RE = /^\+?\d{7,15}$/;
+  const CELULAR_RE = /^(\+?51)?9\d{8}$/;
 
   if (!nombreLimpio) {
     return NextResponse.json(
@@ -160,7 +160,7 @@ export async function POST(req) {
   }
   if (!telefonoLimpio || !CELULAR_RE.test(telefonoLimpio)) {
     return NextResponse.json(
-      { message: "telefono invalido: debe ser un celular real (7-15 digitos, opcionalmente con +)" },
+      { message: "telefono invalido: debe ser un celular peruano (9 digitos empezando por 9, o con prefijo +51)" },
       { status: 400 }
     );
   }
